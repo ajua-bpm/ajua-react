@@ -14,17 +14,21 @@ export function useCollection(colName, opts = {}) {
     if (!colName) return;
     setLoading(true);
 
-    const constraints = [];
-    if (opts.orderField) constraints.push(orderBy(opts.orderField, opts.orderDir || 'desc'));
-    if (opts.limit)      constraints.push(limit(opts.limit));
-
-    const q = constraints.length
-      ? query(collection(db, colName), ...constraints)
-      : collection(db, colName);
-
-    const unsub = onSnapshot(q,
+    // Sin orderBy/limit en Firestore — sort y slice client-side
+    // Evita requerir índices compuestos en Firestore
+    const unsub = onSnapshot(collection(db, colName),
       snap => {
-        setData(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        let rows = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        if (opts.orderField) {
+          const dir = opts.orderDir === 'asc' ? 1 : -1;
+          rows = rows.sort((a, b) => {
+            const av = a[opts.orderField] ?? '';
+            const bv = b[opts.orderField] ?? '';
+            return av < bv ? -dir : av > bv ? dir : 0;
+          });
+        }
+        if (opts.limit) rows = rows.slice(0, opts.limit);
+        setData(rows);
         setLoading(false);
       },
       err => {

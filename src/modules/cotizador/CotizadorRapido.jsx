@@ -30,7 +30,7 @@ const ESTADOS_OFERTA = [
   { value: 'enviada',    label: 'Enviada',    bg: '#FFF3E0', color: '#E65100' },
   { value: 'ganada',     label: 'Ganada',     bg: '#E8F5E9', color: '#1B5E20' },
   { value: 'perdida',    label: 'Perdida',    bg: '#FFEBEE', color: '#C62828' },
-  { value: 'cancelada',  label: 'Cancelada',  bg: '#EEEEEE', color: '#424242' },
+  { value: 'cancelada',  label: 'Cancelada',  bg: '#EEEEEE', color: '#1A1A18' },
 ];
 
 const GC_CHECKLIST_DEFAULT = [

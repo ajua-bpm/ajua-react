@@ -38,7 +38,7 @@ export default function Login() {
             🌿
           </div>
           <div style={{ fontSize:'1.4rem', fontWeight:800, color:'#1B5E20', letterSpacing:'-.01em' }}>AJÚA BPM</div>
-          <div style={{ fontSize:'.82rem', color:'#757575', marginTop:4 }}>Sistema de Gestión Empresarial</div>
+          <div style={{ fontSize:'.82rem', color:'#6B6B60', marginTop:4 }}>Sistema de Gestión Empresarial</div>
         </div>
 
         {/* Card */}

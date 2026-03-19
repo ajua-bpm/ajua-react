@@ -23,7 +23,7 @@ const ESTADO_COLORS = {
   pendiente:  { bg: '#FFF3E0', c: '#E65100' },
   entregado:  { bg: '#E8F5E9', c: '#1B5E20' },
   rechazado:  { bg: '#FFEBEE', c: '#C62828' },
-  cancelado:  { bg: '#EEEEEE', c: '#424242' },
+  cancelado:  { bg: '#EEEEEE', c: '#1A1A18' },
 };
 
 const today    = () => new Date().toISOString().slice(0, 10);

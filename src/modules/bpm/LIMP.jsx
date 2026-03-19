@@ -93,7 +93,7 @@ function SiNoNa({ value, onChange }) {
             padding: '5px 10px', borderRadius: 6, border: '1.5px solid', cursor: 'pointer',
             fontWeight: 700, fontSize: '.76rem', fontFamily: 'inherit', transition: 'all .15s',
             background: value === v ? (v === 'si' ? T.bgGreen : v === 'no' ? '#FFEBEE' : '#F5F5F5') : T.white,
-            borderColor: value === v ? (v === 'si' ? T.secondary : v === 'no' ? T.danger : '#757575') : T.border,
+            borderColor: value === v ? (v === 'si' ? T.secondary : v === 'no' ? T.danger : '#6B6B60') : T.border,
             color: value === v ? (v === 'si' ? T.secondary : v === 'no' ? T.danger : '#555') : T.textMid,
           }}
         >
