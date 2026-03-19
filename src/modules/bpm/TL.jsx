@@ -79,7 +79,7 @@ const ResultadoBadge = ({ resultado }) => {
 const BTNS = [
   { val: 'si', label: 'SI',  on: { bg: '#2E7D32', border: '#2E7D32' } },
   { val: 'no', label: 'NO',  on: { bg: '#C62828', border: '#C62828' } },
-  { val: 'na', label: 'N/A', on: { bg: '#9E9E9E', border: '#9E9E9E' } },
+  { val: 'na', label: 'N/A', on: { bg: '#6B6B60', border: '#6B6B60' } },
 ];
 
 function Tristate({ value, onChange }) {

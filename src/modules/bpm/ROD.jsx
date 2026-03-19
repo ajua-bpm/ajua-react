@@ -102,7 +102,7 @@ const ResultadoBadge = ({ resultado }) => {
 const ESTADOS = [
   { val: 'en_lugar',    label: 'En lugar ✓', bg: '#2E7D32' },
   { val: 'novedad',     label: 'Novedad ⚠',  bg: '#E65100' },
-  { val: 'sin_revisar', label: 'Sin revisar', bg: '#9E9E9E' },
+  { val: 'sin_revisar', label: 'Sin revisar', bg: '#6B6B60' },
 ];
 
 // ─── Main component ───────────────────────────────────────────────────────────
