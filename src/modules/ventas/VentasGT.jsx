@@ -7,8 +7,8 @@ import Skeleton from '../../components/Skeleton';
 // ── Design tokens ────────────────────────────────────────────────
 const T = {
   primary: '#1B5E20', secondary: '#2E7D32', white: '#FFFFFF',
-  bgLight: '#F5F5F5', border: '#E0E0E0', textDark: '#212121',
-  textMid: '#616161', danger: '#C62828', warn: '#E65100',
+  bgLight: '#F5F5F5', border: '#E0E0E0', textDark: '#1A1A18',
+  textMid: '#6B6B60', danger: '#C62828', warn: '#E65100',
 };
 const shadow = '0 1px 3px rgba(0,0,0,.10), 0 1px 2px rgba(0,0,0,.06)';
 const card   = { background: '#fff', borderRadius: 8, boxShadow: shadow, padding: 20, marginBottom: 20 };
@@ -41,7 +41,7 @@ const ESTADO_LABEL = {
   pendiente: 'Pendiente', entregado: 'Entregado', cobrado: 'Cobrado', cancelado: 'Cancelado',
 };
 function Badge({ s }) {
-  const b = BADGE[s] || { bg: '#F5F5F5', c: '#616161' };
+  const b = BADGE[s] || { bg: '#F5F5F5', c: '#6B6B60' };
   return (
     <span style={{ padding: '3px 10px', borderRadius: 100, fontSize: '.7rem', fontWeight: 600, background: b.bg, color: b.c, whiteSpace: 'nowrap' }}>
       {ESTADO_LABEL[s] || s || '—'}
@@ -296,7 +296,7 @@ export default function VentasGT() {
                     <td style={{ ...tdSt, color: T.textMid, fontSize: '.78rem', fontFamily: 'monospace' }}>{r.numFel || '—'}</td>
                     <td style={{ ...tdSt, color: T.textMid }}>
                       {(r.items || []).length} prod.
-                      <div style={{ fontSize: '.7rem', color: '#9E9E9E', marginTop: 1 }}>
+                      <div style={{ fontSize: '.7rem', color: '#6B6B60', marginTop: 1 }}>
                         {(r.items || []).slice(0, 2).map(it => it.producto).filter(Boolean).join(', ')}
                         {(r.items || []).length > 2 ? '…' : ''}
                       </div>

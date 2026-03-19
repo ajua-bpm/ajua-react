@@ -1,7 +1,7 @@
 import { useCollection } from '../../hooks/useFirestore';
 import Skeleton from '../../components/Skeleton';
 
-const T = { primary:'#1B5E20', secondary:'#2E7D32', textMid:'#616161', danger:'#C62828', warn:'#E65100' };
+const T = { primary:'#1B5E20', secondary:'#2E7D32', textMid:'#6B6B60', danger:'#C62828', warn:'#E65100' };
 const today = () => new Date().toISOString().slice(0,10);
 const thisWeek = () => { const d=new Date(); d.setDate(d.getDate()-7); return d.toISOString().slice(0,10); };
 const fmt = (n) => `Q ${(n||0).toLocaleString('es-GT', { minimumFractionDigits:2 })}`;
@@ -12,7 +12,7 @@ function StatCard({ label, value, sub, color, icon }) {
       {icon && <div style={{ fontSize:'1.5rem', lineHeight:1, marginTop:2 }}>{icon}</div>}
       <div style={{ flex:1 }}>
         <div style={{ fontSize:'1.5rem', fontWeight:800, color:color||T.primary, lineHeight:1 }}>{value}</div>
-        <div style={{ fontSize:'.78rem', fontWeight:600, color:'#212121', marginTop:4 }}>{label}</div>
+        <div style={{ fontSize:'.78rem', fontWeight:600, color:'#1A1A18', marginTop:4 }}>{label}</div>
         {sub && <div style={{ fontSize:'.72rem', color:T.textMid, marginTop:2 }}>{sub}</div>}
       </div>
     </div>
@@ -32,7 +32,7 @@ function BpmCard({ icon, label, ok, total }) {
         ? <div style={{ height:4, background:'#F0F0F0', borderRadius:2 }}>
             <div style={{ height:'100%', width:`${pct}%`, background:bc, borderRadius:2, transition:'width .4s' }} />
           </div>
-        : <div style={{ fontSize:'.72rem', color:'#9E9E9E' }}>Sin registros</div>
+        : <div style={{ fontSize:'.72rem', color:'#6B6B60' }}>Sin registros</div>
       }
       <div style={{ fontSize:'.7rem', color:T.textMid, marginTop:6 }}>
         {total > 0 ? `${ok} / ${total} cumplen` : '—'}

@@ -11,8 +11,8 @@ const T = {
   white:     '#FFFFFF',
   bgLight:   '#F5F5F5',
   border:    '#E0E0E0',
-  textDark:  '#212121',
-  textMid:   '#616161',
+  textDark:  '#1A1A18',
+  textMid:   '#6B6B60',
   danger:    '#C62828',
   warn:      '#E65100',
 };
@@ -94,7 +94,7 @@ function TabEmpleados() {
           </label>
         </div>
         <div style={{ display:'flex', gap:10 }}>
-          <button onClick={handleSave} disabled={saving} style={{ padding:'11px 28px', background:saving?'#9E9E9E':T.primary, color:T.white, border:'none', borderRadius:6, fontWeight:700, cursor:saving?'not-allowed':'pointer' }}>
+          <button onClick={handleSave} disabled={saving} style={{ padding:'11px 28px', background:saving?'#6B6B60':T.primary, color:T.white, border:'none', borderRadius:6, fontWeight:700, cursor:saving?'not-allowed':'pointer' }}>
             {saving?'Guardando...':editId?'Actualizar':'Agregar'}
           </button>
           {editId && <button onClick={()=>{setEditId(null);setForm({...BLANK});}} style={{ padding:'11px 20px', background:T.bgLight, border:`1px solid ${T.border}`, borderRadius:6, fontWeight:600, cursor:'pointer', color:T.textMid }}>Cancelar</button>}
@@ -331,7 +331,7 @@ function TabAnticipos() {
           </label>
         </div>
         <div style={{ display:'flex', gap:10 }}>
-          <button onClick={handleSave} disabled={saving} style={{ padding:'11px 28px', background:saving?'#9E9E9E':T.primary, color:T.white, border:'none', borderRadius:6, fontWeight:700, cursor:saving?'not-allowed':'pointer' }}>
+          <button onClick={handleSave} disabled={saving} style={{ padding:'11px 28px', background:saving?'#6B6B60':T.primary, color:T.white, border:'none', borderRadius:6, fontWeight:700, cursor:saving?'not-allowed':'pointer' }}>
             {saving?'Guardando...':editId?'Actualizar':'Registrar'}
           </button>
           {editId && <button onClick={()=>{setEditId(null);setForm({empleado:'',fecha:today(),monto:'',motivo:'',estado:'pendiente'});}} style={{ padding:'11px 20px', background:T.bgLight, border:`1px solid ${T.border}`, borderRadius:6, fontWeight:600, cursor:'pointer', color:T.textMid }}>Cancelar</button>}

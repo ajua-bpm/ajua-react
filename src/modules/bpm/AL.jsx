@@ -8,7 +8,7 @@ import Skeleton from '../../components/Skeleton';
 const T = {
   primary: '#1B5E20', secondary: '#2E7D32', accent: '#43A047',
   white: '#FFFFFF', bgLight: '#F5F5F5', bgCard: '#FFFFFF',
-  border: '#E0E0E0', textDark: '#212121', textMid: '#616161',
+  border: '#E0E0E0', textDark: '#1A1A18', textMid: '#6B6B60',
   danger: '#C62828', warn: '#E65100',
 };
 
@@ -43,7 +43,7 @@ const Badge = ({ type }) => {
     ok:        { bg: '#E8F5E9', c: '#2E7D32', l: '✓ OK' },
     novedad:   { bg: '#FFEBEE', c: '#C62828', l: '⚠ Novedad' },
   };
-  const m = M[type] || { bg: '#F5F5F5', c: '#616161', l: type };
+  const m = M[type] || { bg: '#F5F5F5', c: '#6B6B60', l: type };
   return (
     <span style={{
       padding: '3px 10px', borderRadius: 100, fontSize: '.7rem',
@@ -216,7 +216,7 @@ export default function AL() {
                                 width: 34, height: 34, borderRadius: 6, border: 'none',
                                 cursor: 'pointer', fontWeight: 700, fontSize: '.85rem',
                                 background: checked ? T.accent : '#E0E0E0',
-                                color: checked ? T.white : '#9E9E9E',
+                                color: checked ? T.white : '#6B6B60',
                                 transition: 'all .15s',
                               }}
                               title={checked ? 'Marcar como pendiente' : 'Marcar como cumplido'}

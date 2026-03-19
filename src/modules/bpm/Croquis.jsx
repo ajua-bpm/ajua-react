@@ -2,7 +2,7 @@
 const T = {
   primary:  '#1B5E20',
   border:   '#E0E0E0',
-  textMid:  '#616161',
+  textMid:  '#6B6B60',
 };
 const card = {
   background: '#fff', borderRadius: 8,

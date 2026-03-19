@@ -6,8 +6,8 @@ import Skeleton from '../../components/Skeleton';
 // ── Design tokens ────────────────────────────────────────────────
 const T = {
   primary: '#1B5E20', secondary: '#2E7D32', white: '#FFFFFF',
-  bgLight: '#F5F5F5', border: '#E0E0E0', textDark: '#212121',
-  textMid: '#616161', danger: '#C62828', warn: '#E65100',
+  bgLight: '#F5F5F5', border: '#E0E0E0', textDark: '#1A1A18',
+  textMid: '#6B6B60', danger: '#C62828', warn: '#E65100',
 };
 const shadow = '0 1px 3px rgba(0,0,0,.10), 0 1px 2px rgba(0,0,0,.06)';
 const card   = { background: '#fff', borderRadius: 8, boxShadow: shadow, padding: 20, marginBottom: 20 };

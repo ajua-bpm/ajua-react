@@ -10,8 +10,8 @@ const T = {
   secondary: '#2E7D32',
   white:     '#FFFFFF',
   border:    '#E0E0E0',
-  textDark:  '#212121',
-  textMid:   '#616161',
+  textDark:  '#1A1A18',
+  textMid:   '#6B6B60',
   danger:    '#C62828',
   warn:      '#E65100',
   rowAlt:    '#F9FBF9',
@@ -52,7 +52,7 @@ const INIT = () => ({
 const resultColor = (r) => {
   if (r === 'Aprobado')    return { bg: 'rgba(46,125,50,.12)',    color: '#2E7D32' };
   if (r === 'Reprogramar') return { bg: 'rgba(230,81,0,.10)',     color: '#E65100' };
-  return                          { bg: 'rgba(33,33,33,.07)',     color: '#616161' };
+  return                          { bg: 'rgba(33,33,33,.07)',     color: '#6B6B60' };
 };
 
 export default function Capacitacion() {

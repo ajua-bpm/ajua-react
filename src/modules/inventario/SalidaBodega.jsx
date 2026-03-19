@@ -7,8 +7,8 @@ import Skeleton from '../../components/Skeleton';
 // ── Design tokens ────────────────────────────────────────────────
 const T = {
   primary: '#1B5E20', secondary: '#2E7D32', white: '#FFFFFF',
-  bgLight: '#F5F5F5', border: '#E0E0E0', textDark: '#212121',
-  textMid: '#616161', danger: '#C62828', warn: '#E65100',
+  bgLight: '#F5F5F5', border: '#E0E0E0', textDark: '#1A1A18',
+  textMid: '#6B6B60', danger: '#C62828', warn: '#E65100',
 };
 const shadow = '0 1px 3px rgba(0,0,0,.10), 0 1px 2px rgba(0,0,0,.06)';
 const card   = { background: '#fff', borderRadius: 8, boxShadow: shadow, padding: 20, marginBottom: 20 };
@@ -51,7 +51,7 @@ const DEST_COLORS = {
   'Devolución':    { bg: '#FBE9E7', c: '#BF360C' },
 };
 function DestBadge({ destino }) {
-  const d = DEST_COLORS[destino] || { bg: '#F5F5F5', c: '#616161' };
+  const d = DEST_COLORS[destino] || { bg: '#F5F5F5', c: '#6B6B60' };
   return (
     <span style={{ padding: '3px 10px', borderRadius: 100, fontSize: '.7rem', fontWeight: 600, background: d.bg, color: d.c }}>
       {destino || '—'}

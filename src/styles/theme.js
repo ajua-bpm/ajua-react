@@ -6,12 +6,13 @@ export const T = {
   accent:    '#43A047',   // Verde claro — hover states
   white:     '#FFFFFF',
   bgLight:   '#F5F5F5',   // Fondo app
+  bgGreen:   '#E8F5E9',   // Verde claro fondo
   bgCard:    '#FFFFFF',   // Fondo tarjetas
   border:    '#E0E0E0',   // Bordes
   borderMed: '#BDBDBD',   // Bordes con más peso
-  textDark:  '#212121',   // Texto principal
-  textMid:   '#616161',   // Texto secundario
-  textLight: '#9E9E9E',   // Texto terciario
+  textDark:  '#1A1A18',   // Texto principal
+  textMid:   '#6B6B60',   // Texto secundario
+  textLight: '#6B6B60',   // Texto terciario
   danger:    '#C62828',   // Rojo error
   warn:      '#E65100',   // Naranja advertencia
   info:      '#1565C0',   // Azul info
@@ -45,7 +46,7 @@ export const STATUS = {
   rechazado:   { bg: '#FFEBEE', color: '#C62828', label: '✗ Rechazado' },
   cumple:      { bg: '#E8F5E9', color: '#2E7D32', label: '✓ Cumple' },
   no_cumple:   { bg: '#FFEBEE', color: '#C62828', label: '✗ No cumple' },
-  borrador:    { bg: '#F5F5F5', color: '#616161', label: '📝 Borrador' },
+  borrador:    { bg: '#F5F5F5', color: '#6B6B60', label: '📝 Borrador' },
   enviada:     { bg: '#FFF3E0', color: '#E65100', label: '📤 Enviada' },
   activo:      { bg: '#E8F5E9', color: '#2E7D32', label: '● Activo' },
   inactivo:    { bg: '#FFEBEE', color: '#C62828', label: '● Inactivo' },
@@ -73,7 +74,7 @@ export const S = {
   },
   pageSubtitle: {
     fontSize: '.82rem',
-    color: '#616161',
+    color: '#6B6B60',
     marginBottom: '24px',
   },
   label: {
@@ -83,7 +84,7 @@ export const S = {
     fontSize: '.72rem',
     fontWeight: 600,
     textTransform: 'uppercase',
-    color: '#616161',
+    color: '#6B6B60',
     letterSpacing: '.06em',
   },
   input: {
@@ -92,7 +93,7 @@ export const S = {
     borderRadius: '6px',
     fontSize: '.88rem',
     outline: 'none',
-    color: '#212121',
+    color: '#1A1A18',
     background: '#fff',
     transition: 'border-color .15s',
   },
@@ -102,7 +103,7 @@ export const S = {
     borderRadius: '6px',
     fontSize: '.88rem',
     outline: 'none',
-    color: '#212121',
+    color: '#1A1A18',
     background: '#fff',
     cursor: 'pointer',
   },
@@ -151,7 +152,7 @@ export const S = {
   td: {
     padding: '9px 14px',
     fontSize: '.83rem',
-    color: '#212121',
+    color: '#1A1A18',
     borderBottom: '1px solid #F0F0F0',
   },
 };

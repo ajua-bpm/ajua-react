@@ -10,8 +10,8 @@ const T = {
   white:     '#FFFFFF',
   bgLight:   '#F5F5F5',
   border:    '#E0E0E0',
-  textDark:  '#212121',
-  textMid:   '#616161',
+  textDark:  '#1A1A18',
+  textMid:   '#6B6B60',
   danger:    '#C62828',
   warn:      '#E65100',
 };
@@ -169,7 +169,7 @@ export default function CotizadorRapido() {
         </div>
         <div style={{ display:'flex', gap:10 }}>
           <button onClick={handleSave} disabled={saving} style={{
-            padding:'11px 28px', background:saving?'#9E9E9E':T.primary, color:T.white,
+            padding:'11px 28px', background:saving?'#6B6B60':T.primary, color:T.white,
             border:'none', borderRadius:6, fontWeight:700, fontSize:'.88rem', cursor:saving?'not-allowed':'pointer',
           }}>
             {saving ? 'Guardando...' : editId ? 'Actualizar' : 'Guardar Producto'}

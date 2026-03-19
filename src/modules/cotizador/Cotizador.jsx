@@ -11,8 +11,8 @@ const T = {
   white:     '#FFFFFF',
   bgLight:   '#F5F5F5',
   border:    '#E0E0E0',
-  textDark:  '#212121',
-  textMid:   '#616161',
+  textDark:  '#1A1A18',
+  textMid:   '#6B6B60',
   danger:    '#C62828',
   warn:      '#E65100',
 };
@@ -27,11 +27,11 @@ const today = () => new Date().toISOString().slice(0,10);
 
 // ─── ESTADO CONFIG ─────────────────────────────────────────────────────────
 const EST_CFG = {
-  borrador:  { color:'#616161', bg:'rgba(97,97,97,.10)',    label:'Borrador'  },
+  borrador:  { color:'#6B6B60', bg:'rgba(97,97,97,.10)',    label:'Borrador'  },
   enviada:   { color:T.warn,    bg:'rgba(230,81,0,.10)',    label:'Enviada'   },
   aprobada:  { color:T.secondary,bg:'rgba(46,125,50,.12)',  label:'Aprobada'  },
   rechazada: { color:T.danger,  bg:'rgba(198,40,40,.10)',   label:'Rechazada' },
-  vencida:   { color:'#9E9E9E', bg:'rgba(158,158,158,.10)', label:'Vencida'   },
+  vencida:   { color:'#6B6B60', bg:'rgba(158,158,158,.10)', label:'Vencida'   },
 };
 
 function EstadoChip({ estado }) {
@@ -140,7 +140,7 @@ function TabCotizaciones() {
             style={{ ...IS, resize:'vertical' }} placeholder="Condiciones, plazos, notas..."/>
         </label>
         <div style={{ display:'flex', gap:10, marginTop:16 }}>
-          <button onClick={handleSave} disabled={saving} style={{ padding:'11px 28px', background:saving?'#9E9E9E':T.primary, color:T.white, border:'none', borderRadius:6, fontWeight:700, fontSize:'.88rem', cursor:saving?'not-allowed':'pointer' }}>
+          <button onClick={handleSave} disabled={saving} style={{ padding:'11px 28px', background:saving?'#6B6B60':T.primary, color:T.white, border:'none', borderRadius:6, fontWeight:700, fontSize:'.88rem', cursor:saving?'not-allowed':'pointer' }}>
             {saving?'Guardando...':editId?'Actualizar':'Crear Cotización'}
           </button>
           {editId && <button onClick={()=>{setEditId(null);setForm({...BLANK_COT,items:[{...BLANK_ITEM}]});}} style={{ padding:'11px 20px', background:T.bgLight, border:`1px solid ${T.border}`, borderRadius:6, fontWeight:600, cursor:'pointer', color:T.textMid }}>Cancelar</button>}
@@ -225,7 +225,7 @@ function TabProductos() {
           <label style={LS}>Precio base (Q)<input type="number" min="0" step="0.01" value={form.precioBase} onChange={e=>setForm(f=>({...f,precioBase:e.target.value}))} style={IS}/></label>
         </div>
         <div style={{ display:'flex', gap:10 }}>
-          <button onClick={handleSave} disabled={saving} style={{ padding:'11px 28px', background:saving?'#9E9E9E':T.primary, color:T.white, border:'none', borderRadius:6, fontWeight:700, cursor:saving?'not-allowed':'pointer' }}>
+          <button onClick={handleSave} disabled={saving} style={{ padding:'11px 28px', background:saving?'#6B6B60':T.primary, color:T.white, border:'none', borderRadius:6, fontWeight:700, cursor:saving?'not-allowed':'pointer' }}>
             {saving?'Guardando...':editId?'Actualizar':'Guardar'}
           </button>
           {editId && <button onClick={()=>{setEditId(null);setForm({nombre:'',codigo:'',categoria:'',unidad:'lb',precioBase:''}); }} style={{ padding:'11px 20px', background:T.bgLight, border:`1px solid ${T.border}`, borderRadius:6, fontWeight:600, cursor:'pointer', color:T.textMid }}>Cancelar</button>}
@@ -312,7 +312,7 @@ function TabPresentaciones() {
           <label style={LS}>Código de barras<input value={form.codigoBarras} onChange={e=>setForm(f=>({...f,codigoBarras:e.target.value}))} style={IS}/></label>
         </div>
         <div style={{ display:'flex', gap:10 }}>
-          <button onClick={handleSave} disabled={saving} style={{ padding:'11px 28px', background:saving?'#9E9E9E':T.primary, color:T.white, border:'none', borderRadius:6, fontWeight:700, cursor:saving?'not-allowed':'pointer' }}>
+          <button onClick={handleSave} disabled={saving} style={{ padding:'11px 28px', background:saving?'#6B6B60':T.primary, color:T.white, border:'none', borderRadius:6, fontWeight:700, cursor:saving?'not-allowed':'pointer' }}>
             {saving?'Guardando...':editId?'Actualizar':'Guardar'}
           </button>
           {editId && <button onClick={()=>{setEditId(null);setForm({nombre:'',producto:'',peso:'',unidad:'lb',precio:'',codigoBarras:''});}} style={{ padding:'11px 20px', background:T.bgLight, border:`1px solid ${T.border}`, borderRadius:6, fontWeight:600, cursor:'pointer', color:T.textMid }}>Cancelar</button>}

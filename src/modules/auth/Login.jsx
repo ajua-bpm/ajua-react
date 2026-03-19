@@ -47,28 +47,28 @@ export default function Login() {
           boxShadow:'0 4px 24px rgba(0,0,0,.08), 0 1px 4px rgba(0,0,0,.05)',
           padding:32,
         }}>
-          <div style={{ fontSize:'1rem', fontWeight:700, color:'#212121', marginBottom:24 }}>Iniciar sesión</div>
+          <div style={{ fontSize:'1rem', fontWeight:700, color:'#1A1A18', marginBottom:24 }}>Iniciar sesión</div>
 
           <form onSubmit={handleSubmit}>
             <div style={{ marginBottom:16 }}>
-              <label style={{ display:'flex', flexDirection:'column', gap:6, fontSize:'.72rem', fontWeight:600, textTransform:'uppercase', color:'#616161', letterSpacing:'.06em' }}>
+              <label style={{ display:'flex', flexDirection:'column', gap:6, fontSize:'.72rem', fontWeight:600, textTransform:'uppercase', color:'#6B6B60', letterSpacing:'.06em' }}>
                 Usuario
                 <input
                   type="text" value={email} onChange={e=>setEmail(e.target.value)}
                   autoFocus placeholder="usuario o email"
-                  style={{ padding:'11px 14px', border:'1.5px solid #E0E0E0', borderRadius:6, fontSize:'.9rem', outline:'none', fontFamily:'inherit', color:'#212121' }}
+                  style={{ padding:'11px 14px', border:'1.5px solid #E0E0E0', borderRadius:6, fontSize:'.9rem', outline:'none', fontFamily:'inherit', color:'#1A1A18' }}
                   onFocus={e=>e.target.style.borderColor='#2E7D32'}
                   onBlur={e=>e.target.style.borderColor='#E0E0E0'}
                 />
               </label>
             </div>
             <div style={{ marginBottom:20 }}>
-              <label style={{ display:'flex', flexDirection:'column', gap:6, fontSize:'.72rem', fontWeight:600, textTransform:'uppercase', color:'#616161', letterSpacing:'.06em' }}>
+              <label style={{ display:'flex', flexDirection:'column', gap:6, fontSize:'.72rem', fontWeight:600, textTransform:'uppercase', color:'#6B6B60', letterSpacing:'.06em' }}>
                 Contraseña
                 <input
                   type="password" value={pass} onChange={e=>setPass(e.target.value)}
                   placeholder="••••••••"
-                  style={{ padding:'11px 14px', border:'1.5px solid #E0E0E0', borderRadius:6, fontSize:'.9rem', outline:'none', fontFamily:'inherit', color:'#212121' }}
+                  style={{ padding:'11px 14px', border:'1.5px solid #E0E0E0', borderRadius:6, fontSize:'.9rem', outline:'none', fontFamily:'inherit', color:'#1A1A18' }}
                   onFocus={e=>e.target.style.borderColor='#2E7D32'}
                   onBlur={e=>e.target.style.borderColor='#E0E0E0'}
                 />
@@ -98,7 +98,7 @@ export default function Login() {
           </form>
         </div>
 
-        <div style={{ textAlign:'center', marginTop:20, fontSize:'.72rem', color:'#9E9E9E' }}>
+        <div style={{ textAlign:'center', marginTop:20, fontSize:'.72rem', color:'#6B6B60' }}>
           AGROINDUSTRIA AJÚA · Guatemala
         </div>
       </div>
