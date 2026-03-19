@@ -7,62 +7,47 @@ import Skeleton from '../../components/Skeleton';
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const T = {
   primary: '#1B5E20', secondary: '#2E7D32', accent: '#43A047',
-  white: '#FFFFFF', bgLight: '#F5F5F5', bgCard: '#FFFFFF',
+  white: '#FFFFFF', bgLight: '#F5F5F5',
   border: '#E0E0E0', textDark: '#1A1A18', textMid: '#6B6B60',
   danger: '#C62828', warn: '#E65100',
 };
 
-// ─── Fixed hours from bpm.html ────────────────────────────────────────────────
 const HORAS = ['10:00', '12:00', '14:00', '16:00'];
+const HORA_LABELS = { '10:00': '10:00 am', '12:00': '12:00 pm', '14:00': '14:00 pm', '16:00': '16:00 pm' };
 
-const today = () => new Date().toISOString().slice(0, 10);
-const nowHM = () => { const d = new Date(); return d.toTimeString().slice(0, 5); };
+const today  = () => new Date().toISOString().slice(0, 10);
+const nowHM  = () => new Date().toTimeString().slice(0, 5);
 
-const initChecks = empleados =>
-  empleados.map(e => ({
-    empleadoId: e.id,
-    nombre: e.nombre,
-    horas: Object.fromEntries(HORAS.map(h => [h, false])),
-  }));
-
-// ─── Shared UI ────────────────────────────────────────────────────────────────
 const iStyle = {
   padding: '9px 12px', border: '1.5px solid #E0E0E0', borderRadius: 6,
-  fontSize: '.88rem', outline: 'none', width: '100%', fontFamily: 'inherit', boxSizing: 'border-box',
+  fontSize: '.88rem', outline: 'none', width: '100%', fontFamily: 'inherit',
+  boxSizing: 'border-box', background: '#fff', color: T.textDark,
 };
-
 const Lbl = ({ text, children }) => (
   <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-    <span style={{ fontSize: '.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: T.secondary }}>{text}</span>
+    <span style={{ fontSize: '.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: T.textMid }}>{text}</span>
     {children}
   </label>
 );
-
 const Card = ({ children, style = {} }) => (
   <div style={{ background: '#fff', border: `1px solid ${T.border}`, borderRadius: 8, boxShadow: '0 1px 3px rgba(0,0,0,.10)', padding: 24, marginBottom: 20, ...style }}>
     {children}
   </div>
 );
-
 const SecTitle = ({ children }) => (
-  <div style={{ fontSize: '.8rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: T.secondary, marginBottom: 16, paddingBottom: 10, borderBottom: `1px solid ${T.border}` }}>
+  <div style={{ fontSize: '.85rem', fontWeight: 700, color: T.textDark, marginBottom: 18, paddingBottom: 10, borderBottom: `1px solid ${T.border}` }}>
     {children}
   </div>
 );
 
-const ResultadoBadge = ({ resultado }) => {
-  const M = {
-    aprobado:         { bg: '#E8F5E9', c: '#2E7D32', l: '✓ Aprobado' },
-    aprobado_con_obs: { bg: '#FFF3E0', c: '#E65100', l: '⚠ Aprobado con obs.' },
-    rechazado:        { bg: '#FFEBEE', c: '#C62828', l: '✗ Rechazado' },
-    cumple:           { bg: '#E8F5E9', c: '#2E7D32', l: '✓ Cumple' },
-    no_cumple:        { bg: '#FFEBEE', c: '#C62828', l: '✗ No cumple' },
-  };
-  const m = M[resultado] || { bg: '#F5F5F5', c: T.textMid, l: resultado || '—' };
-  return <span style={{ padding: '3px 10px', borderRadius: 100, fontSize: '.7rem', fontWeight: 600, background: m.bg, color: m.c }}>{m.l}</span>;
-};
-
-const TD = { padding: '9px 14px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0', whiteSpace: 'nowrap' };
+const initChecks = (empleados) =>
+  empleados.map(e => ({
+    empleadoId: e.id,
+    nombre: e.nombre,
+    area: e.area || e.cargo || '',
+    selected: false,
+    horas: Object.fromEntries(HORAS.map(h => [h, false])),
+  }));
 
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function AL() {
@@ -71,21 +56,21 @@ export default function AL() {
   const { data: registros, loading: histLoading } = useCollection('al', { orderField: 'fecha', orderDir: 'desc', limit: 300 });
   const { add, remove, saving } = useWrite('al');
 
-  const [fecha,        setFecha]        = useState(today());
-  const [hora,         setHora]         = useState(nowHM());
-  const [turno,        setTurno]        = useState('AM');
-  const [responsable,  setResponsable]  = useState('');
-  const [horasOn,      setHorasOn]      = useState(Object.fromEntries(HORAS.map(h => [h, true])));
-  const [checks,       setChecks]       = useState([]);
-  const [obs,          setObs]          = useState('');
-  const [initialized,  setInitialized]  = useState(false);
+  const [fecha,       setFecha]       = useState(today());
+  const [turno,       setTurno]       = useState('AM');
+  const [hi,          setHi]          = useState('07:00');
+  const [hs,          setHs]          = useState('17:00');
+  const [horasOn,     setHorasOn]     = useState(Object.fromEntries(HORAS.map(h => [h, true])));
+  const [checks,      setChecks]      = useState([]);
+  const [obs,         setObs]         = useState('');
+  const [initialized, setInitialized] = useState(false);
+  const [listOpen,    setListOpen]    = useState(true);
 
-  // Nómina state
-  const [nomDesde, setNomDesde] = useState('');
-  const [nomHasta, setNomHasta] = useState('');
-  const [nomResult, setNomResult] = useState(null);
+  // Nómina
+  const [nomDesde,   setNomDesde]   = useState('');
+  const [nomHasta,   setNomHasta]   = useState('');
+  const [nomResult,  setNomResult]  = useState(null);
 
-  // Initialize matrix once empleados load
   useEffect(() => {
     if (!empLoading && empleados.length > 0 && !initialized) {
       setChecks(initChecks(empleados));
@@ -93,28 +78,38 @@ export default function AL() {
     }
   }, [empLoading, empleados, initialized]);
 
-  const toggleCell = (ei, h) =>
-    setChecks(prev => prev.map((row, i) =>
-      i !== ei ? row : { ...row, horas: { ...row.horas, [h]: !row.horas[h] } }
+  // ── Employee selection ────────────────────────────────────────────
+  const toggleSelect = (id) =>
+    setChecks(prev => prev.map(r => r.empleadoId === id ? { ...r, selected: !r.selected } : r));
+
+  const selectAll  = () => setChecks(prev => prev.map(r => ({ ...r, selected: true })));
+  const selectNone = () => setChecks(prev => prev.map(r => ({ ...r, selected: false })));
+
+  // ── Lavado cell toggle (only selected employees) ─────────────────
+  const toggleCell = (id, h) =>
+    setChecks(prev => prev.map(r =>
+      r.empleadoId !== id ? r : { ...r, horas: { ...r.horas, [h]: !r.horas[h] } }
     ));
 
-  const horasVisible = HORAS.filter(h => horasOn[h]);
-  const totalPosible = checks.length * horasVisible.length;
-  const totalOk = checks.reduce((s, row) => s + horasVisible.filter(h => row.horas[h]).length, 0);
-  const pct = totalPosible > 0 ? Math.round(totalOk / totalPosible * 100) : 0;
-  const resultado = pct >= 80 ? 'aprobado' : pct >= 60 ? 'aprobado_con_obs' : 'rechazado';
+  const selectedChecks  = checks.filter(r => r.selected);
+  const numSelected     = selectedChecks.length;
+  const horasVisible    = HORAS.filter(h => horasOn[h]);
+  const totalPosible    = numSelected * horasVisible.length;
+  const totalOk         = selectedChecks.reduce((s, r) => s + horasVisible.filter(h => r.horas[h]).length, 0);
+  const pct             = totalPosible > 0 ? Math.round(totalOk / totalPosible * 100) : 0;
+  const resultado       = pct >= 80 ? 'aprobado' : pct >= 60 ? 'aprobado_con_obs' : 'rechazado';
 
+  // ── Save ─────────────────────────────────────────────────────────
   const handleSave = async () => {
-    if (!fecha)       { toast('Ingresá la fecha', 'error'); return; }
-    if (!responsable) { toast('Seleccioná el responsable', 'error'); return; }
-    if (checks.length === 0) { toast('No hay empleados en la matriz', 'error'); return; }
+    if (!fecha)          { toast('Ingresá la fecha', 'error'); return; }
+    if (numSelected < 1) { toast('Seleccioná al menos un empleado', 'error'); return; }
     try {
       await add({
-        fecha, hora, turno, responsable,
-        checks: checks.map(row => ({
-          empleadoId: row.empleadoId,
-          nombre: row.nombre,
-          horas: Object.fromEntries(HORAS.map(h => [h, row.horas[h]])),
+        fecha, turno, hi, hs, horasOn,
+        checks: selectedChecks.map(r => ({
+          empleadoId: r.empleadoId,
+          nombre: r.nombre,
+          horas: Object.fromEntries(HORAS.map(h => [h, r.horas[h]])),
         })),
         totalOk, totalPosible, pct, resultado, obs,
         creadoEn: new Date().toISOString(),
@@ -122,13 +117,12 @@ export default function AL() {
       toast('✓ Turno AL guardado');
       setChecks(initChecks(empleados));
       setObs('');
-      setHora(nowHM());
     } catch (e) {
-      toast('Error al guardar: ' + e.message, 'error');
+      toast('Error: ' + e.message, 'error');
     }
   };
 
-  // Nómina calculation
+  // ── Nómina ────────────────────────────────────────────────────────
   const calcularNomina = () => {
     if (!nomDesde || !nomHasta) { toast('Ingresá el rango de fechas', 'error'); return; }
     const filtrados = (registros || []).filter(r => r.fecha >= nomDesde && r.fecha <= nomHasta);
@@ -145,12 +139,14 @@ export default function AL() {
     });
     const tabla = Object.values(diasPorEmp).map(entry => {
       const emp = empleados.find(e => e.nombre === entry.nombre);
-      const sd = emp?.salarioDia || (emp?.salario ? emp.salario / 30 : 0);
+      const sd  = emp?.salarioDia || (emp?.salario ? emp.salario / 30 : 0);
       const dias = entry.dias.size;
       return { nombre: entry.nombre, dias, salarioDia: sd, total: dias * sd };
     });
     setNomResult(tabla);
   };
+
+  const TD = { padding: '9px 14px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0', whiteSpace: 'nowrap' };
 
   return (
     <div style={{ color: T.textDark, maxWidth: 1000, margin: '0 auto' }}>
@@ -162,94 +158,152 @@ export default function AL() {
         </p>
       </div>
 
-      {/* ── Form ── */}
+      {/* ── Turno config ── */}
       <Card>
         <SecTitle>Configurar Turno del Día</SecTitle>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 14, marginBottom: 14 }}>
+        {/* Row 1: Fecha / Turno / Hora Ingreso / Hora Salida */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 14, marginBottom: 18 }}>
           <Lbl text="Fecha">
             <input type="date" value={fecha} onChange={e => setFecha(e.target.value)} style={iStyle} />
           </Lbl>
           <Lbl text="Turno">
-            <select value={turno} onChange={e => setTurno(e.target.value)} style={{ ...iStyle, background: '#fff', cursor: 'pointer' }}>
+            <select value={turno} onChange={e => setTurno(e.target.value)} style={{ ...iStyle, cursor: 'pointer' }}>
               <option value="AM">Turno AM</option>
               <option value="PM">Turno PM</option>
               <option value="COMPLETO">Turno Completo</option>
             </select>
           </Lbl>
-          <Lbl text="Responsable">
-            {empLoading ? <Skeleton height={38} /> : (
-              <select value={responsable} onChange={e => setResponsable(e.target.value)} style={{ ...iStyle, background: '#fff', cursor: 'pointer' }}>
-                <option value="">— Seleccionar responsable —</option>
-                {empleados.map(e => <option key={e.id} value={e.nombre}>{e.nombre}{e.cargo ? ' · ' + e.cargo : ''}</option>)}
-              </select>
-            )}
+          <Lbl text="Hora Ingreso (Turno)">
+            <input type="time" value={hi} onChange={e => setHi(e.target.value)} style={iStyle} />
+          </Lbl>
+          <Lbl text="Hora Salida (Turno)">
+            <input type="time" value={hs} onChange={e => setHs(e.target.value)} style={iStyle} />
           </Lbl>
         </div>
 
-        {/* Fixed hours toggles */}
-        <div style={{ background: T.bgLight, border: `1px solid ${T.border}`, borderRadius: 6, padding: 12, marginBottom: 14 }}>
-          <div style={{ fontSize: '.6rem', color: T.textMid, letterSpacing: '.1em', textTransform: 'uppercase', marginBottom: 10 }}>
+        {/* Fixed hours */}
+        <div style={{ background: T.bgLight, border: `1px solid ${T.border}`, borderRadius: 6, padding: '12px 16px', marginBottom: 20 }}>
+          <div style={{ fontSize: '.62rem', color: T.textMid, letterSpacing: '.1em', textTransform: 'uppercase', marginBottom: 10, fontWeight: 700 }}>
             Horarios Fijos de Lavado de Manos
           </div>
-          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
             {HORAS.map(h => (
-              <label key={h} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.75rem', cursor: 'pointer' }}>
-                <input type="checkbox" checked={horasOn[h]} onChange={() => setHorasOn(prev => ({ ...prev, [h]: !prev[h] }))}
-                  style={{ accentColor: T.secondary, width: 14, height: 14 }} />
-                {h}
+              <label key={h} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.8rem', cursor: 'pointer' }}>
+                <input type="checkbox" checked={horasOn[h]}
+                  onChange={() => setHorasOn(prev => ({ ...prev, [h]: !prev[h] }))}
+                  style={{ accentColor: T.secondary, width: 15, height: 15 }} />
+                {HORA_LABELS[h]}
               </label>
             ))}
-            <span style={{ fontSize: '.66rem', color: T.textMid, marginLeft: 8 }}>Desmarca los que no apliquen al turno</span>
+            <span style={{ fontSize: '.7rem', color: T.textMid, marginLeft: 4 }}>Desmarca los que no apliquen al turno</span>
           </div>
         </div>
 
-        {/* Employee matrix */}
-        <div style={{ marginBottom: 14 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
-            <div>
-              <span style={{ fontWeight: 700, fontSize: '.82rem' }}>Empleados del Turno</span>
-              <span style={{ marginLeft: 8, padding: '2px 8px', background: '#E8F5E9', color: T.secondary, borderRadius: 100, fontSize: '.65rem', fontWeight: 700 }}>
-                {checks.length} empleados
-              </span>
-            </div>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <button onClick={() => setChecks(prev => prev.map(row => ({ ...row, horas: Object.fromEntries(HORAS.map(h => [h, horasOn[h]])) })))}
-                style={{ padding: '5px 12px', border: `1.5px solid ${T.border}`, borderRadius: 4, background: '#fff', color: T.textMid, cursor: 'pointer', fontSize: '.75rem', fontFamily: 'inherit' }}>
-                ✓ Todos
-              </button>
-              <button onClick={() => setChecks(prev => prev.map(row => ({ ...row, horas: Object.fromEntries(HORAS.map(h => [h, false])) })))}
-                style={{ padding: '5px 12px', border: `1.5px solid ${T.border}`, borderRadius: 4, background: '#fff', color: T.textMid, cursor: 'pointer', fontSize: '.75rem', fontFamily: 'inherit' }}>
-                ✗ Ninguno
-              </button>
-            </div>
+        {/* Employee selection header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontWeight: 700, fontSize: '.88rem', color: T.textDark }}>Empleados del Turno</span>
+            <span style={{ padding: '2px 10px', background: numSelected > 0 ? '#E8F5E9' : T.bgLight, color: numSelected > 0 ? T.secondary : T.textMid, borderRadius: 100, fontSize: '.7rem', fontWeight: 700, border: `1px solid ${numSelected > 0 ? '#A5D6A7' : T.border}` }}>
+              {numSelected} seleccionados
+            </span>
           </div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button onClick={selectAll}
+              style={{ padding: '5px 14px', border: `1.5px solid ${T.border}`, borderRadius: 4, background: '#fff', color: T.textMid, cursor: 'pointer', fontSize: '.78rem', fontFamily: 'inherit', fontWeight: 600 }}>
+              ✓ Todos
+            </button>
+            <button onClick={selectNone}
+              style={{ padding: '5px 14px', border: `1.5px solid ${T.border}`, borderRadius: 4, background: '#fff', color: T.textMid, cursor: 'pointer', fontSize: '.78rem', fontFamily: 'inherit', fontWeight: 600 }}>
+              ✗ Ninguno
+            </button>
+          </div>
+        </div>
 
-          {empLoading ? <Skeleton height={120} /> : checks.length === 0 ? (
-            <p style={{ fontSize: '.83rem', color: T.textMid, padding: 20, textAlign: 'center' }}>Sin empleados activos.</p>
-          ) : (
+        {/* Lista de Personal collapsible */}
+        <div style={{ border: `1px solid ${T.border}`, borderRadius: 6, overflow: 'hidden', marginBottom: 18 }}>
+          <button onClick={() => setListOpen(o => !o)} style={{
+            width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '10px 14px', background: T.bgLight, border: 'none', cursor: 'pointer',
+            fontFamily: 'inherit', fontWeight: 700, fontSize: '.8rem', color: T.textDark,
+          }}>
+            <span>👥 Lista de Personal</span>
+            <span style={{ fontSize: '.75rem' }}>{listOpen ? '▲' : '▼'}</span>
+          </button>
+
+          {listOpen && (
+            empLoading ? <div style={{ padding: 20 }}><Skeleton rows={5} /></div> : (
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ background: '#F0F4F0' }}>
+                    <th style={{ width: 44, padding: '8px 14px', textAlign: 'center', borderBottom: `1px solid ${T.border}` }}>
+                      <input type="checkbox"
+                        checked={checks.length > 0 && checks.every(r => r.selected)}
+                        onChange={e => e.target.checked ? selectAll() : selectNone()}
+                        style={{ accentColor: T.secondary, width: 14, height: 14 }} />
+                    </th>
+                    <th style={{ padding: '8px 14px', textAlign: 'left', fontSize: '.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: T.textMid, borderBottom: `1px solid ${T.border}` }}>Empleado</th>
+                    <th style={{ padding: '8px 14px', textAlign: 'left', fontSize: '.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: T.textMid, borderBottom: `1px solid ${T.border}`, width: 160 }}>Área</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {checks.map((row, i) => (
+                    <tr key={row.empleadoId} style={{ background: row.selected ? '#F1F8E9' : (i % 2 === 0 ? '#fff' : '#FAFAFA') }}>
+                      <td style={{ padding: '9px 14px', textAlign: 'center', borderBottom: '1px solid #F0F0F0' }}>
+                        <input type="checkbox" checked={row.selected}
+                          onChange={() => toggleSelect(row.empleadoId)}
+                          style={{ accentColor: T.secondary, width: 15, height: 15, cursor: 'pointer' }} />
+                      </td>
+                      <td style={{ padding: '9px 14px', fontSize: '.85rem', fontWeight: 600, color: T.textDark, borderBottom: '1px solid #F0F0F0', textTransform: 'uppercase', letterSpacing: '.02em' }}>
+                        {row.nombre}
+                      </td>
+                      <td style={{ padding: '9px 14px', borderBottom: '1px solid #F0F0F0' }}>
+                        {row.area ? (
+                          <span style={{ padding: '3px 10px', background: '#E8F5E9', color: T.secondary, borderRadius: 100, fontSize: '.7rem', fontWeight: 600 }}>
+                            {row.area}
+                          </span>
+                        ) : (
+                          <span style={{ padding: '3px 10px', background: '#EEEEEE', color: T.textMid, borderRadius: 100, fontSize: '.7rem' }}>
+                            —
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )
+          )}
+        </div>
+
+        {/* Lavado matrix — only selected employees */}
+        {numSelected > 0 && (
+          <div style={{ marginBottom: 18 }}>
+            <div style={{ fontSize: '.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: T.secondary, marginBottom: 10 }}>
+              Registro de Lavado de Manos — {numSelected} empleado{numSelected !== 1 ? 's' : ''} seleccionado{numSelected !== 1 ? 's' : ''}
+            </div>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ background: T.primary }}>
-                    <th style={{ padding: '10px 14px', textAlign: 'left', color: '#fff', fontSize: '.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', minWidth: 160 }}>Empleado</th>
+                    <th style={{ padding: '9px 14px', textAlign: 'left', color: '#fff', fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', minWidth: 170 }}>Empleado</th>
                     {HORAS.map(h => (
-                      <th key={h} style={{ padding: '10px 14px', textAlign: 'center', color: horasOn[h] ? '#fff' : 'rgba(255,255,255,.4)', fontSize: '.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em' }}>
-                        {h}
+                      <th key={h} style={{ padding: '9px 14px', textAlign: 'center', color: horasOn[h] ? '#fff' : 'rgba(255,255,255,.35)', fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em' }}>
+                        {HORA_LABELS[h]}
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {checks.map((row, ei) => (
+                  {selectedChecks.map((row, ei) => (
                     <tr key={row.empleadoId} style={{ background: ei % 2 === 0 ? '#fff' : '#F9FBF9' }}>
-                      <td style={{ padding: '9px 14px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0', fontWeight: 500 }}>{row.nombre}</td>
+                      <td style={{ padding: '9px 14px', fontSize: '.85rem', borderBottom: '1px solid #F0F0F0', fontWeight: 600, textTransform: 'uppercase' }}>{row.nombre}</td>
                       {HORAS.map(h => {
                         const checked  = row.horas[h];
                         const disabled = !horasOn[h];
                         return (
-                          <td key={h} style={{ padding: '9px 14px', textAlign: 'center', borderBottom: '1px solid #F0F0F0', opacity: disabled ? 0.35 : 1 }}>
-                            <button onClick={() => !disabled && toggleCell(ei, h)} disabled={disabled}
+                          <td key={h} style={{ padding: '9px 14px', textAlign: 'center', borderBottom: '1px solid #F0F0F0', opacity: disabled ? 0.3 : 1 }}>
+                            <button onClick={() => !disabled && toggleCell(row.empleadoId, h)} disabled={disabled}
                               style={{ width: 34, height: 34, borderRadius: 6, border: 'none', cursor: disabled ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '.85rem', background: checked ? T.accent : '#E0E0E0', color: checked ? '#fff' : T.textMid, transition: 'all .15s' }}>
                               {checked ? '✓' : '·'}
                             </button>
@@ -261,17 +315,15 @@ export default function AL() {
                 </tbody>
               </table>
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Score */}
         {totalPosible > 0 && (
-          <div style={{ padding: '10px 16px', borderRadius: 8, marginBottom: 14, border: `2px solid ${resultado === 'aprobado' ? T.accent : resultado === 'aprobado_con_obs' ? T.warn : T.danger}`, background: resultado === 'aprobado' ? '#E8F5E9' : resultado === 'aprobado_con_obs' ? '#FFF3E0' : '#FFEBEE', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '1.6rem', fontWeight: 700, color: resultado === 'aprobado' ? T.accent : resultado === 'aprobado_con_obs' ? T.warn : T.danger }}>{pct}%</div>
-            </div>
+          <div style={{ padding: '10px 16px', borderRadius: 8, marginBottom: 16, border: `2px solid ${resultado === 'aprobado' ? T.accent : resultado === 'aprobado_con_obs' ? T.warn : T.danger}`, background: resultado === 'aprobado' ? '#E8F5E9' : resultado === 'aprobado_con_obs' ? '#FFF3E0' : '#FFEBEE', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: '1.6rem', fontWeight: 700, color: resultado === 'aprobado' ? T.accent : resultado === 'aprobado_con_obs' ? T.warn : T.danger }}>{pct}%</div>
             <div>
-              <div style={{ fontSize: '.82rem', fontWeight: 600, color: resultado === 'aprobado' ? T.secondary : resultado === 'aprobado_con_obs' ? T.warn : T.danger }}>
+              <div style={{ fontSize: '.82rem', fontWeight: 700, color: resultado === 'aprobado' ? T.secondary : resultado === 'aprobado_con_obs' ? T.warn : T.danger }}>
                 {resultado === 'aprobado' ? '✓ APROBADO' : resultado === 'aprobado_con_obs' ? '⚠ APROBADO CON OBSERVACIONES' : '✗ RECHAZADO'}
               </div>
               <div style={{ fontSize: '.75rem', color: T.textMid, marginTop: 2 }}>{totalOk} / {totalPosible} lavados registrados</div>
@@ -290,32 +342,27 @@ export default function AL() {
         </button>
       </Card>
 
-      {/* ── Nómina desde asistencia ── */}
-      <Card style={{ background: 'rgba(0,168,107,.04)', border: '1.5px solid rgba(0,168,107,.2)' }}>
+      {/* ── Nómina ── */}
+      <Card style={{ background: 'rgba(27,94,32,.03)', border: '1.5px solid rgba(27,94,32,.15)' }}>
         <SecTitle>Calcular Nómina desde Asistencia</SecTitle>
         <p style={{ fontSize: '.78rem', color: T.textMid, marginBottom: 14, lineHeight: 1.6 }}>
           Cuenta automáticamente los días que cada empleado apareció en el registro de acceso y calcula el pago total del período.
         </p>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
-          <Lbl text="Desde">
-            <input type="date" value={nomDesde} onChange={e => setNomDesde(e.target.value)} style={iStyle} />
-          </Lbl>
-          <Lbl text="Hasta">
-            <input type="date" value={nomHasta} onChange={e => setNomHasta(e.target.value)} style={iStyle} />
-          </Lbl>
+          <Lbl text="Desde"><input type="date" value={nomDesde} onChange={e => setNomDesde(e.target.value)} style={iStyle} /></Lbl>
+          <Lbl text="Hasta"><input type="date" value={nomHasta} onChange={e => setNomHasta(e.target.value)} style={iStyle} /></Lbl>
         </div>
         <button onClick={calcularNomina}
           style={{ padding: '10px 22px', background: T.primary, color: '#fff', border: 'none', borderRadius: 6, fontWeight: 700, fontSize: '.88rem', cursor: 'pointer', fontFamily: 'inherit' }}>
           👷 Ver Nómina del Período
         </button>
-
         {nomResult && (
           <div style={{ marginTop: 16, overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: T.primary }}>
                   {['Empleado', 'Días', 'Salario/Día', 'Total'].map(h => (
-                    <th key={h} style={{ padding: '10px 14px', textAlign: 'left', color: '#fff', fontSize: '.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em' }}>{h}</th>
+                    <th key={h} style={{ padding: '10px 14px', textAlign: 'left', color: '#fff', fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -340,58 +387,53 @@ export default function AL() {
         )}
       </Card>
 
-      {/* ── History ── */}
+      {/* ── Historial ── */}
       <Card>
         <SecTitle>Historial de Turnos ({histLoading ? '…' : (registros || []).length} registros)</SecTitle>
-        {histLoading ? <Skeleton height={160} /> : (registros || []).length === 0 ? (
+        {histLoading ? <Skeleton rows={6} /> : (registros || []).length === 0 ? (
           <p style={{ textAlign: 'center', padding: 32, color: T.textMid, fontSize: '.85rem' }}>Sin registros aún.</p>
         ) : (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: T.primary }}>
-                  {['Fecha', 'Turno', 'H. Ingreso', 'H. Salida', 'Empleados', 'Lavados completos', ''].map(h => (
-                    <th key={h} style={{ padding: '10px 14px', textAlign: 'left', color: '#fff', fontSize: '.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', whiteSpace: 'nowrap' }}>{h}</th>
+                  {['Fecha', 'Turno', 'H. Ingreso', 'H. Salida', 'Empleados', 'Lavados', ''].map(h => (
+                    <th key={h} style={{ padding: '9px 14px', textAlign: 'left', color: '#fff', fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {(registros || []).slice(0, 100).map((r, i) => {
-                  const totalEmp = (r.checks || []).length;
-                  // Count employees who completed ALL active horas (those with at least one true)
-                  const totalCompletos = (r.checks || []).filter(row =>
-                    row.horas && Object.values(row.horas).some(v => v) &&
-                    Object.values(row.horas).every(v => v)
-                  ).length;
-                  const pctComp = totalEmp > 0 ? Math.round(totalCompletos / totalEmp * 100) : 0;
-                  const compColor = pctComp >= 100 ? T.accent : pctComp >= 75 ? T.warn : T.danger;
-                  const compBg    = pctComp >= 100 ? '#E8F5E9' : pctComp >= 75 ? '#FFF3E0' : '#FFEBEE';
+                  const totalEmp      = (r.checks || []).length;
+                  const totalCompl    = (r.checks || []).filter(row => row.horas && Object.values(row.horas).every(v => v)).length;
+                  const pctComp       = totalEmp > 0 ? Math.round(totalCompl / totalEmp * 100) : 0;
+                  const compColor     = pctComp >= 100 ? T.accent : pctComp >= 75 ? T.warn : T.danger;
+                  const compBg        = pctComp >= 100 ? '#E8F5E9' : pctComp >= 75 ? '#FFF3E0' : '#FFEBEE';
                   return (
                     <tr key={r.id} style={{ background: i % 2 === 0 ? '#fff' : '#F9FBF9' }}>
                       <td style={{ ...TD, fontWeight: 600 }}>{r.fecha || '—'}</td>
                       <td style={TD}>
-                        <span style={{ padding: '3px 10px', borderRadius: 100, fontSize: '.7rem', fontWeight: 700, background: r.turno === 'AM' ? '#E3F2FD' : r.turno === 'PM' ? '#EDE7F6' : '#E8F5E9', color: r.turno === 'AM' ? '#1565C0' : r.turno === 'PM' ? '#4527A0' : T.secondary }}>
+                        <span style={{ padding: '2px 9px', borderRadius: 100, fontSize: '.7rem', fontWeight: 700, background: r.turno === 'AM' ? '#E3F2FD' : r.turno === 'PM' ? '#EDE7F6' : '#E8F5E9', color: r.turno === 'AM' ? '#1565C0' : r.turno === 'PM' ? '#4527A0' : T.secondary }}>
                           {r.turno || '—'}
                         </span>
                       </td>
-                      <td style={TD}>{r.hi || '—'}</td>
+                      <td style={TD}>{r.hi || r.hora || '—'}</td>
                       <td style={TD}>{r.hs || '—'}</td>
                       <td style={TD}>
-                        <span style={{ padding: '3px 10px', borderRadius: 100, fontSize: '.7rem', fontWeight: 700, background: '#E8F5E9', color: T.secondary }}>
+                        <span style={{ padding: '2px 9px', borderRadius: 100, fontSize: '.7rem', fontWeight: 700, background: '#E8F5E9', color: T.secondary }}>
                           {totalEmp} personas
                         </span>
                       </td>
                       <td style={TD}>
-                        <span style={{ padding: '3px 10px', borderRadius: 100, fontSize: '.7rem', fontWeight: 700, background: compBg, color: compColor }}>
-                          {totalCompletos}/{totalEmp} · {pctComp}%
+                        <span style={{ padding: '2px 9px', borderRadius: 100, fontSize: '.7rem', fontWeight: 700, background: compBg, color: compColor }}>
+                          {totalCompl}/{totalEmp} · {pctComp}%
                         </span>
                       </td>
                       <td style={TD}>
-                        <button
-                          onClick={() => { if (window.confirm('¿Eliminar este registro?')) remove(r.id); }}
-                          title="Eliminar"
-                          style={{ padding: '4px 10px', borderRadius: 5, border: `1.5px solid ${T.danger}`, background: '#fff', color: T.danger, cursor: 'pointer', fontSize: '.75rem', fontWeight: 700, fontFamily: 'inherit' }}
-                        >✕</button>
+                        <button onClick={() => { if (window.confirm('¿Eliminar este registro?')) remove(r.id); }}
+                          style={{ padding: '3px 10px', borderRadius: 5, border: `1.5px solid ${T.danger}`, background: '#fff', color: T.danger, cursor: 'pointer', fontSize: '.75rem', fontWeight: 700, fontFamily: 'inherit' }}>
+                          ✕
+                        </button>
                       </td>
                     </tr>
                   );
