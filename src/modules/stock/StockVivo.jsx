@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useCollection } from '../../hooks/useFirestore';
 import { useProductosCatalogo } from '../../hooks/useMainData';
 import Skeleton from '../../components/Skeleton';
@@ -32,9 +32,9 @@ const fmtDate  = d => {
 };
 
 function stockColor(n) {
-  if (n > 10) return T.secondary;
-  if (n > 0)  return T.warn;
-  return T.danger;
+  if (n > 10) return T.secondary;   // green
+  if (n > 0)  return T.warn;        // orange
+  return T.danger;                  // red
 }
 
 // ── Summary card ─────────────────────────────────────────────────
@@ -58,25 +58,49 @@ export default function StockVivo() {
   const { data: salidas,  loading: loadS } = useCollection('isalidas',  { orderField: 'fecha', orderDir: 'desc', limit: 2000 });
   const { productos, loading: loadP } = useProductosCatalogo();
 
+  const [filtro, setFiltro] = useState('all'); // 'all' | 'disp' | 'crit' | 'ago'
+
   const loading = loadE || loadS || loadP;
   const today   = todayStr();
 
+  // Build stock map with correct quantity logic per data structure
   const stockMap = useMemo(() => {
     const map = {};
+
+    // entradas: {producto, unidad, bultos, unidades, fecha, ...}
+    // If record has `unidades` field (Repollo-style), use that; otherwise use `bultos`
     for (const e of entradas) {
       const k = e.producto; if (!k) continue;
-      if (!map[k]) map[k] = { entradas: 0, salidas: 0, lastDate: null, unidad: e.unidad || '' };
-      map[k].entradas += Number(e.cantidad) || 0;
+      if (!map[k]) map[k] = { entradas: 0, salidas: 0, lastDate: null, unidad: '', lastEntradaDate: null };
+
+      const qty = e.unidades ? (Number(e.unidades) || 0) : (Number(e.bultos) || Number(e.cantidad) || 0);
+      map[k].entradas += qty;
+
       const d = fmtDate(e.fecha);
       if (d && (!map[k].lastDate || d > map[k].lastDate)) map[k].lastDate = d;
+
+      // Track most-recent entrada for unit label
+      if (d && (!map[k].lastEntradaDate || d > map[k].lastEntradaDate)) {
+        map[k].lastEntradaDate = d;
+        map[k].unidad = e.unidad || '';
+      }
     }
+
+    // salidas: {producto, cantidad, cajasEnviadas, unidad, fecha, ...}
     for (const s of salidas) {
       const k = s.producto; if (!k) continue;
-      if (!map[k]) map[k] = { entradas: 0, salidas: 0, lastDate: null, unidad: s.unidad || '' };
-      map[k].salidas += Number(s.cantidad) || 0;
+      if (!map[k]) map[k] = { entradas: 0, salidas: 0, lastDate: null, unidad: '', lastEntradaDate: null };
+
+      const qty = Number(s.cantidad) || Number(s.cajasEnviadas) || 0;
+      map[k].salidas += qty;
+
       const d = fmtDate(s.fecha);
       if (d && (!map[k].lastDate || d > map[k].lastDate)) map[k].lastDate = d;
+
+      // Only set unit from salidas if we don't have one from entradas
+      if (!map[k].unidad && s.unidad) map[k].unidad = s.unidad;
     }
+
     return map;
   }, [entradas, salidas]);
 
@@ -89,10 +113,12 @@ export default function StockVivo() {
       .map(k => {
         const prod = productos.find(p => (p.id || p.nombre) === k);
         const info = stockMap[k] || { entradas: 0, salidas: 0, lastDate: null, unidad: '' };
+        // Prefer catalog unit, then unit from last entrada, then '—'
+        const unidad = prod?.unidad || info.unidad || '—';
         return {
-          key: k,
+          key:      k,
           nombre:   prod?.nombre || k,
-          unidad:   prod?.unidad || info.unidad || '—',
+          unidad,
           stock:    info.entradas - info.salidas,
           entradas: info.entradas,
           salidas:  info.salidas,
@@ -103,8 +129,26 @@ export default function StockVivo() {
       .sort((a, b) => a.nombre.localeCompare(b.nombre));
   }, [stockMap, productos]);
 
-  const totalBodega    = rows.reduce((s, r) => s + r.stock, 0);
-  const movsHoy        = [...entradas, ...salidas].filter(m => fmtDate(m.fecha) === today).length;
+  // Apply filter
+  const filteredRows = useMemo(() => {
+    if (filtro === 'disp') return rows.filter(r => r.stock > 10);
+    if (filtro === 'crit') return rows.filter(r => r.stock >= 1 && r.stock <= 10);
+    if (filtro === 'ago')  return rows.filter(r => r.stock <= 0);
+    return rows;
+  }, [rows, filtro]);
+
+  const totalBodega = rows.reduce((s, r) => s + r.stock, 0);
+  const movsHoy     = [...entradas, ...salidas].filter(m => fmtDate(m.fecha) === today).length;
+  const cntDisp     = rows.filter(r => r.stock > 10).length;
+  const cntCrit     = rows.filter(r => r.stock >= 1 && r.stock <= 10).length;
+  const cntAgo      = rows.filter(r => r.stock <= 0).length;
+
+  const FILTERS = [
+    { key: 'all',  label: `Todos (${rows.length})`,         color: T.primary },
+    { key: 'disp', label: `Disponible (${cntDisp})`,        color: T.secondary },
+    { key: 'crit', label: `Crítico (${cntCrit})`,           color: T.warn },
+    { key: 'ago',  label: `Agotado (${cntAgo})`,            color: T.danger },
+  ];
 
   return (
     <div style={{ padding: '24px 28px', fontFamily: 'inherit', maxWidth: 1100 }}>
@@ -120,43 +164,69 @@ export default function StockVivo() {
 
       {/* Metric cards */}
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 24 }}>
-        <MetricCard label="Total productos" value={loading ? '…' : rows.length} accent={T.primary} />
-        <MetricCard label="Total en bodega" value={loading ? '…' : totalBodega.toLocaleString()} sub="unidades netas" accent={T.secondary} />
-        <MetricCard label="Movimientos hoy" value={loading ? '…' : movsHoy} accent={movsHoy > 0 ? T.warn : T.textMid} />
+        <MetricCard label="Total productos"   value={loading ? '…' : rows.length}                   accent={T.primary} />
+        <MetricCard label="Total en bodega"   value={loading ? '…' : totalBodega.toLocaleString()}  sub="unidades netas" accent={T.secondary} />
+        <MetricCard label="Movimientos hoy"   value={loading ? '…' : movsHoy}                        accent={movsHoy > 0 ? T.warn : T.textMid} />
       </div>
 
       {/* Table */}
       <div style={card}>
-        <div style={{ fontWeight: 600, fontSize: '.9rem', color: T.textDark, marginBottom: 16 }}>
-          Existencias por producto
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
+          <div style={{ fontWeight: 600, fontSize: '.9rem', color: T.textDark }}>
+            Existencias por producto
+          </div>
+          {/* Filter buttons */}
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {FILTERS.map(f => (
+              <button
+                key={f.key}
+                onClick={() => setFiltro(f.key)}
+                style={{
+                  padding: '5px 12px', border: `1.5px solid ${f.color}`, borderRadius: 20,
+                  fontSize: '.72rem', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+                  background: filtro === f.key ? f.color : 'transparent',
+                  color: filtro === f.key ? '#fff' : f.color,
+                  transition: 'all .15s',
+                }}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
         </div>
+
         {loading ? (
           <Skeleton rows={8} />
-        ) : rows.length === 0 ? (
+        ) : filteredRows.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '56px 24px', color: T.textMid, fontSize: '.88rem' }}>
             <div style={{ fontSize: '2.4rem', marginBottom: 12, opacity: .3 }}>📦</div>
-            Sin movimientos registrados. Registre ingresos y salidas para ver el stock.
+            {rows.length === 0
+              ? 'Sin movimientos registrados. Registre ingresos y salidas para ver el stock.'
+              : 'Sin productos en esta categoría.'}
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: T.primary }}>
-                  {['Producto', 'Stock actual', 'Unidad', 'Entradas', 'Salidas', 'Último mov.'].map(h => (
+                  {['Producto', 'Unidad', 'Stock actual', 'Entradas', 'Salidas', 'Último mov.'].map(h => (
                     <th key={h} style={thSt}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r, i) => (
+                {filteredRows.map((r, i) => (
                   <tr key={r.key} style={{ background: i % 2 === 1 ? '#F9FBF9' : '#fff' }}>
                     <td style={{ ...tdSt, fontWeight: 600 }}>{r.nombre}</td>
+                    <td style={{ ...tdSt, color: T.textMid }}>{r.unidad}</td>
                     <td style={tdSt}>
                       <span style={{ fontWeight: 700, fontSize: '.9rem', color: stockColor(r.stock) }}>
                         {r.stock.toLocaleString()}
                       </span>
+                      {r.unidad && r.unidad !== '—' && (
+                        <span style={{ fontSize: '.72rem', color: T.textMid, marginLeft: 4 }}>{r.unidad}</span>
+                      )}
                     </td>
-                    <td style={{ ...tdSt, color: T.textMid }}>{r.unidad}</td>
                     <td style={tdSt}>{r.entradas.toLocaleString()}</td>
                     <td style={tdSt}>{r.salidas.toLocaleString()}</td>
                     <td style={{ ...tdSt, color: T.textMid }}>{r.lastDate || '—'}</td>

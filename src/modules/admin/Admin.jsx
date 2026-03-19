@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useCollection, useWrite } from '../../hooks/useFirestore';
 import { useAuth } from '../../hooks/useAuth';
-import { db, doc, getDoc, setDoc } from '../../firebase';
+import { db, doc, getDoc, setDoc, collection, addDoc } from '../../firebase';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import { useToast } from '../../components/Toast';
 
@@ -73,6 +73,73 @@ export default function Admin() {
   const [loadingU,  setLoadingU ] = useState(false);
   const [formU,     setFormU    ] = useState({ nombre:'', usuario:'', pass:'', rol:'operario' });
   const [savingU,   setSavingU  ] = useState(false);
+
+  // ── Migración ──
+  const [migStatus,  setMigStatus ] = useState({});
+  const [migRunning, setMigRunning] = useState(false);
+
+  const MIGRATE_COLLECTIONS = [
+    { mainKey: 'tl',              col: 'tl' },
+    { mainKey: 'dt',              col: 'dt' },
+    { mainKey: 'al',              col: 'al' },
+    { mainKey: 'bas',             col: 'bas' },
+    { mainKey: 'rod',             col: 'rod' },
+    { mainKey: 'fum',             col: 'fum' },
+    { mainKey: 'limp',            col: 'limp' },
+    { mainKey: 'vyp',             col: 'vyp' },
+    { mainKey: 'gastosDiarios',   col: 'gastosDiarios' },
+    { mainKey: 'pedidosWalmart',  col: 'pedidosWalmart' },
+    { mainKey: 'vgtVentas',       col: 'vgtVentas' },
+    { mainKey: 'vintVentas',      col: 'vintVentas' },
+    { mainKey: 'gcConcursos',     col: 'gcConcursos' },
+    { mainKey: 'gcDescubiertos',  col: 'gcDescubiertos' },
+    { mainKey: 'iAnticipo',       col: 'iAnticipo' },
+    { mainKey: 'ientradas',       col: 'ientradas' },
+    { mainKey: 'isalidas',        col: 'isalidas' },
+    { mainKey: 'cotizadorRapido', col: 'cotizadorRapido' },
+  ];
+
+  const runMigration = async () => {
+    if (!window.confirm('¿Migrar datos de ajua_bpm/main a colecciones individuales? Esto agrega registros históricos sin borrar datos existentes.')) return;
+    setMigRunning(true);
+    setMigStatus({});
+
+    try {
+      const snap = await getDoc(doc(db, 'ajua_bpm', 'main'));
+      if (!snap.exists()) {
+        alert('No se encontró ajua_bpm/main');
+        setMigRunning(false);
+        return;
+      }
+      const mainData = snap.data();
+
+      for (const { mainKey, col } of MIGRATE_COLLECTIONS) {
+        const arr = mainData[mainKey];
+        if (!Array.isArray(arr) || arr.length === 0) {
+          setMigStatus(prev => ({ ...prev, [col]: { done: 0, total: 0, skip: true } }));
+          continue;
+        }
+
+        setMigStatus(prev => ({ ...prev, [col]: { done: 0, total: arr.length } }));
+
+        let done = 0;
+        for (const item of arr) {
+          try {
+            if (!item || typeof item !== 'object') continue;
+            await addDoc(collection(db, col), { ...item, _migratedFrom: 'main', _ts: new Date().toISOString() });
+            done++;
+            setMigStatus(prev => ({ ...prev, [col]: { done, total: arr.length } }));
+          } catch (e) {
+            // skip individual errors, continue
+          }
+        }
+        setMigStatus(prev => ({ ...prev, [col]: { done, total: arr.length, complete: true } }));
+      }
+    } catch (e) {
+      alert('Error: ' + e.message);
+    }
+    setMigRunning(false);
+  };
 
   const cargarUsuarios = async () => {
     setLoadingU(true);
@@ -203,6 +270,39 @@ export default function Admin() {
           </div>
         </div>
       )}
+
+      {/* ── Migración ── */}
+      <div style={{background:'#fff',borderRadius:8,boxShadow:'0 1px 3px rgba(0,0,0,.10)',padding:20,marginTop:20}}>
+        <div style={{fontSize:'1rem',fontWeight:700,color:'#1B5E20',marginBottom:8}}>🔄 Migración de Datos desde bpm.html</div>
+        <p style={{fontSize:'.83rem',color:'#6B6B60',marginBottom:14,lineHeight:1.5}}>
+          Copia los registros históricos de <code>ajua_bpm/main</code> a las colecciones individuales de Firestore.
+          No borra datos existentes. Se puede ejecutar varias veces (crea duplicados si ya migró).
+        </p>
+        <button
+          onClick={runMigration}
+          disabled={migRunning}
+          style={{padding:'10px 24px',background:migRunning?'#BDBDBD':'#1B5E20',color:'#fff',border:'none',borderRadius:6,fontWeight:700,fontSize:'.88rem',cursor:migRunning?'not-allowed':'pointer',fontFamily:'inherit'}}
+        >
+          {migRunning ? '⏳ Migrando...' : '🚀 Iniciar Migración'}
+        </button>
+
+        {Object.keys(migStatus).length > 0 && (
+          <div style={{marginTop:16,display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))',gap:8}}>
+            {MIGRATE_COLLECTIONS.map(({col}) => {
+              const s = migStatus[col];
+              if (!s) return null;
+              return (
+                <div key={col} style={{padding:'8px 12px',borderRadius:6,background:s.complete?'#E8F5E9':s.skip?'#F5F5F5':'#FFF3E0',border:`1px solid ${s.complete?'#2E7D32':s.skip?'#E0E0E0':'#FFB74D'}`}}>
+                  <div style={{fontSize:'.75rem',fontWeight:700,color:'#1A1A18'}}>{col}</div>
+                  <div style={{fontSize:'.7rem',color:'#6B6B60'}}>
+                    {s.skip ? '— vacío' : s.complete ? `✓ ${s.done}/${s.total}` : `⏳ ${s.done}/${s.total}`}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       {tab==='usuarios'&&(
         <div>
