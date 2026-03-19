@@ -1,0 +1,32 @@
+name: Deploy AJÚA BPM React
+
+on:
+  push:
+    branches:
+      - master
+      - staging
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Deploy to Netlify (staging)
+        if: github.ref == 'refs/heads/staging'
+        run: npx netlify-cli deploy --dir=dist --alias=staging --site=${{ secrets.NETLIFY_SITE_ID_REACT }} --auth=${{ secrets.NETLIFY_AUTH_TOKEN }}
+
+      - name: Deploy to Netlify (production)
+        if: github.ref == 'refs/heads/master'
+        run: npx netlify-cli deploy --dir=dist --prod --site=${{ secrets.NETLIFY_SITE_ID_REACT }} --auth=${{ secrets.NETLIFY_AUTH_TOKEN }}
