@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useCollection, useWrite } from '../../hooks/useFirestore';
 import { useEmpleados, useConductores } from '../../hooks/useMainData';
 import { useToast } from '../../components/Toast';
 import Skeleton from '../../components/Skeleton';
+import { db, collection, getDocs } from '../../firebase';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const T = {
@@ -110,6 +111,16 @@ export default function TL() {
   const { conductores, loading: condLoading } = useConductores();
   const { data, loading } = useCollection('tl', { orderField: 'fecha', orderDir: 'desc', limit: 50 });
   const { add, saving } = useWrite('tl');
+
+  // ─── DEBUG temporal ───────────────────────────────────────────────────────
+  useEffect(() => {
+    getDocs(collection(db, 'tl'))
+      .then(snap => {
+        console.log('[DEBUG TL] docs en colección:', snap.size);
+        snap.forEach(d => console.log('[DEBUG TL]', d.id, d.data()));
+      })
+      .catch(e => console.error('[DEBUG TL] error:', e));
+  }, []);
 
   const [fecha,       setFecha]       = useState(today());
   const [hora,        setHora]        = useState(nowHM());
