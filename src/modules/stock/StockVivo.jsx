@@ -1,207 +1,172 @@
-import { useState } from 'react';
-import { useCollection, useWrite } from '../../hooks/useFirestore';
-import LoadingSpinner from '../../components/LoadingSpinner';
-import { useToast } from '../../components/Toast';
+import { useMemo } from 'react';
+import { useCollection } from '../../hooks/useFirestore';
+import { useProductosCatalogo } from '../../hooks/useMainData';
+import Skeleton from '../../components/Skeleton';
 
-const C = { green:'#1A3D28', acc:'#4A9E6A', sand:'#E8DCC8', danger:'#c0392b', bg:'#F9F6EF', warn:'#e67e22' };
-const today = () => new Date().toISOString().slice(0,10);
+// ── Design tokens ────────────────────────────────────────────────
+const T = {
+  primary: '#1B5E20', secondary: '#2E7D32', white: '#FFFFFF',
+  bgLight: '#F5F5F5', border: '#E0E0E0', textDark: '#212121',
+  textMid: '#616161', danger: '#C62828', warn: '#E65100',
+};
+const shadow = '0 1px 3px rgba(0,0,0,.10), 0 1px 2px rgba(0,0,0,.06)';
+const card = { background: '#fff', borderRadius: 8, boxShadow: shadow, padding: 20, marginBottom: 20 };
 
-const UNIDADES = ['lb','kg','caja','bandeja','unidad','saco','barril'];
-const MOVS = ['entrada','salida','ajuste','merma'];
-const MOV_COLOR = { entrada:C.acc, salida:C.warn, ajuste:'#2980b9', merma:C.danger };
+const thSt = {
+  color: T.white, padding: '10px 14px', fontSize: '.75rem',
+  fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em',
+  textAlign: 'left', whiteSpace: 'nowrap',
+};
+const tdSt = {
+  padding: '9px 14px', fontSize: '.83rem',
+  borderBottom: '1px solid #F0F0F0', color: T.textDark,
+};
 
-export default function StockVivo() {
-  const toast = useToast();
+// ── Helpers ──────────────────────────────────────────────────────
+const todayStr = () => new Date().toISOString().slice(0, 10);
+const fmtDate  = d => {
+  if (!d) return null;
+  if (typeof d === 'string') return d.slice(0, 10);
+  if (d?.toDate) return d.toDate().toISOString().slice(0, 10);
+  return null;
+};
 
-  const { data: productos, loading: lp } = useCollection('iProductos', { orderField:'nombre', orderDir:'asc', limit:200 });
-  const { data: movimientos, loading: lm } = useCollection('stockMovs', { orderField:'fecha', orderDir:'desc', limit:300 });
-  const { add: addProd, saving: savProd } = useWrite('iProductos');
-  const { add: addMov,  saving: savMov  } = useWrite('stockMovs');
+function stockColor(n) {
+  if (n > 10) return T.secondary;
+  if (n > 0)  return T.warn;
+  return T.danger;
+}
 
-  const [tab, setTab] = useState('stock');
-  const [formProd, setFormProd] = useState({ nombre:'', unidad:'lb', stockMin:'' });
-  const [formMov, setFormMov]   = useState({ fecha:today(), productoId:'', tipo:'entrada', cantidad:'', obs:'' });
-  const [buscar, setBuscar] = useState('');
-
-  // Calcular stock actual por producto
-  const stockActual = {};
-  for(const m of movimientos) {
-    if(!m.productoId) continue;
-    const qty = Number(m.cantidad)||0;
-    if(!stockActual[m.productoId]) stockActual[m.productoId] = 0;
-    if(m.tipo==='entrada')       stockActual[m.productoId] += qty;
-    else if(m.tipo==='salida')   stockActual[m.productoId] -= qty;
-    else if(m.tipo==='ajuste')   stockActual[m.productoId]  = qty;
-    else if(m.tipo==='merma')    stockActual[m.productoId] -= qty;
-  }
-
-  const prodFiltrados = productos.filter(p =>
-    !buscar || p.nombre?.toLowerCase().includes(buscar.toLowerCase())
+// ── Summary card ─────────────────────────────────────────────────
+function MetricCard({ label, value, sub, accent }) {
+  return (
+    <div style={{ ...card, marginBottom: 0, flex: '1 1 160px', borderTop: `3px solid ${accent || T.primary}` }}>
+      <div style={{ fontSize: '.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em', color: T.textMid, marginBottom: 6 }}>
+        {label}
+      </div>
+      <div style={{ fontSize: '1.7rem', fontWeight: 700, color: accent || T.textDark, lineHeight: 1.1 }}>
+        {value}
+      </div>
+      {sub && <div style={{ fontSize: '.75rem', color: T.textMid, marginTop: 4 }}>{sub}</div>}
+    </div>
   );
+}
 
-  const handleSaveProd = async () => {
-    if(!formProd.nombre) { toast('⚠ Nombre requerido','error'); return; }
-    await addProd({ ...formProd, stockMin: Number(formProd.stockMin)||0 });
-    toast('✓ Producto agregado');
-    setFormProd({ nombre:'', unidad:'lb', stockMin:'' });
-  };
+// ── Main ─────────────────────────────────────────────────────────
+export default function StockVivo() {
+  const { data: entradas, loading: loadE } = useCollection('ientradas', { orderField: 'fecha', orderDir: 'desc', limit: 2000 });
+  const { data: salidas,  loading: loadS } = useCollection('isalidas',  { orderField: 'fecha', orderDir: 'desc', limit: 2000 });
+  const { productos, loading: loadP } = useProductosCatalogo();
 
-  const handleSaveMov = async () => {
-    if(!formMov.productoId || !formMov.cantidad) { toast('⚠ Producto y cantidad requeridos','error'); return; }
-    const prod = productos.find(p=>p.id===formMov.productoId);
-    await addMov({ ...formMov, cantidad:Number(formMov.cantidad), productoNombre: prod?.nombre||'' });
-    toast('✓ Movimiento registrado');
-    setFormMov(f=>({...f, productoId:'', cantidad:'', obs:''}));
-  };
+  const loading = loadE || loadS || loadP;
+  const today   = todayStr();
 
-  if(lp||lm) return <LoadingSpinner/>;
+  const stockMap = useMemo(() => {
+    const map = {};
+    for (const e of entradas) {
+      const k = e.producto; if (!k) continue;
+      if (!map[k]) map[k] = { entradas: 0, salidas: 0, lastDate: null, unidad: e.unidad || '' };
+      map[k].entradas += Number(e.cantidad) || 0;
+      const d = fmtDate(e.fecha);
+      if (d && (!map[k].lastDate || d > map[k].lastDate)) map[k].lastDate = d;
+    }
+    for (const s of salidas) {
+      const k = s.producto; if (!k) continue;
+      if (!map[k]) map[k] = { entradas: 0, salidas: 0, lastDate: null, unidad: s.unidad || '' };
+      map[k].salidas += Number(s.cantidad) || 0;
+      const d = fmtDate(s.fecha);
+      if (d && (!map[k].lastDate || d > map[k].lastDate)) map[k].lastDate = d;
+    }
+    return map;
+  }, [entradas, salidas]);
 
-  const productosConStock = prodFiltrados.map(p => ({
-    ...p,
-    stock: stockActual[p.id] || 0,
-    bajo: (stockActual[p.id]||0) < (Number(p.stockMin)||0),
-  }));
+  const rows = useMemo(() => {
+    const allKeys = new Set([
+      ...Object.keys(stockMap),
+      ...productos.map(p => p.id || p.nombre),
+    ]);
+    return Array.from(allKeys)
+      .map(k => {
+        const prod = productos.find(p => (p.id || p.nombre) === k);
+        const info = stockMap[k] || { entradas: 0, salidas: 0, lastDate: null, unidad: '' };
+        return {
+          key: k,
+          nombre:   prod?.nombre || k,
+          unidad:   prod?.unidad || info.unidad || '—',
+          stock:    info.entradas - info.salidas,
+          entradas: info.entradas,
+          salidas:  info.salidas,
+          lastDate: info.lastDate,
+        };
+      })
+      .filter(r => r.entradas > 0 || r.salidas > 0)
+      .sort((a, b) => a.nombre.localeCompare(b.nombre));
+  }, [stockMap, productos]);
 
-  const bajoStock = productosConStock.filter(p=>p.bajo).length;
+  const totalBodega    = rows.reduce((s, r) => s + r.stock, 0);
+  const movsHoy        = [...entradas, ...salidas].filter(m => fmtDate(m.fecha) === today).length;
 
   return (
-    <div>
-      <h1 style={{fontSize:'1.4rem',fontWeight:800,color:C.green,marginBottom:4}}>📦 Stock en Vivo</h1>
-      <p style={{fontSize:'.82rem',color:'#6B8070',marginBottom:16}}>Inventario en tiempo real — entradas, salidas y stock mínimo</p>
-
-      {bajoStock>0&&(
-        <div style={{background:'rgba(192,57,43,.08)',border:`1px solid rgba(192,57,43,.25)`,borderRadius:8,padding:'10px 16px',marginBottom:16,fontSize:'.82rem',color:C.danger,fontWeight:600}}>
-          ⚠ {bajoStock} producto{bajoStock>1?'s':''} bajo stock mínimo
-        </div>
-      )}
-
-      {/* Tabs */}
-      <div style={{display:'flex',gap:0,marginBottom:16,border:`1px solid ${C.sand}`,borderRadius:8,overflow:'hidden',background:'#fff'}}>
-        {[{id:'stock',label:'📊 Stock actual'},{id:'mov',label:'📝 Registrar movimiento'},{id:'prod',label:'⚙ Productos'}].map(t=>(
-          <button key={t.id} onClick={()=>setTab(t.id)} style={{
-            flex:1,padding:'11px 8px',border:'none',fontWeight:700,fontSize:'.8rem',cursor:'pointer',
-            background:tab===t.id?C.green:'#fff', color:tab===t.id?'#fff':'#6B8070',
-          }}>{t.label}</button>
-        ))}
+    <div style={{ padding: '24px 28px', fontFamily: 'inherit', maxWidth: 1100 }}>
+      {/* Page header */}
+      <div style={{ marginBottom: 24 }}>
+        <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, color: T.textDark }}>
+          Stock en Bodega
+        </h2>
+        <p style={{ margin: '4px 0 0', fontSize: '.83rem', color: T.textMid }}>
+          Existencias en tiempo real — calculado de entradas y salidas registradas
+        </p>
       </div>
 
-      {/* STOCK ACTUAL */}
-      {tab==='stock'&&(
-        <div style={{background:'#fff',border:`1px solid ${C.sand}`,borderRadius:8,padding:20}}>
-          <div style={{marginBottom:12}}>
-            <input value={buscar} onChange={e=>setBuscar(e.target.value)} placeholder="Buscar producto..."
-              style={{width:'100%',padding:'9px 12px',border:`1.5px solid ${C.sand}`,borderRadius:4,fontSize:'.85rem',outline:'none'}}/>
-          </div>
-          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:10}}>
-            {productosConStock.map(p=>(
-              <div key={p.id} style={{
-                border:`1.5px solid ${p.bajo?C.danger:C.sand}`,borderRadius:8,padding:'14px 12px',
-                background:p.bajo?'rgba(192,57,43,.04)':'#fff',
-              }}>
-                <div style={{fontWeight:700,fontSize:'.85rem',color:C.green,marginBottom:4}}>{p.nombre}</div>
-                <div style={{fontSize:'1.6rem',fontWeight:800,color:p.bajo?C.danger:C.acc,lineHeight:1}}>
-                  {p.stock.toLocaleString()}
-                </div>
-                <div style={{fontSize:'.72rem',color:'#6B8070',marginTop:2}}>{p.unidad||'unid'}</div>
-                {p.stockMin>0&&(
-                  <div style={{fontSize:'.68rem',marginTop:4,color:p.bajo?C.danger:'#9aaa9e'}}>
-                    Mín: {p.stockMin} {p.bajo?'⚠':''}
-                  </div>
-                )}
-              </div>
-            ))}
-            {productosConStock.length===0&&<div style={{gridColumn:'1/-1',textAlign:'center',padding:'40px',color:'#9aaa9e'}}>Sin productos</div>}
-          </div>
+      {/* Metric cards */}
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 24 }}>
+        <MetricCard label="Total productos" value={loading ? '…' : rows.length} accent={T.primary} />
+        <MetricCard label="Total en bodega" value={loading ? '…' : totalBodega.toLocaleString()} sub="unidades netas" accent={T.secondary} />
+        <MetricCard label="Movimientos hoy" value={loading ? '…' : movsHoy} accent={movsHoy > 0 ? T.warn : T.textMid} />
+      </div>
+
+      {/* Table */}
+      <div style={card}>
+        <div style={{ fontWeight: 600, fontSize: '.9rem', color: T.textDark, marginBottom: 16 }}>
+          Existencias por producto
         </div>
-      )}
-
-      {/* REGISTRAR MOVIMIENTO */}
-      {tab==='mov'&&(
-        <div style={{background:'#fff',border:`1px solid ${C.sand}`,borderRadius:8,padding:20}}>
-          <div style={{fontWeight:700,color:C.green,marginBottom:14}}>Nuevo Movimiento</div>
-          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))',gap:12,marginBottom:12}}>
-            <label style={LS}>Fecha<input type="date" value={formMov.fecha} onChange={e=>setFormMov(f=>({...f,fecha:e.target.value}))} style={IS}/></label>
-            <label style={LS}>Producto
-              <select value={formMov.productoId} onChange={e=>setFormMov(f=>({...f,productoId:e.target.value}))} style={IS}>
-                <option value="">— Seleccionar —</option>
-                {productos.map(p=><option key={p.id} value={p.id}>{p.nombre}</option>)}
-              </select>
-            </label>
-            <label style={LS}>Tipo
-              <select value={formMov.tipo} onChange={e=>setFormMov(f=>({...f,tipo:e.target.value}))} style={{...IS,color:MOV_COLOR[formMov.tipo],fontWeight:700}}>
-                {MOVS.map(m=><option key={m} value={m}>{m.charAt(0).toUpperCase()+m.slice(1)}</option>)}
-              </select>
-            </label>
-            <label style={LS}>Cantidad
-              <input type="number" value={formMov.cantidad} onChange={e=>setFormMov(f=>({...f,cantidad:e.target.value}))} min="0" step="0.01" style={IS}/>
-            </label>
+        {loading ? (
+          <Skeleton rows={8} />
+        ) : rows.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '56px 24px', color: T.textMid, fontSize: '.88rem' }}>
+            <div style={{ fontSize: '2.4rem', marginBottom: 12, opacity: .3 }}>📦</div>
+            Sin movimientos registrados. Registre ingresos y salidas para ver el stock.
           </div>
-          <textarea value={formMov.obs} onChange={e=>setFormMov(f=>({...f,obs:e.target.value}))} placeholder="Motivo, proveedor, destino..." rows={2}
-            style={{width:'100%',padding:'9px 12px',border:`1.5px solid ${C.sand}`,borderRadius:4,fontSize:'.85rem',outline:'none',resize:'vertical',marginBottom:12}}/>
-          <button onClick={handleSaveMov} disabled={savMov} style={{padding:'12px 28px',background:savMov?'#ccc':C.green,color:'#fff',border:'none',borderRadius:6,fontWeight:700,fontSize:'.88rem',cursor:savMov?'not-allowed':'pointer'}}>
-            {savMov?'Guardando...':'Registrar Movimiento'}
-          </button>
-
-          {/* Últimos movimientos */}
-          <div style={{marginTop:20,fontWeight:700,color:C.green,marginBottom:10}}>Últimos movimientos</div>
-          <div style={{display:'flex',flexDirection:'column',gap:6}}>
-            {movimientos.slice(0,20).map(m=>(
-              <div key={m.id} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 12px',background:C.bg,borderRadius:6,fontSize:'.8rem'}}>
-                <span style={{fontWeight:700,color:MOV_COLOR[m.tipo]||'#555',minWidth:60}}>{m.tipo}</span>
-                <span style={{flex:1,fontWeight:600}}>{m.productoNombre||m.productoId}</span>
-                <span style={{fontWeight:700}}>{m.cantidad} {productos.find(p=>p.id===m.productoId)?.unidad||''}</span>
-                <span style={{color:'#9aaa9e',fontSize:'.72rem'}}>{m.fecha}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* PRODUCTOS */}
-      {tab==='prod'&&(
-        <div style={{background:'#fff',border:`1px solid ${C.sand}`,borderRadius:8,padding:20}}>
-          <div style={{fontWeight:700,color:C.green,marginBottom:14}}>Agregar Producto</div>
-          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))',gap:12,marginBottom:12}}>
-            <label style={LS}>Nombre *<input value={formProd.nombre} onChange={e=>setFormProd(f=>({...f,nombre:e.target.value}))} style={IS}/></label>
-            <label style={LS}>Unidad
-              <select value={formProd.unidad} onChange={e=>setFormProd(f=>({...f,unidad:e.target.value}))} style={IS}>
-                {UNIDADES.map(u=><option key={u}>{u}</option>)}
-              </select>
-            </label>
-            <label style={LS}>Stock mínimo
-              <input type="number" value={formProd.stockMin} onChange={e=>setFormProd(f=>({...f,stockMin:e.target.value}))} min="0" style={IS}/>
-            </label>
-          </div>
-          <button onClick={handleSaveProd} disabled={savProd} style={{padding:'10px 24px',background:savProd?'#ccc':C.acc,color:'#fff',border:'none',borderRadius:6,fontWeight:700,fontSize:'.85rem',cursor:savProd?'not-allowed':'pointer'}}>
-            + Agregar
-          </button>
-
-          <div style={{marginTop:20}}>
-            <table style={{width:'100%',borderCollapse:'collapse',fontSize:'.8rem'}}>
-              <thead><tr style={{background:C.bg}}>
-                {['Nombre','Unidad','Stock mín.','Stock actual'].map(h=>(
-                  <th key={h} style={{padding:'7px 10px',textAlign:'left',fontWeight:700,color:'#6B8070',borderBottom:`1px solid ${C.sand}`}}>{h}</th>
-                ))}
-              </tr></thead>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: T.primary }}>
+                  {['Producto', 'Stock actual', 'Unidad', 'Entradas', 'Salidas', 'Último mov.'].map(h => (
+                    <th key={h} style={thSt}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
               <tbody>
-                {productos.map(p=>(
-                  <tr key={p.id} style={{borderBottom:`1px solid ${C.sand}`}}>
-                    <td style={{padding:'7px 10px',fontWeight:600}}>{p.nombre}</td>
-                    <td style={{padding:'7px 10px',color:'#6B8070'}}>{p.unidad}</td>
-                    <td style={{padding:'7px 10px',color:'#6B8070'}}>{p.stockMin||0}</td>
-                    <td style={{padding:'7px 10px',fontWeight:700,color:(stockActual[p.id]||0)<(p.stockMin||0)?C.danger:C.acc}}>
-                      {stockActual[p.id]||0}
+                {rows.map((r, i) => (
+                  <tr key={r.key} style={{ background: i % 2 === 1 ? '#F9FBF9' : '#fff' }}>
+                    <td style={{ ...tdSt, fontWeight: 600 }}>{r.nombre}</td>
+                    <td style={tdSt}>
+                      <span style={{ fontWeight: 700, fontSize: '.9rem', color: stockColor(r.stock) }}>
+                        {r.stock.toLocaleString()}
+                      </span>
                     </td>
+                    <td style={{ ...tdSt, color: T.textMid }}>{r.unidad}</td>
+                    <td style={tdSt}>{r.entradas.toLocaleString()}</td>
+                    <td style={tdSt}>{r.salidas.toLocaleString()}</td>
+                    <td style={{ ...tdSt, color: T.textMid }}>{r.lastDate || '—'}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
-
-const LS = { display:'flex',flexDirection:'column',gap:4,fontSize:'.72rem',fontWeight:700,textTransform:'uppercase',color:'#4A9E6A',letterSpacing:'.06em' };
-const IS = { padding:'9px 12px',border:'1.5px solid #E8DCC8',borderRadius:4,fontSize:'.85rem',outline:'none',fontFamily:'inherit',width:'100%',marginTop:2 };

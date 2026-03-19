@@ -1,137 +1,204 @@
 import { useState } from 'react';
 import { useCollection, useWrite } from '../../hooks/useFirestore';
-import LoadingSpinner from '../../components/LoadingSpinner';
+import { useEmpleados } from '../../hooks/useMainData';
 import { useToast } from '../../components/Toast';
+import Skeleton from '../../components/Skeleton';
 
-const C = { green:'#1A3D28',acc:'#4A9E6A',sand:'#E8DCC8',danger:'#c0392b',bg:'#F9F6EF',warn:'#e67e22' };
+// ─── Design Tokens ────────────────────────────────────────────────────────────
+const T = {
+  primary:   '#1B5E20',
+  secondary: '#2E7D32',
+  white:     '#FFFFFF',
+  bgLight:   '#F5F5F5',
+  border:    '#E0E0E0',
+  textDark:  '#212121',
+  textMid:   '#616161',
+  danger:    '#C62828',
+  warn:      '#E65100',
+  accent:    '#2E7D32',
+};
+
+const card  = { background:'#fff', borderRadius:8, boxShadow:'0 1px 3px rgba(0,0,0,.10)', padding:20, marginBottom:20 };
+const TH_S  = { padding:'10px 14px', fontSize:'.75rem', textTransform:'uppercase', fontWeight:700, letterSpacing:'.06em', color:T.white, background:T.primary, textAlign:'left', whiteSpace:'nowrap' };
+const TD_S  = (alt) => ({ padding:'9px 14px', fontSize:'.83rem', borderBottom:`1px solid #F0F0F0`, background:alt?'#F9FBF9':'#fff', color:T.textDark });
+const LS    = { display:'flex', flexDirection:'column', gap:5, fontSize:'.72rem', fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:T.secondary };
+const IS    = { padding:'9px 12px', border:`1.5px solid ${T.border}`, borderRadius:6, fontSize:'.85rem', outline:'none', fontFamily:'inherit', width:'100%', marginTop:2, color:T.textDark, background:T.white };
+
 const today = () => new Date().toISOString().slice(0,10);
-const fmt = n => Number(n||0).toLocaleString('es-GT',{style:'currency',currency:'GTQ',minimumFractionDigits:2});
+const fmtQ  = n => Number(n||0).toLocaleString('es-GT',{style:'currency',currency:'GTQ',minimumFractionDigits:2});
 
-const CATS = [
-  'Combustible','Mantenimiento','Alimentación','Papelería','Limpieza',
-  'Transporte','Servicios','Compras producción','Otros',
-];
+const CATS = ['Combustible','Mantenimiento','Alimentación','Servicios','Mano de obra','Materiales','Otros'];
+
+const CHIP_CAT = {
+  Combustible:  '#1565C0',
+  Mantenimiento:'#6A1B9A',
+  Alimentación: '#2E7D32',
+  Servicios:    '#00695C',
+  'Mano de obra':'#E65100',
+  Materiales:   '#4E342E',
+  Otros:        '#546E7A',
+};
 
 export default function Gastos() {
   const toast = useToast();
-  const { data, loading } = useCollection('gastosDiarios', { orderField:'fecha',orderDir:'desc',limit:300 });
+  const { data, loading } = useCollection('gastosDiarios', { orderField:'fecha', orderDir:'desc', limit:300 });
+  const { empleados } = useEmpleados();
   const { add, saving } = useWrite('gastosDiarios');
 
   const [form, setForm] = useState({
-    fecha: today(), desc:'', cat:'Combustible', monto:'', resp:'', factura:'', obs:'',
+    fecha:today(), categoria:'Combustible', descripcion:'', monto:'', responsable:'', recibo:'', obs:'',
   });
-  const [filtro, setFiltro] = useState('');
+  const [filtrocat, setFiltrocat] = useState('');
+
+  const f = (field, val) => setForm(p => ({ ...p, [field]: val }));
 
   const handleSave = async () => {
-    if(!form.fecha||!form.desc||!form.monto){toast('⚠ Fecha, descripción y monto requeridos','error');return;}
-    if(isNaN(Number(form.monto))||Number(form.monto)<=0){toast('⚠ Monto inválido','error');return;}
-    await add({ ...form, monto: Number(form.monto) });
-    toast('✓ Gasto registrado');
-    setForm(f=>({...f, desc:'', monto:'', factura:'', obs:'', resp:''}));
+    if (!form.fecha || !form.descripcion || !form.monto) {
+      toast('Fecha, descripción y monto son requeridos', 'error'); return;
+    }
+    const monto = parseFloat(form.monto);
+    if (isNaN(monto) || monto <= 0) { toast('Monto inválido', 'error'); return; }
+    await add({ ...form, monto });
+    toast('Gasto registrado correctamente');
+    setForm(p => ({ ...p, descripcion:'', monto:'', recibo:'', obs:'', responsable:'' }));
   };
 
-  const filtered = filtro
-    ? data.filter(r=>r.fecha>=filtro)
-    : data;
+  const filtered = filtrocat ? data.filter(r => r.categoria === filtrocat) : data;
 
-  const totalFiltrado = filtered.reduce((s,r)=>s+(r.monto||0),0);
-  const totalHoy = data.filter(r=>r.fecha===today()).reduce((s,r)=>s+(r.monto||0),0);
-
-  if(loading) return <LoadingSpinner/>;
+  const totalHoy  = data.filter(r => r.fecha === today()).reduce((s,r) => s+(r.monto||0), 0);
+  const mes       = today().slice(0,7);
+  const totalMes  = data.filter(r => (r.fecha||'').startsWith(mes)).reduce((s,r) => s+(r.monto||0), 0);
+  const diasMes   = new Set(data.filter(r => (r.fecha||'').startsWith(mes)).map(r=>r.fecha)).size;
+  const promedio  = diasMes > 0 ? totalMes / diasMes : 0;
 
   return (
-    <div>
-      <h1 style={{fontSize:'1.4rem',fontWeight:800,color:C.green,marginBottom:4}}>💰 Gastos Diarios</h1>
-      <p style={{fontSize:'.82rem',color:'#6B8070',marginBottom:24}}>Registro y control de gastos operacionales</p>
+    <div style={{ fontFamily:'inherit', maxWidth:1100 }}>
+      {/* Header */}
+      <div style={{ marginBottom:24 }}>
+        <h1 style={{ fontSize:'1.45rem', fontWeight:800, color:T.primary, margin:0 }}>Gastos Operacionales</h1>
+        <p style={{ fontSize:'.83rem', color:T.textMid, marginTop:4 }}>Registro y control de gastos diarios</p>
+      </div>
 
-      {/* Totales */}
-      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:12,marginBottom:20}}>
+      {/* KPI Cards */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))', gap:14, marginBottom:24 }}>
         {[
-          {label:'Hoy',val:fmt(totalHoy),color:C.green},
-          {label:'Total filtrado',val:fmt(totalFiltrado),color:C.acc},
-          {label:'Registros',val:filtered.length,color:'#6B8070'},
-        ].map(({label,val,color})=>(
-          <div key={label} style={{background:'#fff',border:`1px solid ${C.sand}`,borderRadius:8,padding:'14px 18px'}}>
-            <div style={{fontSize:'.72rem',fontWeight:700,textTransform:'uppercase',color:'#9aaa9e',letterSpacing:'.06em',marginBottom:4}}>{label}</div>
-            <div style={{fontSize:'1.3rem',fontWeight:800,color}}>{val}</div>
+          { label:'Total hoy',        val:fmtQ(totalHoy), color:T.primary  },
+          { label:'Total mes',        val:fmtQ(totalMes), color:T.secondary },
+          { label:'Promedio diario',  val:fmtQ(promedio), color:T.textMid   },
+        ].map(({ label, val, color }) => (
+          <div key={label} style={{ ...card, marginBottom:0, padding:'16px 20px' }}>
+            <div style={{ fontSize:'.72rem', fontWeight:700, textTransform:'uppercase', letterSpacing:'.07em', color:T.textMid, marginBottom:6 }}>{label}</div>
+            <div style={{ fontSize:'1.35rem', fontWeight:800, color }}>{val}</div>
           </div>
         ))}
       </div>
 
-      {/* Formulario */}
-      <div style={{background:'#fff',border:`1px solid ${C.sand}`,borderRadius:8,padding:20,marginBottom:20}}>
-        <div style={{fontWeight:700,fontSize:'.9rem',color:C.green,marginBottom:14}}>Nuevo Gasto</div>
-        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))',gap:12,marginBottom:12}}>
-          {[
-            {id:'fecha',type:'date',label:'Fecha'},
-            {id:'resp',type:'text',label:'Responsable'},
-            {id:'factura',type:'text',label:'No. Factura'},
-          ].map(({id,type,label})=>(
-            <label key={id} style={{display:'flex',flexDirection:'column',gap:4,fontSize:'.72rem',fontWeight:700,textTransform:'uppercase',color:C.acc,letterSpacing:'.06em'}}>
-              {label}<input type={type} value={form[id]} onChange={e=>setForm(f=>({...f,[id]:e.target.value}))}
-                style={{padding:'9px 12px',border:`1.5px solid ${C.sand}`,borderRadius:4,fontSize:'.85rem',outline:'none'}}/>
-            </label>
-          ))}
+      {/* Form */}
+      <div style={card}>
+        <div style={{ fontWeight:700, fontSize:'.95rem', color:T.primary, marginBottom:18, borderBottom:`2px solid ${T.primary}`, paddingBottom:8 }}>
+          Registrar Gasto
         </div>
-        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:12,marginBottom:12}}>
-          <label style={{display:'flex',flexDirection:'column',gap:4,fontSize:'.72rem',fontWeight:700,textTransform:'uppercase',color:C.acc,letterSpacing:'.06em',gridColumn:'1/-1'}}>
-            Descripción
-            <input type="text" value={form.desc} onChange={e=>setForm(f=>({...f,desc:e.target.value}))} placeholder="Descripción del gasto..."
-              style={{padding:'9px 12px',border:`1.5px solid ${C.sand}`,borderRadius:4,fontSize:'.85rem',outline:'none'}}/>
-          </label>
-          <label style={{display:'flex',flexDirection:'column',gap:4,fontSize:'.72rem',fontWeight:700,textTransform:'uppercase',color:C.acc,letterSpacing:'.06em'}}>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))', gap:14, marginBottom:14 }}>
+          <label style={LS}>Fecha<input type="date" value={form.fecha} onChange={e=>f('fecha',e.target.value)} style={IS}/></label>
+          <label style={LS}>
             Categoría
-            <select value={form.cat} onChange={e=>setForm(f=>({...f,cat:e.target.value}))}
-              style={{padding:'9px 12px',border:`1.5px solid ${C.sand}`,borderRadius:4,fontSize:'.85rem',outline:'none',background:'#fff'}}>
-              {CATS.map(c=><option key={c}>{c}</option>)}
+            <select value={form.categoria} onChange={e=>f('categoria',e.target.value)} style={IS}>
+              {CATS.map(c=><option key={c} value={c}>{c}</option>)}
             </select>
           </label>
-          <label style={{display:'flex',flexDirection:'column',gap:4,fontSize:'.72rem',fontWeight:700,textTransform:'uppercase',color:C.acc,letterSpacing:'.06em'}}>
-            Monto (Q)
-            <input type="number" value={form.monto} onChange={e=>setForm(f=>({...f,monto:e.target.value}))} placeholder="0.00" step="0.01"
-              style={{padding:'9px 12px',border:`1.5px solid ${C.sand}`,borderRadius:4,fontSize:'.85rem',outline:'none'}}/>
+          <label style={{...LS, gridColumn:'span 2'}}>
+            Descripción *
+            <input value={form.descripcion} onChange={e=>f('descripcion',e.target.value)} placeholder="Descripción del gasto..." style={IS}/>
           </label>
+          <label style={LS}>Monto (Q)<input type="number" min="0" step="0.01" value={form.monto} onChange={e=>f('monto',e.target.value)} placeholder="0.00" style={IS}/></label>
+          <label style={LS}>
+            Responsable
+            <select value={form.responsable} onChange={e=>f('responsable',e.target.value)} style={IS}>
+              <option value="">— Seleccionar —</option>
+              {empleados.map(e=><option key={e.id||e.nombre} value={e.nombre}>{e.nombre}</option>)}
+            </select>
+          </label>
+          <label style={LS}>No. Recibo<input value={form.recibo} onChange={e=>f('recibo',e.target.value)} placeholder="Número de recibo" style={IS}/></label>
         </div>
-        <textarea value={form.obs} onChange={e=>setForm(f=>({...f,obs:e.target.value}))} placeholder="Observaciones..." rows={2}
-          style={{width:'100%',padding:'9px 12px',border:`1.5px solid ${C.sand}`,borderRadius:4,fontSize:'.85rem',outline:'none',resize:'vertical',marginBottom:12}}/>
-        <button onClick={handleSave} disabled={saving} style={{padding:'12px 28px',background:saving?'#ccc':C.green,color:'#fff',border:'none',borderRadius:6,fontWeight:700,fontSize:'.88rem',cursor:saving?'not-allowed':'pointer'}}>
-          {saving?'Guardando...':'Registrar Gasto'}
-        </button>
+        <label style={LS}>
+          Observaciones
+          <textarea value={form.obs} onChange={e=>f('obs',e.target.value)} rows={2}
+            style={{ ...IS, resize:'vertical', marginBottom:0 }} placeholder="Notas adicionales..."/>
+        </label>
+        <div style={{ marginTop:16 }}>
+          <button onClick={handleSave} disabled={saving} style={{
+            padding:'11px 28px', background:saving?'#9E9E9E':T.primary, color:T.white,
+            border:'none', borderRadius:6, fontWeight:700, fontSize:'.88rem',
+            cursor:saving?'not-allowed':'pointer', letterSpacing:'.04em',
+          }}>
+            {saving ? 'Guardando...' : 'Registrar Gasto'}
+          </button>
+        </div>
       </div>
 
-      {/* Historial */}
-      <div style={{background:'#fff',border:`1px solid ${C.sand}`,borderRadius:8,padding:20}}>
-        <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:12,flexWrap:'wrap'}}>
-          <div style={{fontWeight:700,color:C.green,flex:1}}>Historial</div>
-          <label style={{display:'flex',alignItems:'center',gap:6,fontSize:'.78rem',fontWeight:600,color:'#6B8070'}}>
-            Desde: <input type="date" value={filtro} onChange={e=>setFiltro(e.target.value)}
-              style={{padding:'5px 8px',border:`1px solid ${C.sand}`,borderRadius:4,fontSize:'.8rem',outline:'none'}}/>
-          </label>
-          {filtro&&<button onClick={()=>setFiltro('')} style={{padding:'5px 10px',background:'#f0f0f0',border:'none',borderRadius:4,fontSize:'.78rem',cursor:'pointer'}}>✕ Limpiar</button>}
+      {/* Filtros por categoría */}
+      <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:14 }}>
+        <button onClick={()=>setFiltrocat('')} style={{
+          padding:'5px 14px', borderRadius:20, fontSize:'.76rem', fontWeight:600, cursor:'pointer',
+          border:`1.5px solid ${!filtrocat?T.primary:T.border}`,
+          background:!filtrocat?T.primary:T.white,
+          color:!filtrocat?T.white:T.textMid,
+        }}>Todos</button>
+        {CATS.map(c=>(
+          <button key={c} onClick={()=>setFiltrocat(c===filtrocat?'':c)} style={{
+            padding:'5px 14px', borderRadius:20, fontSize:'.76rem', fontWeight:600, cursor:'pointer',
+            border:`1.5px solid ${filtrocat===c?T.primary:T.border}`,
+            background:filtrocat===c?T.primary:T.white,
+            color:filtrocat===c?T.white:T.textMid,
+          }}>{c}</button>
+        ))}
+      </div>
+
+      {/* History Table */}
+      <div style={card}>
+        <div style={{ fontWeight:700, fontSize:'.9rem', color:T.primary, marginBottom:16 }}>
+          Historial ({filtered.length} registros)
         </div>
-        <div style={{overflowX:'auto'}}>
-          <table style={{width:'100%',borderCollapse:'collapse',fontSize:'.8rem'}}>
-            <thead><tr style={{background:C.bg}}>
-              {['Fecha','Descripción','Categoría','Monto','Responsable','Factura'].map(h=>(
-                <th key={h} style={{padding:'7px 10px',textAlign:'left',fontWeight:700,color:'#6B8070',borderBottom:`1px solid ${C.sand}`}}>{h}</th>
-              ))}
-            </tr></thead>
-            <tbody>
-              {filtered.slice(0,100).map(r=>(
-                <tr key={r.id} style={{borderBottom:`1px solid ${C.sand}`}}>
-                  <td style={{padding:'7px 10px',fontWeight:600,whiteSpace:'nowrap'}}>{r.fecha}</td>
-                  <td style={{padding:'7px 10px'}}>{r.desc||'—'}</td>
-                  <td style={{padding:'7px 10px'}}>
-                    <span style={{padding:'2px 8px',borderRadius:100,fontSize:'.65rem',fontWeight:700,background:'rgba(74,158,106,.1)',color:C.acc}}>{r.cat||'—'}</span>
-                  </td>
-                  <td style={{padding:'7px 10px',fontWeight:700,color:C.danger}}>{fmt(r.monto)}</td>
-                  <td style={{padding:'7px 10px',color:'#6B8070'}}>{r.resp||'—'}</td>
-                  <td style={{padding:'7px 10px',color:'#6B8070'}}>{r.factura||'—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        {loading ? <Skeleton rows={6}/> : (
+          <>
+            {filtered.length === 0 ? (
+              <div style={{ textAlign:'center', padding:'48px 0', color:T.textMid, fontSize:'.9rem' }}>
+                Sin gastos registrados para este filtro
+              </div>
+            ) : (
+              <div style={{ overflowX:'auto' }}>
+                <table style={{ width:'100%', borderCollapse:'collapse' }}>
+                  <thead>
+                    <tr>
+                      {['Fecha','Categoría','Descripción','Monto','Responsable','Recibo'].map(h=>(
+                        <th key={h} style={TH_S}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.slice(0,120).map((r,i)=>(
+                      <tr key={r.id}>
+                        <td style={TD_S(i%2===1)}>{r.fecha||'—'}</td>
+                        <td style={TD_S(i%2===1)}>
+                          <span style={{
+                            display:'inline-block', padding:'2px 9px', borderRadius:100,
+                            fontSize:'.7rem', fontWeight:700,
+                            background:`${CHIP_CAT[r.categoria]||T.textMid}18`,
+                            color:CHIP_CAT[r.categoria]||T.textMid,
+                          }}>{r.categoria||'—'}</span>
+                        </td>
+                        <td style={{ ...TD_S(i%2===1), maxWidth:260 }}>{r.descripcion||'—'}</td>
+                        <td style={{ ...TD_S(i%2===1), fontWeight:700, color:T.danger }}>{fmtQ(r.monto)}</td>
+                        <td style={{ ...TD_S(i%2===1), color:T.textMid }}>{r.responsable||'—'}</td>
+                        <td style={{ ...TD_S(i%2===1), color:T.textMid }}>{r.recibo||'—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )}
       </div>
     </div>
   );

@@ -1,180 +1,164 @@
 import { useCollection } from '../../hooks/useFirestore';
-import LoadingSpinner from '../../components/LoadingSpinner';
-import { useNavigate } from 'react-router-dom';
+import Skeleton from '../../components/Skeleton';
 
-const C = { green:'#1A3D28', acc:'#4A9E6A', cream:'#F5F0E4', sand:'#E8DCC8', danger:'#c0392b', warn:'#e67e22', bg:'#F9F6EF' };
-const fmt = n => 'Q ' + Number(n||0).toLocaleString('es-GT', { minimumFractionDigits:0, maximumFractionDigits:0 });
-
+const T = { primary:'#1B5E20', secondary:'#2E7D32', textMid:'#616161', danger:'#C62828', warn:'#E65100' };
 const today = () => new Date().toISOString().slice(0,10);
+const thisWeek = () => { const d=new Date(); d.setDate(d.getDate()-7); return d.toISOString().slice(0,10); };
+const fmt = (n) => `Q ${(n||0).toLocaleString('es-GT', { minimumFractionDigits:2 })}`;
 
-function hoy(arr=[]) {
-  const t = today();
-  return arr.filter(r => (r.fecha||r.fechaEntrega||'').slice(0,10) === t).length;
-}
-
-function diasHasta(fechaStr) {
-  if(!fechaStr) return null;
-  const diff = new Date(fechaStr+'T00:00:00') - new Date(today()+'T00:00:00');
-  return Math.ceil(diff / 86400000);
-}
-
-function StatCard({ icon, label, value, sub, color, onClick, alert, badge }) {
+function StatCard({ label, value, sub, color, icon }) {
   return (
-    <div onClick={onClick} style={{
-      background:'#fff', border:`1.5px solid ${alert?C.danger:C.sand}`,
-      borderRadius:8, padding:'18px 16px', cursor:onClick?'pointer':'default',
-      transition:'box-shadow .15s', position:'relative',
-    }}
-    onMouseEnter={e=>{ if(onClick) e.currentTarget.style.boxShadow='0 4px 12px rgba(0,0,0,.08)'; }}
-    onMouseLeave={e=>{ e.currentTarget.style.boxShadow='none'; }}
-    >
-      <div style={{fontSize:'1.5rem',marginBottom:6}}>{icon}</div>
-      <div style={{fontSize:'.7rem',color:'#6B8070',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:3}}>{label}</div>
-      <div style={{fontSize:'1.8rem',fontWeight:800,color:color||C.green,lineHeight:1}}>{value}</div>
-      {sub&&<div style={{fontSize:'.72rem',color:'#6B8070',marginTop:5}}>{sub}</div>}
-      {alert&&<div style={{position:'absolute',top:8,right:8,background:C.danger,color:'#fff',borderRadius:100,padding:'2px 7px',fontSize:'.6rem',fontWeight:700}}>Sin hoy</div>}
-      {badge!=null&&badge>0&&<div style={{position:'absolute',top:8,right:8,background:C.warn,color:'#fff',borderRadius:100,padding:'2px 7px',fontSize:'.6rem',fontWeight:700}}>{badge}</div>}
+    <div style={{ background:'#fff', borderRadius:8, boxShadow:'0 1px 3px rgba(0,0,0,.10)', padding:'18px 20px', display:'flex', alignItems:'flex-start', gap:14 }}>
+      {icon && <div style={{ fontSize:'1.5rem', lineHeight:1, marginTop:2 }}>{icon}</div>}
+      <div style={{ flex:1 }}>
+        <div style={{ fontSize:'1.5rem', fontWeight:800, color:color||T.primary, lineHeight:1 }}>{value}</div>
+        <div style={{ fontSize:'.78rem', fontWeight:600, color:'#212121', marginTop:4 }}>{label}</div>
+        {sub && <div style={{ fontSize:'.72rem', color:T.textMid, marginTop:2 }}>{sub}</div>}
+      </div>
     </div>
   );
 }
 
-function ModuleRow({ icon, label, to, total, hoyCount, navigate }) {
-  const sinHoy = hoyCount === 0;
+function BpmCard({ icon, label, ok, total }) {
+  const pct = total > 0 ? Math.round(ok / total * 100) : null;
+  const bc = pct === null ? '#E0E0E0' : pct >= 80 ? T.secondary : pct >= 60 ? T.warn : T.danger;
   return (
-    <div onClick={()=>navigate(to)} style={{
-      display:'flex',alignItems:'center',gap:14,
-      padding:'12px 16px',borderRadius:6,cursor:'pointer',
-      background:'#fff',border:`1px solid ${sinHoy?C.danger+'44':C.sand}`,
-      transition:'background .1s',
-    }}>
-      <span style={{fontSize:'1.2rem'}}>{icon}</span>
-      <div style={{flex:1}}>
-        <div style={{fontWeight:600,fontSize:'.85rem',color:C.green}}>{label}</div>
-        <div style={{fontSize:'.72rem',color:'#6B8070'}}>{total} registros · {hoyCount} hoy</div>
+    <div style={{ background:'#fff', borderRadius:8, boxShadow:'0 1px 3px rgba(0,0,0,.08)', padding:'14px 16px' }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
+        <span style={{ fontSize:'.82rem', fontWeight:600 }}>{icon} {label}</span>
+        {pct !== null && <span style={{ fontSize:'.78rem', fontWeight:700, color:bc }}>{pct}%</span>}
       </div>
-      {sinHoy&&<span style={{fontSize:'.65rem',background:C.danger,color:'#fff',padding:'2px 7px',borderRadius:100,fontWeight:700}}>Sin hoy</span>}
-      <span style={{color:'#ccc'}}>›</span>
+      {pct !== null
+        ? <div style={{ height:4, background:'#F0F0F0', borderRadius:2 }}>
+            <div style={{ height:'100%', width:`${pct}%`, background:bc, borderRadius:2, transition:'width .4s' }} />
+          </div>
+        : <div style={{ fontSize:'.72rem', color:'#9E9E9E' }}>Sin registros</div>
+      }
+      <div style={{ fontSize:'.7rem', color:T.textMid, marginTop:6 }}>
+        {total > 0 ? `${ok} / ${total} cumplen` : '—'}
+      </div>
     </div>
   );
 }
 
 export default function Dashboard() {
-  const navigate = useNavigate();
+  const td = today(), wk = thisWeek();
+  const tlC   = useCollection('tl',   { orderField:'fecha', orderDir:'desc', limit:100 });
+  const dtC   = useCollection('dt',   { orderField:'fecha', orderDir:'desc', limit:100 });
+  const alC   = useCollection('al',   { orderField:'fecha', orderDir:'desc', limit:100 });
+  const basC  = useCollection('bas',  { orderField:'fecha', orderDir:'desc', limit:100 });
+  const rodC  = useCollection('rod',  { orderField:'fecha', orderDir:'desc', limit:100 });
+  const limpC = useCollection('limp', { orderField:'fecha', orderDir:'desc', limit:100 });
+  const wmC   = useCollection('pedidosWalmart', { orderField:'fechaEntrega', orderDir:'asc', limit:100 });
+  const gcC   = useCollection('gcConcursos', { orderField:'fechaCierre', orderDir:'asc', limit:50 });
+  const gasC  = useCollection('gastosDiarios', { orderField:'fecha', orderDir:'desc', limit:100 });
+  const vtC   = useCollection('vgtVentas', { orderField:'fecha', orderDir:'desc', limit:100 });
 
-  const alC   = useCollection('al',   { orderField:'fecha', limit:200 });
-  const tlC   = useCollection('tl',   { orderField:'fecha', limit:200 });
-  const dtC   = useCollection('dt',   { orderField:'fecha', limit:200 });
-  const basC  = useCollection('bas',  { orderField:'fecha', limit:200 });
-  const rodC  = useCollection('rod',  { orderField:'fecha', limit:200 });
-  const gastosC   = useCollection('gastosDiarios', { orderField:'fecha', limit:500 });
-  const walmartC  = useCollection('pedidosWalmart', { orderField:'fechaEntrega', orderDir:'desc', limit:200 });
-  const gcC       = useCollection('gcConcursos',    { orderField:'fechaCierre',  orderDir:'asc',  limit:100 });
+  if (tlC.loading && dtC.loading) return (
+    <div>
+      <h1 style={{ fontSize:'1.35rem', fontWeight:700, color:T.primary, marginBottom:20 }}>Dashboard</h1>
+      <Skeleton rows={8} />
+    </div>
+  );
 
-  const loading = alC.loading || tlC.loading;
-  if(loading) return <LoadingSpinner text="Cargando dashboard..."/>;
+  const bpmStats = (arr) => {
+    const week = arr.filter(r => r.fecha >= wk);
+    return { ok: week.filter(r => ['cumple','ok','aprobado','sin_novedades'].includes(r.resultado)).length, total: week.length };
+  };
 
-  const t = today();
-  const semanaInicio = (() => {
-    const d = new Date(t+'T00:00:00'); const day = d.getDay();
-    d.setDate(d.getDate() - (day===0?6:day-1)); return d.toISOString().slice(0,10);
-  })();
-
-  // Gastos
-  const gastosHoy    = gastosC.data.filter(g=>g.fecha===t).reduce((s,g)=>s+(g.monto||0),0);
-  const gastosSemana = gastosC.data.filter(g=>g.fecha>=semanaInicio).reduce((s,g)=>s+(g.monto||0),0);
-
-  // Walmart pendientes
-  const walmartPendientes = walmartC.data.filter(p=>p.estado==='pendiente'||p.estado==='en_proceso');
-
-  // Concursos urgentes (cierre en ≤7 días)
-  const gcUrgentes = gcC.data.filter(c=>{
-    const dias = diasHasta(c.fechaCierre);
-    return dias!=null && dias>=0 && dias<=7;
-  });
-
-  // Módulos BPM
-  const modules = [
-    { icon:'🙌', label:'Acceso y Lavado',     to:'/bpm/al',  data:alC.data  },
-    { icon:'🚛', label:'Limpieza Transporte', to:'/bpm/tl',  data:tlC.data  },
-    { icon:'📋', label:'Despacho Transporte', to:'/bpm/dt',  data:dtC.data  },
-    { icon:'⚖️', label:'Básculas',            to:'/bpm/bas', data:basC.data },
-    { icon:'🐭', label:'Control Roedores',    to:'/bpm/rod', data:rodC.data },
-  ];
-
-  const cumpleHoy = modules.filter(m=>hoy(m.data)>0).length;
-  const pctCumple = Math.round(cumpleHoy/modules.length*100);
-  const totalBpm  = modules.reduce((s,m)=>s+m.data.length, 0);
+  const wmPending  = wmC.data.filter(r => !r.estado || r.estado === 'pendiente');
+  const ventasWeek = vtC.data.filter(r => r.fecha >= wk && r.estado !== 'cancelado').reduce((s,r) => s+(r.total||0), 0);
+  const gastosHoy  = gasC.data.filter(r => r.fecha === td).reduce((s,r) => s+(r.monto||0), 0);
+  const gastosWeek = gasC.data.filter(r => r.fecha >= wk).reduce((s,r) => s+(r.monto||0), 0);
+  const sevenDays  = new Date(); sevenDays.setDate(sevenDays.getDate() + 7);
+  const gcUrgent   = gcC.data.filter(r => r.fechaCierre && new Date(r.fechaCierre) <= sevenDays && r.estado !== 'cerrado');
 
   return (
-    <div>
-      <div style={{marginBottom:24}}>
-        <h1 style={{fontSize:'1.4rem',fontWeight:800,color:C.green,marginBottom:2}}>Dashboard</h1>
-        <div style={{fontSize:'.82rem',color:'#6B8070'}}>
-          {new Date().toLocaleDateString('es-GT',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}
+    <div className="fade-in">
+      <div style={{ marginBottom:24 }}>
+        <h1 style={{ fontSize:'1.35rem', fontWeight:700, color:T.primary, marginBottom:4 }}>Dashboard</h1>
+        <p style={{ fontSize:'.82rem', color:T.textMid }}>
+          {new Date().toLocaleDateString('es-GT', { weekday:'long', day:'numeric', month:'long', year:'numeric' })}
+        </p>
+      </div>
+
+      {(wmPending.length > 0 || gcUrgent.length > 0) && (
+        <div style={{ marginBottom:20, display:'flex', flexDirection:'column', gap:8 }}>
+          {wmPending.length > 0 && (
+            <div style={{ background:'#FFF3E0', border:'1.5px solid #FFB74D', borderRadius:8, padding:'11px 16px', display:'flex', gap:10, alignItems:'center' }}>
+              <span>⚠️</span>
+              <span style={{ fontSize:'.85rem', fontWeight:600, color:'#E65100' }}>
+                {wmPending.length} pedido{wmPending.length>1?'s':''} de Walmart pendiente{wmPending.length>1?'s':''}
+              </span>
+            </div>
+          )}
+          {gcUrgent.length > 0 && (
+            <div style={{ background:'#FFEBEE', border:'1.5px solid #EF9A9A', borderRadius:8, padding:'11px 16px', display:'flex', gap:10, alignItems:'center' }}>
+              <span>🏛️</span>
+              <span style={{ fontSize:'.85rem', fontWeight:600, color:T.danger }}>
+                {gcUrgent.length} concurso{gcUrgent.length>1?'s':''} vence{gcUrgent.length>1?'n':''} en 7 días
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(155px,1fr))', gap:12, marginBottom:24 }}>
+        <StatCard icon="📤" label="Ventas esta semana" value={fmt(ventasWeek)} color={T.secondary} />
+        <StatCard icon="💸" label="Gastos hoy" value={fmt(gastosHoy)} sub={`Semana: ${fmt(gastosWeek)}`} color={T.warn} />
+        <StatCard icon="📦" label="Walmart pendientes" value={wmPending.length} color={wmPending.length>0?T.danger:T.secondary} />
+        <StatCard icon="🏛️" label="Concursos urgentes" value={gcUrgent.length} color={gcUrgent.length>0?T.danger:T.secondary} />
+      </div>
+
+      <div style={{ background:'#fff', borderRadius:8, boxShadow:'0 1px 3px rgba(0,0,0,.10)', padding:20, marginBottom:20 }}>
+        <div style={{ fontWeight:700, color:T.primary, marginBottom:14 }}>Cumplimiento BPM — Última semana</div>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(175px,1fr))', gap:10 }}>
+          <BpmCard icon="🚛" label="Limpieza Transporte" {...bpmStats(tlC.data)} />
+          <BpmCard icon="📋" label="Despacho"            {...bpmStats(dtC.data)} />
+          <BpmCard icon="🙌" label="Acceso y Lavado"     {...bpmStats(alC.data)} />
+          <BpmCard icon="⚖️" label="Básculas"             {...bpmStats(basC.data)} />
+          <BpmCard icon="🐀" label="Roedores"             {...bpmStats(rodC.data)} />
+          <BpmCard icon="🧹" label="Limpieza Bodega"      {...bpmStats(limpC.data)} />
         </div>
       </div>
 
-      {/* Stats principales */}
-      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:12,marginBottom:24}}>
-        <StatCard icon="📊" label="Cumplimiento BPM hoy"
-          value={pctCumple+'%'}
-          sub={`${cumpleHoy}/${modules.length} módulos`}
-          color={pctCumple>=80?C.acc:pctCumple>=50?C.warn:C.danger}
-        />
-        <StatCard icon="💸" label="Gastos hoy"
-          value={fmt(gastosHoy)}
-          sub={'Semana: '+fmt(gastosSemana)}
-          color={C.green} onClick={()=>navigate('/gastos')}
-        />
-        <StatCard icon="📋" label="Registros BPM"
-          value={totalBpm}
-          sub="AL+TL+DT+BAS+ROD" color={C.green}
-        />
-        <StatCard icon="🙌" label="Accesos hoy"
-          value={hoy(alC.data)}
-          alert={hoy(alC.data)===0}
-          onClick={()=>navigate('/bpm/al')}
-        />
-        <StatCard icon="🏪" label="Walmart pendientes"
-          value={walmartPendientes.length}
-          sub="pedidos activos"
-          color={walmartPendientes.length>0?C.warn:C.acc}
-          badge={walmartPendientes.length}
-          onClick={()=>navigate('/walmart')}
-        />
-        <StatCard icon="🏛️" label="Concursos urgentes"
-          value={gcUrgentes.length}
-          sub="cierran en ≤7 días"
-          color={gcUrgentes.length>0?C.danger:C.acc}
-          badge={gcUrgentes.length}
-          onClick={()=>navigate('/guatecompras')}
-        />
-      </div>
+      {wmPending.length > 0 && (
+        <div style={{ background:'#fff', borderRadius:8, boxShadow:'0 1px 3px rgba(0,0,0,.10)', padding:20, marginBottom:20 }}>
+          <div style={{ fontWeight:700, color:T.primary, marginBottom:12 }}>Pedidos Walmart — Pendientes</div>
+          <div style={{ overflowX:'auto' }}>
+            <table style={{ width:'100%', borderCollapse:'collapse' }}>
+              <thead><tr style={{ background:T.primary }}>
+                {['Fecha Entrega','Descripción','Total'].map(h=>(
+                  <th key={h} style={{ padding:'9px 12px', textAlign:'left', color:'#fff', fontSize:'.72rem', fontWeight:600, textTransform:'uppercase' }}>{h}</th>
+                ))}
+              </tr></thead>
+              <tbody>
+                {wmPending.slice(0,5).map((r,i)=>(
+                  <tr key={r.id} style={{ background:i%2===0?'#fff':'#F9FBF9', borderBottom:'1px solid #F0F0F0' }}>
+                    <td style={{ padding:'9px 12px', fontWeight:600 }}>{r.fechaEntrega||'—'}</td>
+                    <td style={{ padding:'9px 12px', color:T.textMid }}>{r.descripcion||r.productos||'—'}</td>
+                    <td style={{ padding:'9px 12px', fontWeight:700, color:T.secondary }}>{r.total?fmt(r.total):'—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
-      {/* Concursos urgentes detalle */}
-      {gcUrgentes.length>0&&(
-        <div style={{background:'rgba(192,57,43,.07)',border:`1px solid rgba(192,57,43,.25)`,borderRadius:8,padding:'12px 16px',marginBottom:16}}>
-          <div style={{fontWeight:700,fontSize:'.82rem',color:C.danger,marginBottom:8}}>⚠ Concursos por cerrar</div>
-          {gcUrgentes.slice(0,3).map(c=>(
-            <div key={c.id} style={{fontSize:'.8rem',color:'#555',marginBottom:4,display:'flex',justifyContent:'space-between'}}>
-              <span>{c.nom||c.id}</span>
-              <span style={{fontWeight:700,color:diasHasta(c.fechaCierre)<=2?C.danger:C.warn}}>
-                {diasHasta(c.fechaCierre)===0?'Hoy':diasHasta(c.fechaCierre)===1?'Mañana':`${diasHasta(c.fechaCierre)} días`}
+      {gcUrgent.length > 0 && (
+        <div style={{ background:'#fff', borderRadius:8, boxShadow:'0 1px 3px rgba(0,0,0,.10)', padding:20 }}>
+          <div style={{ fontWeight:700, color:T.primary, marginBottom:12 }}>Guatecompras — Próximos a vencer</div>
+          {gcUrgent.slice(0,5).map((r,i)=>(
+            <div key={r.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'9px 0', borderBottom:i<gcUrgent.length-1?'1px solid #F0F0F0':'none' }}>
+              <span style={{ fontSize:'.83rem' }}>{r.nombre||r.descripcion||r.id}</span>
+              <span style={{ background:'#FFEBEE', color:T.danger, padding:'3px 10px', borderRadius:100, fontSize:'.72rem', fontWeight:600 }}>
+                Cierra {r.fechaCierre}
               </span>
             </div>
           ))}
         </div>
       )}
-
-      {/* Estado módulos BPM */}
-      <div style={{fontSize:'.7rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'.1em',color:'#6B8070',marginBottom:8}}>
-        Estado módulos BPM — {t}
-      </div>
-      <div style={{display:'flex',flexDirection:'column',gap:8}}>
-        {modules.map(m=>(
-          <ModuleRow key={m.to} {...m} hoyCount={hoy(m.data)} total={m.data.length} navigate={navigate}/>
-        ))}
-      </div>
     </div>
   );
 }

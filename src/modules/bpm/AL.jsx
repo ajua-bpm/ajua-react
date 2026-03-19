@@ -1,274 +1,311 @@
 import { useState } from 'react';
+import { useEmpleados } from '../../hooks/useMainData';
 import { useCollection, useWrite } from '../../hooks/useFirestore';
-import LoadingSpinner from '../../components/LoadingSpinner';
 import { useToast } from '../../components/Toast';
+import Skeleton from '../../components/Skeleton';
 
-const C = { green: '#1A3D28', acc: '#4A9E6A', cream: '#F5F0E4', sand: '#E8DCC8', danger: '#c0392b', bg: '#F9F6EF' };
+// ─── Design tokens ───────────────────────────────────────────────────────────
+const T = {
+  primary: '#1B5E20', secondary: '#2E7D32', accent: '#43A047',
+  white: '#FFFFFF', bgLight: '#F5F5F5', bgCard: '#FFFFFF',
+  border: '#E0E0E0', textDark: '#212121', textMid: '#616161',
+  danger: '#C62828', warn: '#E65100',
+};
 
-const LAVADOS = ['10:00', '12:00', '14:00', '16:00'];
+const HORAS = ['10:00', '12:00', '14:00', '16:00'];
 const today = () => new Date().toISOString().slice(0, 10);
 
-function Badge({ ok }) {
+// ─── Shared helpers ───────────────────────────────────────────────────────────
+const inp = (val, onChange, type = 'text', extra = {}) => (
+  <input type={type} value={val} onChange={e => onChange(e.target.value)}
+    style={{
+      padding: '9px 12px', border: '1.5px solid #E0E0E0', borderRadius: 6,
+      fontSize: '.88rem', outline: 'none', width: '100%', fontFamily: 'inherit', ...extra,
+    }} />
+);
+
+const sel = (val, onChange, opts) => (
+  <select value={val} onChange={e => onChange(e.target.value)}
+    style={{
+      padding: '9px 12px', border: '1.5px solid #E0E0E0', borderRadius: 6,
+      fontSize: '.88rem', outline: 'none', width: '100%', fontFamily: 'inherit',
+      background: '#fff', cursor: 'pointer',
+    }}>
+    {opts}
+  </select>
+);
+
+// ─── Badge ────────────────────────────────────────────────────────────────────
+const Badge = ({ type }) => {
+  const M = {
+    cumple:    { bg: '#E8F5E9', c: '#2E7D32', l: '✓ Cumple' },
+    no_cumple: { bg: '#FFEBEE', c: '#C62828', l: '✗ No cumple' },
+    ok:        { bg: '#E8F5E9', c: '#2E7D32', l: '✓ OK' },
+    novedad:   { bg: '#FFEBEE', c: '#C62828', l: '⚠ Novedad' },
+  };
+  const m = M[type] || { bg: '#F5F5F5', c: '#616161', l: type };
   return (
     <span style={{
-      display: 'inline-block', padding: '2px 8px', borderRadius: 100,
-      fontSize: '.65rem', fontWeight: 700,
-      background: ok ? 'rgba(74,158,106,.15)' : 'rgba(192,57,43,.12)',
-      color: ok ? C.acc : C.danger,
-    }}>
-      {ok ? '✓ OK' : '✗ No'}
-    </span>
+      padding: '3px 10px', borderRadius: 100, fontSize: '.7rem',
+      fontWeight: 600, background: m.bg, color: m.c,
+    }}>{m.l}</span>
   );
-}
+};
 
+// ─── Label wrapper ────────────────────────────────────────────────────────────
+const Lbl = ({ text, children }) => (
+  <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+    <span style={{
+      fontSize: '.7rem', fontWeight: 700, textTransform: 'uppercase',
+      letterSpacing: '.07em', color: T.secondary,
+    }}>{text}</span>
+    {children}
+  </label>
+);
+
+// ─── Section card ─────────────────────────────────────────────────────────────
+const Card = ({ children, style = {} }) => (
+  <div style={{
+    background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 10,
+    padding: 24, marginBottom: 20, ...style,
+  }}>
+    {children}
+  </div>
+);
+
+const SectionTitle = ({ children }) => (
+  <div style={{
+    fontSize: '.8rem', fontWeight: 700, textTransform: 'uppercase',
+    letterSpacing: '.08em', color: T.secondary, marginBottom: 16,
+    paddingBottom: 10, borderBottom: `1px solid ${T.border}`,
+  }}>{children}</div>
+);
+
+// ─── Init checks per employee ─────────────────────────────────────────────────
+const initChecks = (empleados) =>
+  empleados.map(e => ({
+    empleadoId: e.id,
+    empleado: e.nombre,
+    horas: { '10:00': false, '12:00': false, '14:00': false, '16:00': false },
+  }));
+
+// ─── Main component ───────────────────────────────────────────────────────────
 export default function AL() {
   const toast = useToast();
-  const { data: registros, loading, error } = useCollection('al', { orderField: 'fecha', orderDir: 'desc', limit: 300 });
-  const { data: empList } = useCollection('empleados', { orderField: 'nombre', limit: 200 });
+  const { empleados, loading: empLoading } = useEmpleados();
+  const { data: registros, loading: histLoading } = useCollection('al', { orderField: 'fecha', orderDir: 'desc', limit: 300 });
   const { add, saving } = useWrite('al');
 
-  const [semanaFiltro, setSemanaFiltro] = useState('');
-  const [form, setForm] = useState({
-    fecha: today(),
-    turno: 'mañana',
-    empleados: [{ nombre: '', lavados: LAVADOS.map(h => ({ hora: h, cumplido: false })) }],
-    obs: '',
-  });
+  const [form, setForm] = useState({ fecha: today(), responsable: '' });
+  const [checks, setChecks] = useState([]);
+  const [obs, setObs] = useState('');
+  const [initialized, setInitialized] = useState(false);
 
-  // Calcular lunes de la semana de una fecha
-  const getLunes = (f) => {
-    const d = new Date(f + 'T00:00:00');
-    const day = d.getDay();
-    d.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
-    return d.toISOString().slice(0, 10);
-  };
+  // Initialize matrix when empleados load
+  if (!empLoading && empleados.length > 0 && !initialized) {
+    setChecks(initChecks(empleados));
+    setInitialized(true);
+  }
 
-  const semanas = [...new Set((registros || []).map(r => getLunes(r.fecha || today())))].sort().reverse().slice(0, 8);
-
-  const filtrados = semanaFiltro
-    ? (registros || []).filter(r => getLunes(r.fecha || today()) === semanaFiltro)
-    : (registros || []).slice(0, 50);
-
-  const addEmpleado = () => {
-    setForm(f => ({
-      ...f,
-      empleados: [...f.empleados, { nombre: '', lavados: LAVADOS.map(h => ({ hora: h, cumplido: false })) }],
-    }));
-  };
-
-  const removeEmpleado = (i) => {
-    setForm(f => ({ ...f, empleados: f.empleados.filter((_, idx) => idx !== i) }));
-  };
-
-  const toggleLavado = (empIdx, horaIdx) => {
-    setForm(f => {
-      const emps = f.empleados.map((e, ei) => {
-        if (ei !== empIdx) return e;
-        return { ...e, lavados: e.lavados.map((l, li) => li === horaIdx ? { ...l, cumplido: !l.cumplido } : l) };
-      });
-      return { ...f, empleados: emps };
-    });
+  const toggleCell = (empIdx, hora) => {
+    setChecks(prev => prev.map((row, i) =>
+      i !== empIdx ? row : { ...row, horas: { ...row.horas, [hora]: !row.horas[hora] } }
+    ));
   };
 
   const handleSave = async () => {
-    if (!form.fecha) { toast('⚠ Ingresá la fecha', 'error'); return; }
-    if (form.empleados.some(e => !e.nombre.trim())) { toast('⚠ Ingresá el nombre de todos los empleados', 'error'); return; }
+    if (!form.fecha) { toast('Ingresá la fecha', 'error'); return; }
+    if (!form.responsable) { toast('Seleccioná el responsable', 'error'); return; }
+    if (checks.length === 0) { toast('No hay empleados en la matriz', 'error'); return; }
 
-    const totalLavados = form.empleados.reduce((s, e) => s + e.lavados.filter(l => l.cumplido).length, 0);
-    const totalPosible = form.empleados.length * LAVADOS.length;
-    const pct = Math.round(totalLavados / totalPosible * 100);
+    const totalPosible = checks.length * HORAS.length;
+    const totalOk = checks.reduce((s, row) => s + HORAS.filter(h => row.horas[h]).length, 0);
+    const pct = totalPosible > 0 ? Math.round(totalOk / totalPosible * 100) : 0;
+    const resultado = pct >= 80 ? 'cumple' : 'no_cumple';
 
     try {
       await add({
         fecha: form.fecha,
-        turno: form.turno,
-        empleados: form.empleados,
-        obs: form.obs,
-        totalLavados, totalPosible, pct,
+        responsable: form.responsable,
+        checks,
+        obs,
+        totalOk,
+        totalPosible,
+        pct,
+        resultado,
       });
-      toast('✓ Registro de acceso guardado');
-      setForm(f => ({
-        ...f,
-        empleados: [{ nombre: '', lavados: LAVADOS.map(h => ({ hora: h, cumplido: false })) }],
-        obs: '',
-      }));
+      toast('Registro AL guardado correctamente');
+      setChecks(initChecks(empleados));
+      setObs('');
     } catch (e) {
       toast('Error al guardar: ' + e.message, 'error');
     }
   };
 
-  if (loading) return <LoadingSpinner text="Cargando registros de acceso..." />;
-  if (error) return <div style={{ color: C.danger, padding: 24 }}>Error: {error}</div>;
-
+  // ─── Render ───────────────────────────────────────────────────────────────
   return (
-    <div>
-      {/* Header */}
+    <div style={{ fontFamily: 'Inter, sans-serif', color: T.textDark, maxWidth: 960, margin: '0 auto' }}>
+
+      {/* Page header */}
       <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: '1.4rem', fontWeight: 800, color: C.green }}>🙌 Acceso y Lavado de Manos</h1>
-        <p style={{ fontSize: '.82rem', color: '#6B8070', marginTop: 4 }}>
-          Registro diario de lavado de manos por empleado · {LAVADOS.join(' · ')}
+        <h1 style={{ fontSize: '1.35rem', fontWeight: 800, color: T.primary, margin: 0 }}>
+          Acceso y Lavado de Manos
+        </h1>
+        <p style={{ fontSize: '.82rem', color: T.textMid, marginTop: 4, marginBottom: 0 }}>
+          Registro diario de lavado de manos por empleado · {HORAS.join(' · ')}
         </p>
       </div>
 
-      {/* Formulario nuevo registro */}
-      <div style={{ background: '#fff', border: `1px solid ${C.sand}`, borderRadius: 8, padding: 20, marginBottom: 24 }}>
-        <div style={{ fontWeight: 700, fontSize: '.88rem', color: C.green, marginBottom: 16, paddingBottom: 10, borderBottom: `1px solid ${C.sand}` }}>
-          Nuevo Registro
+      {/* ── Form ── */}
+      <Card>
+        <SectionTitle>Nuevo Registro</SectionTitle>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 20 }}>
+          <Lbl text="Fecha">{inp(form.fecha, v => setForm(f => ({ ...f, fecha: v })), 'date')}</Lbl>
+          <Lbl text="Responsable">
+            {empLoading
+              ? <Skeleton height={38} />
+              : sel(form.responsable, v => setForm(f => ({ ...f, responsable: v })),
+                  <>
+                    <option value="">— Seleccionar —</option>
+                    {empleados.map(e => <option key={e.id} value={e.nombre}>{e.nombre}{e.cargo ? ' · ' + e.cargo : ''}</option>)}
+                  </>
+                )
+            }
+          </Lbl>
         </div>
 
-        {/* Fecha + turno */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
-          <label style={labelStyle}>
-            Fecha
-            <input type="date" value={form.fecha} onChange={e => setForm(f => ({ ...f, fecha: e.target.value }))}
-              style={inputStyle} />
-          </label>
-          <label style={labelStyle}>
-            Turno
-            <select value={form.turno} onChange={e => setForm(f => ({ ...f, turno: e.target.value }))} style={inputStyle}>
-              <option value="mañana">Mañana</option>
-              <option value="tarde">Tarde</option>
-              <option value="noche">Noche</option>
-            </select>
-          </label>
-        </div>
-
-        {/* Empleados */}
-        <div style={{ marginBottom: 16 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-            <span style={{ fontSize: '.78rem', fontWeight: 700, color: '#6B8070', textTransform: 'uppercase', letterSpacing: '.06em' }}>Empleados</span>
-            <button onClick={addEmpleado} style={{ ...btnSmall, background: C.green, color: '#fff' }}>+ Agregar empleado</button>
+        {/* Check matrix */}
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: '.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: T.secondary, marginBottom: 10 }}>
+            Matriz de Lavados
           </div>
 
-          {form.empleados.map((emp, ei) => (
-            <div key={ei} style={{ background: C.bg, border: `1px solid ${C.sand}`, borderRadius: 6, padding: 14, marginBottom: 10 }}>
-              <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 12 }}>
-                <select
-                  value={emp.nombre}
-                  onChange={e => {
-                    const emps = [...form.empleados];
-                    emps[ei] = { ...emps[ei], nombre: e.target.value };
-                    setForm(f => ({ ...f, empleados: emps }));
-                  }}
-                  style={{ ...inputStyle, flex: 1 }}
-                >
-                  <option value="">— Seleccionar empleado —</option>
-                  {(empList||[]).filter(e=>e.activo!==false).map(e=>(
-                    <option key={e.id} value={e.nombre}>{e.nombre}{e.cargo?' · '+e.cargo:''}</option>
+          {empLoading ? (
+            <Skeleton height={120} />
+          ) : checks.length === 0 ? (
+            <p style={{ fontSize: '.83rem', color: T.textMid }}>Sin empleados activos.</p>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ background: T.primary }}>
+                    <th style={{ padding: '10px 14px', textAlign: 'left', color: T.white, fontSize: '.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', minWidth: 160 }}>
+                      Empleado
+                    </th>
+                    {HORAS.map(h => (
+                      <th key={h} style={{ padding: '10px 14px', textAlign: 'center', color: T.white, fontSize: '.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em' }}>
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {checks.map((row, ei) => (
+                    <tr key={row.empleadoId} style={{ background: ei % 2 === 0 ? T.white : '#F9FBF9' }}>
+                      <td style={{ padding: '9px 14px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0', fontWeight: 500 }}>
+                        {row.empleado}
+                      </td>
+                      {HORAS.map(h => {
+                        const checked = row.horas[h];
+                        return (
+                          <td key={h} style={{ padding: '9px 14px', textAlign: 'center', borderBottom: '1px solid #F0F0F0' }}>
+                            <button
+                              onClick={() => toggleCell(ei, h)}
+                              style={{
+                                width: 34, height: 34, borderRadius: 6, border: 'none',
+                                cursor: 'pointer', fontWeight: 700, fontSize: '.85rem',
+                                background: checked ? T.accent : '#E0E0E0',
+                                color: checked ? T.white : '#9E9E9E',
+                                transition: 'all .15s',
+                              }}
+                              title={checked ? 'Marcar como pendiente' : 'Marcar como cumplido'}
+                            >
+                              {checked ? '✓' : '·'}
+                            </button>
+                          </td>
+                        );
+                      })}
+                    </tr>
                   ))}
-                </select>
-                {form.empleados.length > 1 && (
-                  <button onClick={() => removeEmpleado(ei)} style={{ ...btnSmall, borderColor: C.danger, color: C.danger }}>✕</button>
-                )}
-              </div>
-
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {emp.lavados.map((lav, li) => (
-                  <button
-                    key={lav.hora}
-                    onClick={() => toggleLavado(ei, li)}
-                    style={{
-                      padding: '7px 14px', borderRadius: 4, fontSize: '.78rem', fontWeight: 600,
-                      cursor: 'pointer', border: '1.5px solid',
-                      background: lav.cumplido ? C.acc : '#fff',
-                      borderColor: lav.cumplido ? C.acc : C.sand,
-                      color: lav.cumplido ? '#fff' : '#6B8070',
-                      transition: 'all .15s',
-                    }}
-                  >
-                    {lav.hora} {lav.cumplido ? '✓' : ''}
-                  </button>
-                ))}
-              </div>
+                </tbody>
+              </table>
             </div>
-          ))}
+          )}
         </div>
 
-        {/* Observaciones */}
-        <label style={labelStyle}>
-          Observaciones
+        <Lbl text="Observaciones">
           <textarea
-            value={form.obs}
-            onChange={e => setForm(f => ({ ...f, obs: e.target.value }))}
+            value={obs}
+            onChange={e => setObs(e.target.value)}
             placeholder="Novedades, ausencias, incidentes..."
-            rows={2}
-            style={{ ...inputStyle, resize: 'vertical' }}
+            rows={3}
+            style={{
+              padding: '9px 12px', border: '1.5px solid #E0E0E0', borderRadius: 6,
+              fontSize: '.88rem', outline: 'none', width: '100%', fontFamily: 'inherit',
+              resize: 'vertical', boxSizing: 'border-box',
+            }}
           />
-        </label>
+        </Lbl>
 
-        <button onClick={handleSave} disabled={saving} style={{
-          marginTop: 16, padding: '12px 28px', background: saving ? '#ccc' : C.green,
-          color: '#fff', border: 'none', borderRadius: 6, fontWeight: 700,
-          fontSize: '.88rem', cursor: saving ? 'not-allowed' : 'pointer',
-        }}>
-          {saving ? 'Guardando...' : 'Guardar Registro'}
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          style={{
+            marginTop: 16, padding: '11px 28px',
+            background: saving ? '#BDBDBD' : T.primary,
+            color: T.white, border: 'none', borderRadius: 6,
+            fontWeight: 700, fontSize: '.88rem',
+            cursor: saving ? 'not-allowed' : 'pointer',
+            fontFamily: 'inherit',
+          }}
+        >
+          {saving ? 'Guardando...' : 'Guardar Registro AL'}
         </button>
-      </div>
+      </Card>
 
-      {/* Historial */}
-      <div style={{ background: '#fff', border: `1px solid ${C.sand}`, borderRadius: 8, padding: 20 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
-          <span style={{ fontWeight: 700, fontSize: '.88rem', color: C.green }}>Historial ({(registros || []).length} registros)</span>
-          <select value={semanaFiltro} onChange={e => setSemanaFiltro(e.target.value)} style={{ ...inputStyle, width: 'auto' }}>
-            <option value="">Últimos 50 registros</option>
-            {semanas.map(s => <option key={s} value={s}>Semana del {s}</option>)}
-          </select>
-        </div>
+      {/* ── History ── */}
+      <Card>
+        <SectionTitle>Historial ({(registros || []).length} registros)</SectionTitle>
 
-        {filtrados.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 40, color: '#6B8070' }}>Sin registros en este período</div>
+        {histLoading ? (
+          <Skeleton height={200} />
+        ) : (registros || []).length === 0 ? (
+          <p style={{ textAlign: 'center', padding: 32, color: T.textMid, fontSize: '.85rem' }}>Sin registros aún.</p>
         ) : (
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.8rem' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
-                <tr style={{ background: C.bg }}>
-                  {['Fecha', 'Turno', 'Empleados', ...LAVADOS, 'Cumpl.%', 'Obs.'].map(h => (
-                    <th key={h} style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 700, color: '#6B8070', borderBottom: `1px solid ${C.sand}`, whiteSpace: 'nowrap' }}>{h}</th>
+                <tr style={{ background: T.primary }}>
+                  {['Fecha', 'Responsable', 'Empleados OK', 'Total', '%', 'Resultado'].map(h => (
+                    <th key={h} style={{
+                      padding: '10px 14px', textAlign: 'left', color: T.white,
+                      fontSize: '.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em',
+                    }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {filtrados.map(r => {
-                  const emps = r.empleados || [];
-                  const countLav = (hora) => emps.filter(e => (e.lavados || []).find(l => l.hora === hora && l.cumplido)).length;
-                  return (
-                    <tr key={r.id} style={{ borderBottom: `1px solid ${C.sand}` }}>
-                      <td style={{ padding: '8px 10px', fontWeight: 600 }}>{r.fecha}</td>
-                      <td style={{ padding: '8px 10px', color: '#6B8070' }}>{r.turno || '—'}</td>
-                      <td style={{ padding: '8px 10px' }}>{emps.length}</td>
-                      {LAVADOS.map(h => (
-                        <td key={h} style={{ padding: '8px 10px', textAlign: 'center' }}>
-                          {emps.length > 0 ? <Badge ok={countLav(h) === emps.length} /> : '—'}
-                        </td>
-                      ))}
-                      <td style={{ padding: '8px 10px', fontWeight: 700, color: (r.pct || 0) >= 80 ? C.acc : C.danger }}>
-                        {r.pct || 0}%
-                      </td>
-                      <td style={{ padding: '8px 10px', color: '#6B8070', fontSize: '.72rem', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {r.obs || '—'}
-                      </td>
-                    </tr>
-                  );
-                })}
+                {(registros || []).slice(0, 100).map((r, i) => (
+                  <tr key={r.id} style={{ background: i % 2 === 0 ? T.white : '#F9FBF9' }}>
+                    <td style={{ padding: '9px 14px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0', fontWeight: 600 }}>{r.fecha}</td>
+                    <td style={{ padding: '9px 14px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0' }}>{r.responsable || '—'}</td>
+                    <td style={{ padding: '9px 14px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0', textAlign: 'center' }}>{r.totalOk ?? '—'}</td>
+                    <td style={{ padding: '9px 14px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0', textAlign: 'center' }}>{r.totalPosible ?? '—'}</td>
+                    <td style={{
+                      padding: '9px 14px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0',
+                      fontWeight: 700, color: (r.pct || 0) >= 80 ? T.accent : T.danger,
+                    }}>{r.pct ?? 0}%</td>
+                    <td style={{ padding: '9px 14px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0' }}>
+                      <Badge type={r.resultado || 'no_cumple'} />
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
         )}
-      </div>
+      </Card>
     </div>
   );
 }
-
-const labelStyle = {
-  display: 'flex', flexDirection: 'column', gap: 4,
-  fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase',
-  letterSpacing: '.06em', color: '#4A9E6A', marginBottom: 12,
-};
-const inputStyle = {
-  padding: '9px 12px', border: '1.5px solid #E8DCC8', borderRadius: 4,
-  fontSize: '.88rem', outline: 'none', fontFamily: 'inherit', width: '100%',
-};
-const btnSmall = {
-  padding: '5px 12px', borderRadius: 4, border: '1.5px solid #E8DCC8',
-  background: '#fff', fontSize: '.75rem', fontWeight: 600, cursor: 'pointer',
-};

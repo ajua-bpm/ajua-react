@@ -1,15 +1,34 @@
-const C = { green:'#1A3D28', sand:'#E8DCC8' };
+// ─── Design tokens ───────────────────────────────────────────────────────────
+const T = {
+  primary:  '#1B5E20',
+  border:   '#E0E0E0',
+  textMid:  '#616161',
+};
+const card = {
+  background: '#fff', borderRadius: 8,
+  boxShadow: '0 1px 3px rgba(0,0,0,.10)', padding: 0,
+  overflow: 'hidden',
+};
 
 export default function Croquis() {
   return (
-    <div>
-      <h1 style={{fontSize:'1.4rem',fontWeight:800,color:C.green,marginBottom:4}}>🗺️ Croquis de Bodega</h1>
-      <p style={{fontSize:'.82rem',color:'#6B8070',marginBottom:16}}>Distribución y plano de la bodega</p>
-      <div style={{border:`1px solid ${C.sand}`,borderRadius:8,overflow:'hidden',background:'#fff'}}>
+    <div style={{ maxWidth: 1100 }}>
+      {/* Header */}
+      <div style={{ marginBottom: 20 }}>
+        <h1 style={{ fontSize: '1.35rem', fontWeight: 700, color: T.primary, margin: 0 }}>
+          Croquis de Bodega
+        </h1>
+        <p style={{ fontSize: '.82rem', color: T.textMid, margin: '4px 0 0' }}>
+          Distribución, zonas y plano interno de la bodega — Agroindustria Ajúa
+        </p>
+      </div>
+
+      {/* Frame */}
+      <div style={{ ...card, border: `1px solid ${T.border}` }}>
         <iframe
           src="https://agroajua.com/croquis_bodega.html"
-          title="Croquis Bodega"
-          style={{width:'100%',height:'80vh',border:'none',display:'block'}}
+          title="Croquis Bodega Ajúa"
+          style={{ width: '100%', height: '80vh', border: 'none', display: 'block' }}
         />
       </div>
     </div>

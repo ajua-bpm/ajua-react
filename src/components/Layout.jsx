@@ -16,7 +16,7 @@ const NAV = [
   { to: '/bpm/vyp',                icon: '🔍', label: 'Vidrio y Plástico' },
   { to: '/bpm/fumigacion',         icon: '🧪', label: 'Fumigación' },
   { to: '/bpm/croquis',            icon: '🗺️', label: 'Croquis Bodega' },
-  { section: 'BPM · Personal' },
+  { section: 'BPM · Higiene' },
   { to: '/bpm/lavado-prod',        icon: '💧', label: 'Lavado Producto' },
   { to: '/bpm/capacitacion',       icon: '🎓', label: 'Capacitación' },
   { to: '/bpm/enfermos',           icon: '🏥', label: 'Empleados Enfermos' },
@@ -44,117 +44,128 @@ const NAV = [
   { to: '/admin',                  icon: '⚙️', label: 'Administración' },
 ];
 
-const C = {
-  green: '#1A3D28', light: '#2D6645', acc: '#4A9E6A',
-  cream: '#F5F0E4', bg: '#F9F6EF', sand: '#E8DCC8',
-};
-
 export default function Layout() {
-  const [navOpen, setNavOpen] = useState(false);
-  const { user, logout }      = useAuth();
-  const navigate              = useNavigate();
+  const [open, setOpen] = useState(false);
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
 
   const handleLogout = () => { logout(); navigate('/login'); };
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: C.bg, fontFamily: "'Segoe UI', sans-serif" }}>
+    <div style={{ display: 'flex', minHeight: '100vh', background: '#F5F5F5', fontFamily: "'Inter', system-ui, sans-serif" }}>
+
       {/* Overlay mobile */}
-      {navOpen && (
-        <div onClick={() => setNavOpen(false)} style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', zIndex: 40,
-          display: 'none', // solo visible en mobile via media query
+      {open && (
+        <div onClick={() => setOpen(false)} style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)',
+          zIndex: 40, display: 'block',
         }} />
       )}
 
       {/* Sidebar */}
-      <nav className={navOpen ? 'open' : ''} style={{
-        width: 220, background: C.green, color: C.cream,
+      <nav className={`sidebar${open ? ' open' : ''}`} style={{
+        width: 240, background: '#1B5E20', color: '#fff',
         flexShrink: 0, display: 'flex', flexDirection: 'column',
         position: 'fixed', top: 0, left: 0, bottom: 0, zIndex: 50,
-        overflowY: 'auto', transition: 'transform .25s',
+        overflowY: 'auto', transition: 'transform .24s cubic-bezier(.4,0,.2,1)',
+        boxShadow: '2px 0 8px rgba(0,0,0,.18)',
       }}>
-        {/* Logo */}
-        <div style={{ padding: '18px 16px 10px', borderBottom: '1px solid rgba(255,255,255,.1)' }}>
-          <div style={{ fontWeight: 800, fontSize: '1.1rem', letterSpacing: '.02em' }}>🌿 AJÚA BPM</div>
-          {user && <div style={{ fontSize: '.68rem', opacity: .6, marginTop: 4 }}>{user.nombre} · {user.rol}</div>}
+        {/* Brand */}
+        <div style={{ padding: '20px 18px 14px', borderBottom: '1px solid rgba(255,255,255,.12)' }}>
+          <div style={{ fontWeight: 800, fontSize: '1.05rem', letterSpacing: '.01em', color: '#fff' }}>
+            🌿 AJÚA BPM
+          </div>
+          {user && (
+            <div style={{ marginTop: 6, fontSize: '.72rem', color: 'rgba(255,255,255,.6)', lineHeight: 1.4 }}>
+              {user.nombre}<br/>
+              <span style={{ background: 'rgba(255,255,255,.15)', padding: '1px 7px', borderRadius: 10, fontSize: '.65rem', textTransform: 'uppercase', letterSpacing: '.06em' }}>
+                {user.rol}
+              </span>
+            </div>
+          )}
         </div>
 
-        {/* Links */}
-        <div style={{ flex: 1, padding: '8px 0' }}>
+        {/* Nav items */}
+        <div style={{ flex: 1, padding: '10px 0 16px' }}>
           {NAV.map((item, i) => {
             if (item.section) return (
-              <div key={i} style={{ padding: '14px 16px 4px', fontSize: '.6rem', fontWeight: 700, opacity: .45, letterSpacing: '.12em', textTransform: 'uppercase' }}>
+              <div key={i} style={{
+                padding: '14px 18px 4px',
+                fontSize: '.6rem', fontWeight: 700,
+                color: 'rgba(255,255,255,.4)',
+                letterSpacing: '.12em', textTransform: 'uppercase',
+              }}>
                 {item.section}
               </div>
             );
             return (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.end}
-                onClick={() => setNavOpen(false)}
+              <NavLink key={item.to} to={item.to} onClick={() => setOpen(false)}
                 style={({ isActive }) => ({
                   display: 'flex', alignItems: 'center', gap: 10,
-                  padding: '8px 16px', fontSize: '.82rem',
-                  color: isActive ? C.cream : 'rgba(245,240,228,.65)',
-                  background: isActive ? 'rgba(255,255,255,.12)' : 'transparent',
-                  textDecoration: 'none', borderRadius: 4, margin: '1px 6px',
-                  borderLeft: isActive ? '3px solid #8DC26F' : '3px solid transparent',
+                  padding: '7px 18px',
+                  margin: '1px 8px',
+                  borderRadius: 6,
+                  fontSize: '.83rem',
+                  color: isActive ? '#fff' : 'rgba(255,255,255,.65)',
+                  background: isActive ? 'rgba(255,255,255,.15)' : 'transparent',
+                  textDecoration: 'none',
+                  borderLeft: isActive ? '3px solid #81C784' : '3px solid transparent',
+                  fontWeight: isActive ? 600 : 400,
                   transition: 'all .15s',
-                })}
-              >
-                <span>{item.icon}</span>
+                })}>
+                <span style={{ fontSize: '.9rem' }}>{item.icon}</span>
                 <span>{item.label}</span>
               </NavLink>
             );
           })}
         </div>
 
-        {/* Footer */}
-        <div style={{ padding: 12, borderTop: '1px solid rgba(255,255,255,.1)' }}>
+        {/* Logout */}
+        <div style={{ padding: '12px 16px', borderTop: '1px solid rgba(255,255,255,.12)' }}>
           <button onClick={handleLogout} style={{
-            width: '100%', padding: '8px 12px', borderRadius: 4,
-            background: 'rgba(255,255,255,.08)', border: 'none',
-            color: 'rgba(245,240,228,.7)', fontSize: '.78rem', cursor: 'pointer',
+            width: '100%', padding: '9px 12px', borderRadius: 6,
+            background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.15)',
+            color: 'rgba(255,255,255,.75)', fontSize: '.8rem', cursor: 'pointer',
+            fontFamily: 'inherit', fontWeight: 500, letterSpacing: '.02em',
           }}>
             Cerrar sesión
           </button>
         </div>
       </nav>
 
-      {/* Main content */}
-      <div style={{ marginLeft: 220, flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-        {/* Header mobile */}
+      {/* Main area */}
+      <div className="main-wrapper" style={{ marginLeft: 240, flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+
+        {/* Top bar */}
         <header style={{
-          background: C.green, color: C.cream,
+          background: '#1B5E20',
           display: 'flex', alignItems: 'center', gap: 12,
-          padding: '12px 20px', position: 'sticky', top: 0, zIndex: 30,
+          padding: '0 20px', height: 56,
+          position: 'sticky', top: 0, zIndex: 30,
           boxShadow: '0 2px 8px rgba(0,0,0,.2)',
         }}>
-          <button onClick={() => setNavOpen(!navOpen)} style={{
-            background: 'none', border: 'none', color: C.cream,
-            fontSize: '1.3rem', cursor: 'pointer', display: 'none', // visible via CSS en mobile
+          <button className="hamburger" onClick={() => setOpen(o => !o)} style={{
+            background: 'none', border: 'none', color: '#fff',
+            fontSize: '1.25rem', cursor: 'pointer', display: 'none',
+            padding: '4px 6px', borderRadius: 4,
           }}>☰</button>
-          <span style={{ fontWeight: 700, fontSize: '.9rem', letterSpacing: '.04em' }}>AJÚA BPM</span>
-          <span style={{ marginLeft: 'auto', fontSize: '.7rem', opacity: .55 }}>
-            {new Date().toLocaleDateString('es-GT', { weekday:'short', day:'2-digit', month:'short' })}
+          <span style={{ fontWeight: 700, fontSize: '.92rem', color: '#fff', letterSpacing: '.03em' }}>
+            AJÚA BPM
+          </span>
+          <span style={{ marginLeft: 'auto', fontSize: '.72rem', color: 'rgba(255,255,255,.55)' }}>
+            {new Date().toLocaleDateString('es-GT', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
           </span>
         </header>
 
-        {/* Page content */}
-        <main style={{ flex: 1, padding: '24px 20px', maxWidth: 1100, width: '100%', margin: '0 auto' }}>
+        {/* Content */}
+        <main style={{
+          flex: 1, padding: '24px 24px 40px',
+          maxWidth: 1160, width: '100%', margin: '0 auto',
+          animation: 'fadeIn .2s ease',
+        }}>
           <Outlet />
         </main>
       </div>
-
-      <style>{`
-        @media (max-width: 768px) {
-          nav { transform: translateX(-100%) !important; }
-          nav.open { transform: translateX(0) !important; }
-          main > div { margin-left: 0 !important; }
-          header button { display: flex !important; }
-        }
-      `}</style>
     </div>
   );
 }

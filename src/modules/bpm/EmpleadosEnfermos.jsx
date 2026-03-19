@@ -1,145 +1,232 @@
 import { useState } from 'react';
 import { useCollection, useWrite } from '../../hooks/useFirestore';
-import LoadingSpinner from '../../components/LoadingSpinner';
+import { useEmpleados } from '../../hooks/useMainData';
 import { useToast } from '../../components/Toast';
+import Skeleton from '../../components/Skeleton';
 
-const C = { green:'#1A3D28',acc:'#4A9E6A',sand:'#E8DCC8',danger:'#c0392b',bg:'#F9F6EF' };
-const today = () => new Date().toISOString().slice(0,10);
+// ─── Design tokens ───────────────────────────────────────────────────────────
+const T = {
+  primary:   '#1B5E20',
+  secondary: '#2E7D32',
+  white:     '#FFFFFF',
+  border:    '#E0E0E0',
+  textDark:  '#212121',
+  textMid:   '#616161',
+  danger:    '#C62828',
+  warn:      '#E65100',
+  rowAlt:    '#F9FBF9',
+};
+const card = {
+  background: '#fff', borderRadius: 8,
+  boxShadow: '0 1px 3px rgba(0,0,0,.10)', padding: 20, marginBottom: 20,
+};
+const LBL = {
+  display: 'flex', flexDirection: 'column', gap: 4,
+  fontSize: '.75rem', fontWeight: 600, textTransform: 'uppercase',
+  letterSpacing: '.06em', color: T.textMid,
+};
+const INP = {
+  padding: '9px 12px', border: `1px solid ${T.border}`, borderRadius: 6,
+  fontSize: '.83rem', outline: 'none', fontFamily: 'inherit',
+  width: '100%', marginTop: 2, background: '#fff', color: T.textDark,
+};
+
+const today = () => new Date().toISOString().slice(0, 10);
 
 const SINTOMAS = [
-  'Fiebre','Gripe / Resfriado','Diarrea','Vómitos','Dolor abdominal',
-  'Tos','Herida en manos','Infección cutánea','COVID-19','Otro',
+  'Fiebre', 'Gripe', 'Diarrea', 'Vómito', 'Dolor abdominal',
+  'Tos', 'Herida manos', 'Infección cutánea', 'COVID', 'Otro',
 ];
+
+const INIT = () => ({
+  empleado: '', fecha: today(), sintoma: '', sintomaOtro: '',
+  diasFuera: '', fechaRegreso: '', estado: 'activo', obs: '',
+});
 
 export default function EmpleadosEnfermos() {
   const toast = useToast();
-  const { data, loading } = useCollection('ee', { orderField:'fecha', orderDir:'desc', limit:200 });
-  const { data: empList } = useCollection('empleados', { orderField:'nombre', limit:200 });
+  const { data, loading } = useCollection('ee', { orderField: 'fecha', orderDir: 'desc', limit: 200 });
+  const { empleados, loading: empLoading } = useEmpleados();
   const { add, update, saving } = useWrite('ee');
 
-  const [form, setForm] = useState({
-    empleado: '', fecha: today(), sintoma: '', sintomaOtro: '',
-    diasFuera: '', fechaRegreso: '', estado: 'activo', obs: '',
-  });
+  const [form, setForm] = useState(INIT());
 
   const handleSave = async () => {
     if (!form.empleado || !form.fecha || !form.sintoma) {
-      toast('⚠ Empleado, fecha y síntoma requeridos', 'error'); return;
+      toast('Empleado, fecha y síntoma son requeridos', 'error'); return;
     }
-    const sintomaFinal = form.sintoma === 'Otro' ? form.sintomaOtro : form.sintoma;
+    const sintomaFinal = form.sintoma === 'Otro' ? (form.sintomaOtro || 'Otro') : form.sintoma;
     await add({ ...form, sintoma: sintomaFinal });
-    toast('✓ Registro guardado');
-    setForm(f => ({ ...f, empleado:'', sintoma:'', sintomaOtro:'', diasFuera:'', fechaRegreso:'', estado:'activo', obs:'' }));
+    toast('Registro guardado');
+    setForm(INIT());
   };
 
   const marcarRegreso = async (r) => {
-    await update(r.id, { estado:'regresó', fechaRegresoReal: today() });
-    toast('✓ Empleado marcado como regresado');
+    await update(r.id, { estado: 'regresó', fechaRegresoReal: today() });
+    toast('Empleado marcado como regresado');
   };
 
-  if (loading) return <LoadingSpinner/>;
+  if (loading || empLoading) {
+    return (
+      <div>
+        <div style={{ height: 28, background: '#E8F5E9', borderRadius: 6, width: 260, marginBottom: 8 }} />
+        <div style={card}><Skeleton rows={5} /></div>
+      </div>
+    );
+  }
 
+  // All records with estado='activo' (currently out sick)
   const activos = data.filter(r => r.estado === 'activo');
 
   return (
-    <div>
-      <h1 style={{fontSize:'1.4rem',fontWeight:800,color:C.green,marginBottom:4}}>🏥 Empleados Enfermos</h1>
-      <p style={{fontSize:'.82rem',color:'#6B8070',marginBottom:24}}>Control de ausencias por enfermedad</p>
+    <div style={{ maxWidth: 900 }}>
+      {/* Header */}
+      <div style={{ marginBottom: 24 }}>
+        <h1 style={{ fontSize: '1.35rem', fontWeight: 700, color: T.primary, margin: 0 }}>
+          Empleados Enfermos
+        </h1>
+        <p style={{ fontSize: '.82rem', color: T.textMid, margin: '4px 0 0' }}>
+          Control de ausencias por enfermedad — personal en proceso
+        </p>
+      </div>
 
+      {/* ── Alert Banner ── */}
       {activos.length > 0 && (
-        <div style={{background:'rgba(192,57,43,.08)',border:`1.5px solid ${C.danger}`,borderRadius:8,padding:16,marginBottom:20}}>
-          <div style={{fontWeight:700,color:C.danger,marginBottom:8}}>⚠ Actualmente fuera ({activos.length})</div>
-          {activos.map(r=>(
-            <div key={r.id} style={{display:'flex',alignItems:'center',gap:12,padding:'8px 0',borderBottom:`1px solid rgba(192,57,43,.15)`}}>
-              <span style={{flex:1,fontWeight:600}}>{r.empleado}</span>
-              <span style={{fontSize:'.8rem',color:'#6B8070'}}>{r.sintoma} · desde {r.fecha}</span>
-              <button onClick={()=>marcarRegreso(r)} style={{padding:'4px 12px',background:C.acc,color:'#fff',border:'none',borderRadius:4,fontSize:'.75rem',fontWeight:700,cursor:'pointer'}}>
-                Regresó ✓
-              </button>
-            </div>
-          ))}
+        <div style={{
+          background: 'rgba(198,40,40,.06)', border: `1.5px solid ${T.danger}`,
+          borderRadius: 8, padding: '14px 18px', marginBottom: 20,
+        }}>
+          <div style={{ fontWeight: 700, color: T.danger, fontSize: '.88rem', marginBottom: 10 }}>
+            Personal actualmente fuera por enfermedad — {activos.length} registro{activos.length !== 1 ? 's' : ''}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+            {activos.map((r, i) => (
+              <div key={r.id} style={{
+                display: 'flex', alignItems: 'center', gap: 12, padding: '9px 0',
+                borderBottom: i < activos.length - 1 ? `1px solid rgba(198,40,40,.15)` : 'none',
+              }}>
+                <div style={{ flex: 1 }}>
+                  <span style={{ fontWeight: 700, fontSize: '.88rem', color: T.textDark }}>{r.empleado}</span>
+                  <span style={{ fontSize: '.78rem', color: T.textMid, marginLeft: 10 }}>
+                    {r.sintoma} · desde {r.fecha}
+                    {r.fechaRegreso && <span> · regreso est. {r.fechaRegreso}</span>}
+                  </span>
+                </div>
+                <button onClick={() => marcarRegreso(r)} style={{
+                  padding: '6px 14px', background: T.secondary, color: '#fff',
+                  border: 'none', borderRadius: 5, fontSize: '.75rem', fontWeight: 700,
+                  cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
+                }}>
+                  Regresar ✓
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
-      <div style={{background:'#fff',border:`1px solid ${C.sand}`,borderRadius:8,padding:20,marginBottom:20}}>
-        <div style={{fontWeight:700,color:C.green,marginBottom:16}}>Nuevo Registro</div>
-        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:12,marginBottom:16}}>
-          <label style={{display:'flex',flexDirection:'column',gap:4,fontSize:'.72rem',fontWeight:700,textTransform:'uppercase',color:C.acc,letterSpacing:'.06em'}}>
-            Empleado
-            <select value={form.empleado} onChange={e=>setForm(f=>({...f,empleado:e.target.value}))}
-              style={{padding:'9px 12px',border:`1.5px solid ${C.sand}`,borderRadius:4,fontSize:'.85rem',outline:'none'}}>
+      {/* ── Form ── */}
+      <div style={card}>
+        <div style={{ fontSize: '.78rem', fontWeight: 700, color: T.primary, textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 14, paddingBottom: 10, borderBottom: `1px solid ${T.border}` }}>
+          Nuevo Registro
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(155px,1fr))', gap: 12, marginBottom: 12 }}>
+          <label style={LBL}>
+            Empleado *
+            <select value={form.empleado} onChange={e => setForm(f => ({ ...f, empleado: e.target.value }))} style={INP}>
               <option value="">— Seleccionar —</option>
-              {(empList||[]).filter(e=>e.activo!==false).map(e=>(
-                <option key={e.id} value={e.nombre}>{e.nombre}</option>
-              ))}
+              {empleados.map(e => <option key={e.nombre} value={e.nombre}>{e.nombre}</option>)}
             </select>
           </label>
-          <label style={{display:'flex',flexDirection:'column',gap:4,fontSize:'.72rem',fontWeight:700,textTransform:'uppercase',color:C.acc,letterSpacing:'.06em'}}>
-            Fecha inicio
-            <input type="date" value={form.fecha} onChange={e=>setForm(f=>({...f,fecha:e.target.value}))}
-              style={{padding:'9px 12px',border:`1.5px solid ${C.sand}`,borderRadius:4,fontSize:'.85rem',outline:'none'}}/>
+          <label style={LBL}>
+            Fecha inicio *
+            <input type="date" value={form.fecha} onChange={e => setForm(f => ({ ...f, fecha: e.target.value }))} style={INP} />
           </label>
-          <label style={{display:'flex',flexDirection:'column',gap:4,fontSize:'.72rem',fontWeight:700,textTransform:'uppercase',color:C.acc,letterSpacing:'.06em'}}>
-            Síntoma
-            <select value={form.sintoma} onChange={e=>setForm(f=>({...f,sintoma:e.target.value}))}
-              style={{padding:'9px 12px',border:`1.5px solid ${C.sand}`,borderRadius:4,fontSize:'.85rem',outline:'none'}}>
+          <label style={LBL}>
+            Síntoma *
+            <select value={form.sintoma} onChange={e => setForm(f => ({ ...f, sintoma: e.target.value }))} style={INP}>
               <option value="">— Seleccionar —</option>
-              {SINTOMAS.map(s=><option key={s} value={s}>{s}</option>)}
+              {SINTOMAS.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </label>
-          {form.sintoma==='Otro' && (
-            <label style={{display:'flex',flexDirection:'column',gap:4,fontSize:'.72rem',fontWeight:700,textTransform:'uppercase',color:C.acc,letterSpacing:'.06em'}}>
+          {form.sintoma === 'Otro' && (
+            <label style={LBL}>
               Especificar
-              <input value={form.sintomaOtro} onChange={e=>setForm(f=>({...f,sintomaOtro:e.target.value}))}
-                style={{padding:'9px 12px',border:`1.5px solid ${C.sand}`,borderRadius:4,fontSize:'.85rem',outline:'none'}}/>
+              <input value={form.sintomaOtro} onChange={e => setForm(f => ({ ...f, sintomaOtro: e.target.value }))} placeholder="Describe el síntoma" style={INP} />
             </label>
           )}
-          <label style={{display:'flex',flexDirection:'column',gap:4,fontSize:'.72rem',fontWeight:700,textTransform:'uppercase',color:C.acc,letterSpacing:'.06em'}}>
+          <label style={LBL}>
             Días fuera (est.)
-            <input type="number" min="1" value={form.diasFuera} onChange={e=>setForm(f=>({...f,diasFuera:e.target.value}))}
-              style={{padding:'9px 12px',border:`1.5px solid ${C.sand}`,borderRadius:4,fontSize:'.85rem',outline:'none'}}/>
+            <input type="number" min="1" value={form.diasFuera} onChange={e => setForm(f => ({ ...f, diasFuera: e.target.value }))} placeholder="1" style={INP} />
           </label>
-          <label style={{display:'flex',flexDirection:'column',gap:4,fontSize:'.72rem',fontWeight:700,textTransform:'uppercase',color:C.acc,letterSpacing:'.06em'}}>
+          <label style={LBL}>
             Fecha regreso est.
-            <input type="date" value={form.fechaRegreso} onChange={e=>setForm(f=>({...f,fechaRegreso:e.target.value}))}
-              style={{padding:'9px 12px',border:`1.5px solid ${C.sand}`,borderRadius:4,fontSize:'.85rem',outline:'none'}}/>
+            <input type="date" value={form.fechaRegreso} onChange={e => setForm(f => ({ ...f, fechaRegreso: e.target.value }))} style={INP} />
           </label>
         </div>
-        <textarea value={form.obs} onChange={e=>setForm(f=>({...f,obs:e.target.value}))}
-          placeholder="Observaciones..." rows={2}
-          style={{width:'100%',padding:'9px 12px',border:`1.5px solid ${C.sand}`,borderRadius:4,fontSize:'.85rem',outline:'none',resize:'vertical'}}/>
-        <button onClick={handleSave} disabled={saving}
-          style={{marginTop:12,padding:'12px 28px',background:saving?'#ccc':C.green,color:'#fff',border:'none',borderRadius:6,fontWeight:700,fontSize:'.88rem',cursor:saving?'not-allowed':'pointer'}}>
-          {saving?'Guardando...':'Guardar Registro'}
+
+        <label style={{ ...LBL, marginBottom: 14 }}>
+          Observaciones
+          <textarea value={form.obs} onChange={e => setForm(f => ({ ...f, obs: e.target.value }))}
+            rows={2} placeholder="Detalles adicionales, indicaciones médicas..."
+            style={{ ...INP, resize: 'vertical', lineHeight: 1.5 }} />
+        </label>
+
+        <button onClick={handleSave} disabled={saving} style={{
+          padding: '11px 28px', background: saving ? T.border : T.primary,
+          color: saving ? T.textMid : '#fff', border: 'none', borderRadius: 6,
+          fontWeight: 700, fontSize: '.88rem', cursor: saving ? 'not-allowed' : 'pointer',
+          fontFamily: 'inherit',
+        }}>
+          {saving ? 'Guardando...' : 'Guardar Registro'}
         </button>
       </div>
 
-      <div style={{background:'#fff',border:`1px solid ${C.sand}`,borderRadius:8,padding:20}}>
-        <div style={{fontWeight:700,marginBottom:12,color:C.green}}>Historial ({data.length})</div>
-        <div style={{overflowX:'auto'}}>
-          <table style={{width:'100%',borderCollapse:'collapse',fontSize:'.8rem'}}>
-            <thead><tr style={{background:C.bg}}>
-              {['Empleado','Fecha','Síntoma','Días','Regreso est.','Estado'].map(h=>(
-                <th key={h} style={{padding:'7px 10px',textAlign:'left',fontWeight:700,color:'#6B8070',borderBottom:`1px solid ${C.sand}`}}>{h}</th>
-              ))}
-            </tr></thead>
+      {/* ── History ── */}
+      <div style={card}>
+        <div style={{ fontSize: '.78rem', fontWeight: 700, color: T.primary, textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 14, paddingBottom: 10, borderBottom: `1px solid ${T.border}` }}>
+          Historial — {data.length} registros
+        </div>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ background: T.primary }}>
+                {['Empleado', 'Fecha', 'Síntoma', 'Días', 'Regreso est.', 'Estado'].map(h => (
+                  <th key={h} style={{
+                    padding: '9px 14px', textAlign: 'left', color: '#fff',
+                    fontSize: '.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em',
+                    whiteSpace: 'nowrap',
+                  }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
             <tbody>
-              {data.slice(0,50).map(r=>(
-                <tr key={r.id} style={{borderBottom:`1px solid ${C.sand}`}}>
-                  <td style={{padding:'7px 10px',fontWeight:600}}>{r.empleado}</td>
-                  <td style={{padding:'7px 10px'}}>{r.fecha}</td>
-                  <td style={{padding:'7px 10px'}}>{r.sintoma}</td>
-                  <td style={{padding:'7px 10px'}}>{r.diasFuera||'—'}</td>
-                  <td style={{padding:'7px 10px'}}>{r.fechaRegreso||'—'}</td>
-                  <td style={{padding:'7px 10px'}}>
-                    <span style={{padding:'2px 8px',borderRadius:100,fontSize:'.65rem',fontWeight:700,
-                      background:r.estado==='regresó'?'rgba(74,158,106,.15)':'rgba(192,57,43,.12)',
-                      color:r.estado==='regresó'?C.acc:C.danger}}>
-                      {r.estado==='regresó'?'✓ Regresó':'● Fuera'}
-                    </span>
+              {data.slice(0, 60).map((r, idx) => (
+                <tr key={r.id} style={{ background: idx % 2 === 1 ? T.rowAlt : '#fff', borderBottom: `1px solid ${T.border}` }}>
+                  <td style={{ padding: '9px 14px', fontSize: '.83rem', fontWeight: 600, color: T.textDark }}>{r.empleado}</td>
+                  <td style={{ padding: '9px 14px', fontSize: '.83rem', color: T.textDark, whiteSpace: 'nowrap' }}>{r.fecha}</td>
+                  <td style={{ padding: '9px 14px', fontSize: '.83rem', color: T.textMid }}>{r.sintoma || '—'}</td>
+                  <td style={{ padding: '9px 14px', fontSize: '.83rem', color: T.textMid }}>{r.diasFuera || '—'}</td>
+                  <td style={{ padding: '9px 14px', fontSize: '.83rem', color: T.textMid, whiteSpace: 'nowrap' }}>{r.fechaRegreso || '—'}</td>
+                  <td style={{ padding: '9px 14px' }}>
+                    {r.estado === 'regresó' ? (
+                      <span style={{ padding: '3px 10px', borderRadius: 100, fontSize: '.72rem', fontWeight: 700, background: 'rgba(46,125,50,.12)', color: T.secondary }}>
+                        Regresó
+                      </span>
+                    ) : (
+                      <span style={{ padding: '3px 10px', borderRadius: 100, fontSize: '.72rem', fontWeight: 700, background: 'rgba(198,40,40,.10)', color: T.danger }}>
+                        Fuera
+                      </span>
+                    )}
                   </td>
                 </tr>
               ))}
+              {data.length === 0 && (
+                <tr><td colSpan={6} style={{ padding: '40px', textAlign: 'center', color: T.textMid, fontSize: '.83rem' }}>
+                  Sin registros aún
+                </td></tr>
+              )}
             </tbody>
           </table>
         </div>

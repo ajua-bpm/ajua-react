@@ -1,12 +1,45 @@
 import { useState } from 'react';
 import { useCollection, useWrite } from '../../hooks/useFirestore';
-import LoadingSpinner from '../../components/LoadingSpinner';
 import { useToast } from '../../components/Toast';
+import Skeleton from '../../components/Skeleton';
 
-const C = { green:'#1A3D28', acc:'#4A9E6A', sand:'#E8DCC8', danger:'#c0392b', bg:'#F9F6EF', warn:'#e67e22' };
+// ─── Design Tokens ────────────────────────────────────────────────────────────
+const T = {
+  primary:   '#1B5E20',
+  secondary: '#2E7D32',
+  white:     '#FFFFFF',
+  bgLight:   '#F5F5F5',
+  border:    '#E0E0E0',
+  textDark:  '#212121',
+  textMid:   '#616161',
+  danger:    '#C62828',
+  warn:      '#E65100',
+};
+
+const card = { background:'#fff', borderRadius:8, boxShadow:'0 1px 3px rgba(0,0,0,.10)', padding:20, marginBottom:20 };
+const TH_S = { padding:'10px 14px', fontSize:'.75rem', textTransform:'uppercase', fontWeight:700, letterSpacing:'.06em', color:T.white, background:T.primary, textAlign:'left', whiteSpace:'nowrap' };
+const TD_S = (alt) => ({ padding:'9px 14px', fontSize:'.83rem', borderBottom:'1px solid #F0F0F0', background:alt?'#F9FBF9':'#fff', color:T.textDark });
+const LS   = { display:'flex', flexDirection:'column', gap:5, fontSize:'.72rem', fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:T.secondary };
+const IS   = { padding:'9px 12px', border:`1.5px solid ${T.border}`, borderRadius:6, fontSize:'.85rem', outline:'none', fontFamily:'inherit', width:'100%', marginTop:2, color:T.textDark, background:T.white };
+
 const today = () => new Date().toISOString().slice(0,10);
-const fmtMX = n => Number(n||0).toLocaleString('es-MX',{style:'currency',currency:'MXN',minimumFractionDigits:2});
 const fmtQ  = n => Number(n||0).toLocaleString('es-GT',{style:'currency',currency:'GTQ',minimumFractionDigits:2});
+
+const ESTADO_CFG = {
+  pendiente: { bg:'rgba(230,101,0,.10)', color:T.warn,      label:'Pendiente' },
+  parcial:   { bg:'rgba(21,101,192,.10)', color:'#1565C0',  label:'Parcial'   },
+  devuelto:  { bg:'rgba(27,94,32,.10)',   color:T.primary,  label:'Devuelto'  },
+};
+
+function EstadoChip({ estado }) {
+  const cfg = ESTADO_CFG[estado] || ESTADO_CFG.pendiente;
+  return (
+    <span style={{ display:'inline-block', padding:'3px 10px', borderRadius:100,
+      fontSize:'.7rem', fontWeight:700, background:cfg.bg, color:cfg.color }}>
+      {cfg.label}
+    </span>
+  );
+}
 
 export default function AnticiposMX() {
   const toast = useToast();
@@ -14,146 +47,188 @@ export default function AnticiposMX() {
   const { add, update, saving } = useWrite('iAnticipo');
 
   const [form, setForm] = useState({
-    fecha: today(), concepto:'', monto_mx:'', tipo_cambio:'',
-    responsable:'', proveedor:'', estado:'pendiente', obs:'',
+    fecha:today(), proveedor:'', monto:'', moneda:'USD', tc:'', equivalenteQ:'', estado:'pendiente', obs:'',
   });
   const [filtro, setFiltro] = useState('');
+  const [editId, setEditId] = useState(null);
 
-  const montoQ = form.monto_mx && form.tipo_cambio
-    ? (Number(form.monto_mx) * Number(form.tipo_cambio)).toFixed(2)
-    : '';
+  const f = (field, val) => {
+    setForm(p => {
+      const next = { ...p, [field]: val };
+      if (field === 'monto' || field === 'tc') {
+        const m = parseFloat(field==='monto'?val:next.monto) || 0;
+        const t = parseFloat(field==='tc'?val:next.tc) || 0;
+        next.equivalenteQ = m > 0 && t > 0 ? (m * t).toFixed(2) : '';
+      }
+      return next;
+    });
+  };
 
   const handleSave = async () => {
-    if(!form.fecha||!form.monto_mx||!form.concepto) {
-      toast('⚠ Fecha, concepto y monto requeridos','error'); return;
+    if (!form.fecha || !form.proveedor || !form.monto) {
+      toast('Fecha, proveedor y monto son requeridos', 'error'); return;
     }
-    await add({
+    const payload = {
       ...form,
-      monto_mx: Number(form.monto_mx),
-      tipo_cambio: Number(form.tipo_cambio)||0,
-      monto_q: montoQ ? Number(montoQ) : 0,
+      monto: parseFloat(form.monto)||0,
+      tc: parseFloat(form.tc)||0,
+      equivalenteQ: parseFloat(form.equivalenteQ)||0,
+    };
+    if (editId) {
+      await update(editId, payload); toast('Anticipo actualizado'); setEditId(null);
+    } else {
+      await add(payload); toast('Anticipo registrado');
+    }
+    setForm({ fecha:today(), proveedor:'', monto:'', moneda:'USD', tc:'', equivalenteQ:'', estado:'pendiente', obs:'' });
+  };
+
+  const startEdit = (r) => {
+    setForm({
+      fecha:r.fecha||today(), proveedor:r.proveedor||'', monto:String(r.monto||''),
+      moneda:r.moneda||'USD', tc:String(r.tc||''), equivalenteQ:String(r.equivalenteQ||''),
+      estado:r.estado||'pendiente', obs:r.obs||'',
     });
-    toast('✓ Anticipo registrado');
-    setForm(f=>({...f, concepto:'', monto_mx:'', tipo_cambio:'', responsable:'', proveedor:'', obs:''}));
+    setEditId(r.id);
   };
 
-  const handleEstado = async (id, estado) => {
-    await update(id, { estado, fecha_cierre: estado==='devuelto'?today():'' });
-    toast(`✓ Marcado como ${estado}`);
+  const updateEstado = async (id, estado) => {
+    await update(id, { estado }); toast(`Estado actualizado a ${ESTADO_CFG[estado]?.label||estado}`);
   };
 
-  const filtered = filtro ? data.filter(r=>r.estado===filtro) : data;
-  const totalPendiente = data.filter(r=>r.estado==='pendiente').reduce((s,r)=>s+(r.monto_mx||0),0);
-  const totalDevuelto  = data.filter(r=>r.estado==='devuelto').reduce((s,r)=>s+(r.monto_mx||0),0);
-
-  if(loading) return <LoadingSpinner/>;
-
-  const ESTADO = {
-    pendiente: { bg:'rgba(230,126,34,.12)', color:'#e67e22', label:'Pendiente' },
-    devuelto:  { bg:'rgba(74,158,106,.15)', color:C.acc,    label:'Devuelto'  },
-    parcial:   { bg:'rgba(52,152,219,.12)', color:'#2980b9', label:'Parcial'  },
-  };
+  const filtered   = filtro ? data.filter(r => r.estado===filtro) : data;
+  const pendTotalQ = data.filter(r=>r.estado==='pendiente').reduce((s,r)=>s+(r.equivalenteQ||0),0);
 
   return (
-    <div>
-      <h1 style={{fontSize:'1.4rem',fontWeight:800,color:C.green,marginBottom:4}}>💵 Anticipos MX</h1>
-      <p style={{fontSize:'.82rem',color:'#6B8070',marginBottom:16}}>Control de anticipos en pesos mexicanos para importaciones</p>
+    <div style={{ fontFamily:'inherit', maxWidth:1100 }}>
+      {/* Header */}
+      <div style={{ marginBottom:24 }}>
+        <h1 style={{ fontSize:'1.45rem', fontWeight:800, color:T.primary, margin:0 }}>Anticipos a Proveedores MX</h1>
+        <p style={{ fontSize:'.83rem', color:T.textMid, marginTop:4 }}>Control de anticipos en dólares/pesos para importaciones</p>
+      </div>
 
-      {/* Totales */}
-      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:12,marginBottom:20}}>
-        <div style={{background:'rgba(230,126,34,.08)',border:`1px solid rgba(230,126,34,.25)`,borderRadius:8,padding:'14px 18px'}}>
-          <div style={{fontSize:'.7rem',fontWeight:700,textTransform:'uppercase',color:C.warn,letterSpacing:'.06em',marginBottom:4}}>Pendiente recuperar</div>
-          <div style={{fontSize:'1.3rem',fontWeight:800,color:C.warn}}>{fmtMX(totalPendiente)}</div>
+      {/* KPI */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))', gap:14, marginBottom:24 }}>
+        <div style={{ ...card, marginBottom:0, padding:'16px 20px', borderLeft:`4px solid ${T.warn}` }}>
+          <div style={{ fontSize:'.72rem', fontWeight:700, textTransform:'uppercase', letterSpacing:'.07em', color:T.textMid, marginBottom:6 }}>Pendiente total (Q)</div>
+          <div style={{ fontSize:'1.35rem', fontWeight:800, color:T.warn }}>{fmtQ(pendTotalQ)}</div>
         </div>
-        <div style={{background:'rgba(74,158,106,.08)',border:`1px solid rgba(74,158,106,.2)`,borderRadius:8,padding:'14px 18px'}}>
-          <div style={{fontSize:'.7rem',fontWeight:700,textTransform:'uppercase',color:C.acc,letterSpacing:'.06em',marginBottom:4}}>Total devuelto</div>
-          <div style={{fontSize:'1.3rem',fontWeight:800,color:C.acc}}>{fmtMX(totalDevuelto)}</div>
+        <div style={{ ...card, marginBottom:0, padding:'16px 20px' }}>
+          <div style={{ fontSize:'.72rem', fontWeight:700, textTransform:'uppercase', letterSpacing:'.07em', color:T.textMid, marginBottom:6 }}>Anticipos pendientes</div>
+          <div style={{ fontSize:'1.35rem', fontWeight:800, color:T.primary }}>{data.filter(r=>r.estado==='pendiente').length}</div>
         </div>
-        <div style={{background:'#fff',border:`1px solid ${C.sand}`,borderRadius:8,padding:'14px 18px'}}>
-          <div style={{fontSize:'.7rem',fontWeight:700,textTransform:'uppercase',color:'#6B8070',letterSpacing:'.06em',marginBottom:4}}>Total registros</div>
-          <div style={{fontSize:'1.3rem',fontWeight:800,color:C.green}}>{data.length}</div>
+        <div style={{ ...card, marginBottom:0, padding:'16px 20px' }}>
+          <div style={{ fontSize:'.72rem', fontWeight:700, textTransform:'uppercase', letterSpacing:'.07em', color:T.textMid, marginBottom:6 }}>Total registros</div>
+          <div style={{ fontSize:'1.35rem', fontWeight:800, color:T.textMid }}>{data.length}</div>
         </div>
       </div>
 
-      {/* Formulario */}
-      <div style={{background:'#fff',border:`1px solid ${C.sand}`,borderRadius:8,padding:20,marginBottom:20}}>
-        <div style={{fontWeight:700,fontSize:'.9rem',color:C.green,marginBottom:14}}>Registrar Anticipo</div>
-        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))',gap:12,marginBottom:12}}>
-          <label style={LS}>Fecha<input type="date" value={form.fecha} onChange={e=>setForm(f=>({...f,fecha:e.target.value}))} style={IS}/></label>
-          <label style={LS}>Responsable<input value={form.responsable} onChange={e=>setForm(f=>({...f,responsable:e.target.value}))} style={IS}/></label>
-          <label style={LS}>Proveedor<input value={form.proveedor} onChange={e=>setForm(f=>({...f,proveedor:e.target.value}))} style={IS}/></label>
-          <label style={LS}>Monto MX$
-            <input type="number" value={form.monto_mx} onChange={e=>setForm(f=>({...f,monto_mx:e.target.value}))} placeholder="0.00" style={IS}/>
+      {/* Form */}
+      <div style={card}>
+        <div style={{ fontWeight:700, fontSize:'.95rem', color:T.primary, marginBottom:18, borderBottom:`2px solid ${T.primary}`, paddingBottom:8 }}>
+          {editId ? 'Editar Anticipo' : 'Registrar Anticipo'}
+        </div>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))', gap:14, marginBottom:14 }}>
+          <label style={LS}>Fecha<input type="date" value={form.fecha} onChange={e=>f('fecha',e.target.value)} style={IS}/></label>
+          <label style={LS}>Proveedor *<input value={form.proveedor} onChange={e=>f('proveedor',e.target.value)} placeholder="Nombre del proveedor" style={IS}/></label>
+          <label style={LS}>
+            Moneda
+            <select value={form.moneda} onChange={e=>f('moneda',e.target.value)} style={IS}>
+              {['USD','MXN'].map(m=><option key={m} value={m}>{m}</option>)}
+            </select>
           </label>
-          <label style={LS}>Tipo cambio (MX→Q)
-            <input type="number" value={form.tipo_cambio} onChange={e=>setForm(f=>({...f,tipo_cambio:e.target.value}))} placeholder="0.00" step="0.01" style={IS}/>
+          <label style={LS}>Monto *<input type="number" min="0" step="0.01" value={form.monto} onChange={e=>f('monto',e.target.value)} placeholder="0.00" style={IS}/></label>
+          <label style={LS}>Tipo cambio (→Q)<input type="number" min="0" step="0.01" value={form.tc} onChange={e=>f('tc',e.target.value)} placeholder="0.00" style={IS}/></label>
+          <label style={LS}>
+            Equivalente Q
+            <input readOnly value={form.equivalenteQ ? `Q ${Number(form.equivalenteQ).toLocaleString('es-GT',{minimumFractionDigits:2})}` : ''} style={{ ...IS, background:'#F5F5F5', color:T.primary, fontWeight:700 }}/>
           </label>
-          <label style={LS}>Equivalente Q
-            <input value={montoQ ? `Q ${Number(montoQ).toLocaleString()}` : ''} readOnly
-              style={{...IS,background:C.bg,color:C.green,fontWeight:700}}/>
+          <label style={LS}>
+            Estado
+            <select value={form.estado} onChange={e=>f('estado',e.target.value)} style={IS}>
+              <option value="pendiente">Pendiente</option>
+              <option value="parcial">Parcial</option>
+              <option value="devuelto">Devuelto</option>
+            </select>
           </label>
         </div>
-        <label style={{...LS,display:'block',marginBottom:12}}>
-          Concepto *
-          <input value={form.concepto} onChange={e=>setForm(f=>({...f,concepto:e.target.value}))} placeholder="Descripción del anticipo..." style={IS}/>
+        <label style={LS}>
+          Observaciones
+          <textarea value={form.obs} onChange={e=>f('obs',e.target.value)} rows={2}
+            style={{ ...IS, resize:'vertical' }} placeholder="Notas adicionales..."/>
         </label>
-        <textarea value={form.obs} onChange={e=>setForm(f=>({...f,obs:e.target.value}))} placeholder="Observaciones..." rows={2}
-          style={{width:'100%',padding:'9px 12px',border:`1.5px solid ${C.sand}`,borderRadius:4,fontSize:'.85rem',outline:'none',resize:'vertical',marginBottom:12}}/>
-        <button onClick={handleSave} disabled={saving} style={{padding:'12px 28px',background:saving?'#ccc':C.green,color:'#fff',border:'none',borderRadius:6,fontWeight:700,fontSize:'.88rem',cursor:saving?'not-allowed':'pointer'}}>
-          {saving?'Guardando...':'Registrar Anticipo'}
-        </button>
+        <div style={{ display:'flex', gap:10, marginTop:16 }}>
+          <button onClick={handleSave} disabled={saving} style={{
+            padding:'11px 28px', background:saving?'#9E9E9E':T.primary, color:T.white,
+            border:'none', borderRadius:6, fontWeight:700, fontSize:'.88rem', cursor:saving?'not-allowed':'pointer',
+          }}>
+            {saving ? 'Guardando...' : editId ? 'Actualizar' : 'Registrar'}
+          </button>
+          {editId && (
+            <button onClick={()=>{setEditId(null);setForm({fecha:today(),proveedor:'',monto:'',moneda:'USD',tc:'',equivalenteQ:'',estado:'pendiente',obs:''}); }}
+              style={{ padding:'11px 20px', background:T.bgLight, border:`1px solid ${T.border}`, borderRadius:6, fontWeight:600, cursor:'pointer', color:T.textMid }}>
+              Cancelar
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Historial */}
-      <div style={{background:'#fff',border:`1px solid ${C.sand}`,borderRadius:8,padding:20}}>
-        <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:12,flexWrap:'wrap'}}>
-          <div style={{fontWeight:700,color:C.green,flex:1}}>Historial ({filtered.length})</div>
-          <select value={filtro} onChange={e=>setFiltro(e.target.value)} style={{padding:'5px 10px',border:`1px solid ${C.sand}`,borderRadius:4,fontSize:'.8rem',outline:'none',background:'#fff'}}>
-            <option value="">Todos</option>
-            <option value="pendiente">Pendientes</option>
-            <option value="parcial">Parciales</option>
-            <option value="devuelto">Devueltos</option>
-          </select>
+      {/* Filter bar */}
+      <div style={{ display:'flex', gap:8, marginBottom:14, flexWrap:'wrap', alignItems:'center' }}>
+        <span style={{ fontSize:'.78rem', color:T.textMid, fontWeight:600 }}>Filtrar:</span>
+        {[['','Todos'],['pendiente','Pendientes'],['parcial','Parciales'],['devuelto','Devueltos']].map(([val,label])=>(
+          <button key={val} onClick={()=>setFiltro(val)} style={{
+            padding:'5px 14px', borderRadius:20, fontSize:'.76rem', fontWeight:600, cursor:'pointer',
+            border:`1.5px solid ${filtro===val?T.primary:T.border}`,
+            background:filtro===val?T.primary:T.white, color:filtro===val?T.white:T.textMid,
+          }}>{label}</button>
+        ))}
+      </div>
+
+      {/* Table */}
+      <div style={card}>
+        <div style={{ fontWeight:700, fontSize:'.9rem', color:T.primary, marginBottom:16 }}>
+          Historial ({filtered.length} registros)
         </div>
-        <div style={{display:'flex',flexDirection:'column',gap:8}}>
-          {filtered.slice(0,50).map(r=>{
-            const est = ESTADO[r.estado]||ESTADO.pendiente;
-            return (
-              <div key={r.id} style={{border:`1px solid ${C.sand}`,borderRadius:6,padding:'12px 14px'}}>
-                <div style={{display:'flex',alignItems:'flex-start',gap:10,justifyContent:'space-between',flexWrap:'wrap'}}>
-                  <div>
-                    <div style={{fontWeight:700,fontSize:'.85rem',color:C.green}}>{r.concepto}</div>
-                    <div style={{fontSize:'.78rem',color:'#555',marginTop:2}}>
-                      {fmtMX(r.monto_mx)} {r.tipo_cambio?`× ${r.tipo_cambio} = ${fmtQ(r.monto_q)}`:''} · {r.proveedor||'—'}
-                    </div>
-                    {r.responsable&&<div style={{fontSize:'.7rem',color:'#9aaa9e',marginTop:3}}>Responsable: {r.responsable}</div>}
-                  </div>
-                  <div style={{textAlign:'right',flexShrink:0}}>
-                    <div style={{fontSize:'.72rem',color:'#6B8070'}}>{r.fecha}</div>
-                    <span style={{display:'inline-block',marginTop:4,padding:'2px 8px',borderRadius:100,fontSize:'.65rem',fontWeight:700,...est}}>
-                      {est.label}
-                    </span>
-                  </div>
-                </div>
-                {r.estado!=='devuelto'&&(
-                  <div style={{display:'flex',gap:8,marginTop:10}}>
-                    <button onClick={()=>handleEstado(r.id,'parcial')} style={{padding:'4px 12px',background:'rgba(52,152,219,.12)',color:'#2980b9',border:'1px solid #2980b9',borderRadius:4,fontSize:'.72rem',fontWeight:600,cursor:'pointer'}}>
-                      Parcial
-                    </button>
-                    <button onClick={()=>handleEstado(r.id,'devuelto')} style={{padding:'4px 12px',background:'rgba(74,158,106,.12)',color:C.acc,border:`1px solid ${C.acc}`,borderRadius:4,fontSize:'.72rem',fontWeight:600,cursor:'pointer'}}>
-                      ✓ Devuelto
-                    </button>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-          {filtered.length===0&&<div style={{textAlign:'center',padding:'40px',color:'#9aaa9e'}}>Sin anticipos</div>}
-        </div>
+        {loading ? <Skeleton rows={5}/> : (
+          filtered.length === 0 ? (
+            <div style={{ textAlign:'center', padding:'48px 0', color:T.textMid, fontSize:'.9rem' }}>
+              Sin anticipos para este filtro
+            </div>
+          ) : (
+            <div style={{ overflowX:'auto' }}>
+              <table style={{ width:'100%', borderCollapse:'collapse' }}>
+                <thead>
+                  <tr>
+                    {['Fecha','Proveedor','Monto','Moneda','TC','Equivalente Q','Estado','Acciones'].map(h=>(
+                      <th key={h} style={TH_S}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.slice(0,100).map((r,i)=>(
+                    <tr key={r.id}>
+                      <td style={TD_S(i%2===1)}>{r.fecha||'—'}</td>
+                      <td style={{ ...TD_S(i%2===1), fontWeight:600 }}>{r.proveedor||'—'}</td>
+                      <td style={{ ...TD_S(i%2===1), fontWeight:700 }}>{r.moneda||'USD'} {(r.monto||0).toLocaleString('es',{minimumFractionDigits:2})}</td>
+                      <td style={TD_S(i%2===1)}>{r.moneda||'USD'}</td>
+                      <td style={TD_S(i%2===1)}>{r.tc||'—'}</td>
+                      <td style={{ ...TD_S(i%2===1), fontWeight:700, color:T.primary }}>{r.equivalenteQ ? fmtQ(r.equivalenteQ) : '—'}</td>
+                      <td style={TD_S(i%2===1)}><EstadoChip estado={r.estado}/></td>
+                      <td style={TD_S(i%2===1)}>
+                        <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
+                          <button onClick={()=>startEdit(r)} style={{ padding:'3px 10px', background:T.primary, color:T.white, border:'none', borderRadius:4, fontSize:'.72rem', fontWeight:600, cursor:'pointer' }}>Editar</button>
+                          {r.estado==='pendiente' && <button onClick={()=>updateEstado(r.id,'parcial')} style={{ padding:'3px 10px', background:'#1565C0', color:T.white, border:'none', borderRadius:4, fontSize:'.72rem', fontWeight:600, cursor:'pointer' }}>Parcial</button>}
+                          {r.estado!=='devuelto' && <button onClick={()=>updateEstado(r.id,'devuelto')} style={{ padding:'3px 10px', background:T.secondary, color:T.white, border:'none', borderRadius:4, fontSize:'.72rem', fontWeight:600, cursor:'pointer' }}>Devuelto</button>}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+        )}
       </div>
     </div>
   );
 }
-
-const LS = { display:'flex',flexDirection:'column',gap:4,fontSize:'.72rem',fontWeight:700,textTransform:'uppercase',color:'#4A9E6A',letterSpacing:'.06em' };
-const IS = { padding:'9px 12px',border:'1.5px solid #E8DCC8',borderRadius:4,fontSize:'.85rem',outline:'none',fontFamily:'inherit',width:'100%',marginTop:2 };

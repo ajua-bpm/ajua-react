@@ -1,138 +1,218 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useCollection, useWrite } from '../../hooks/useFirestore';
-import LoadingSpinner from '../../components/LoadingSpinner';
+import { useProductosCatalogo, useEmpleados } from '../../hooks/useMainData';
 import { useToast } from '../../components/Toast';
+import Skeleton from '../../components/Skeleton';
 
-const C = { green:'#1A3D28',acc:'#4A9E6A',sand:'#E8DCC8',danger:'#c0392b',bg:'#F9F6EF' };
-const today = () => new Date().toISOString().slice(0,10);
+// ── Design tokens ────────────────────────────────────────────────
+const T = {
+  primary: '#1B5E20', secondary: '#2E7D32', white: '#FFFFFF',
+  bgLight: '#F5F5F5', border: '#E0E0E0', textDark: '#212121',
+  textMid: '#616161', danger: '#C62828', warn: '#E65100',
+};
+const shadow = '0 1px 3px rgba(0,0,0,.10), 0 1px 2px rgba(0,0,0,.06)';
+const card   = { background: '#fff', borderRadius: 8, boxShadow: shadow, padding: 20, marginBottom: 20 };
 
+const thSt = {
+  color: T.white, padding: '10px 14px', fontSize: '.75rem',
+  fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em',
+  textAlign: 'left', whiteSpace: 'nowrap',
+};
+const tdSt = { padding: '9px 14px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0', color: T.textDark };
+
+const LS = {
+  display: 'flex', flexDirection: 'column', gap: 4,
+  fontSize: '.72rem', fontWeight: 600, textTransform: 'uppercase',
+  color: T.textMid, letterSpacing: '.06em',
+};
+const IS = {
+  padding: '9px 12px', border: '1.5px solid #E0E0E0', borderRadius: 6,
+  fontSize: '.88rem', outline: 'none', fontFamily: 'inherit',
+};
+
+const UNIDADES = ['lb', 'kg', 'caja', 'unidad', 'quintal', 'saco', 'barril'];
+const today    = () => new Date().toISOString().slice(0, 10);
+const nowTime  = () => new Date().toTimeString().slice(0, 5);
+
+const BLANK = {
+  fecha: today(), hora: nowTime(), producto: '', cantidad: '',
+  unidad: 'lb', proveedor: '', lote: '', precioUnitario: '', responsable: '',
+};
+
+// ── Metric card ──────────────────────────────────────────────────
+function MetricCard({ label, value, accent }) {
+  return (
+    <div style={{ ...card, marginBottom: 0, flex: '1 1 150px', borderTop: `3px solid ${accent || T.primary}` }}>
+      <div style={{ fontSize: '.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em', color: T.textMid, marginBottom: 6 }}>
+        {label}
+      </div>
+      <div style={{ fontSize: '1.6rem', fontWeight: 700, color: accent || T.textDark, lineHeight: 1.1 }}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+// ── Main ─────────────────────────────────────────────────────────
 export default function EntradaBodega() {
   const toast = useToast();
-  const { data, loading } = useCollection('ientradas', { orderField:'fecha', orderDir:'desc', limit:300 });
-  const { data: proveedores } = useCollection('proveedores', { orderField:'nombre', limit:200 });
-  const { data: productos } = useCollection('iProductos', { orderField:'nombre', limit:200 });
-  const { add, saving } = useWrite('ientradas');
 
-  const [form, setForm] = useState({
-    fecha: today(), hora: '', producto: '', cantidad: '',
-    unidad: 'lb', proveedor: '', lote: '', precio: '',
-    responsable: '', obs: '',
-  });
+  const { data, loading }                = useCollection('ientradas', { orderField: 'fecha', orderDir: 'desc', limit: 300 });
+  const { data: proveedores, loading: lp } = useCollection('proveedores', { orderField: 'nombre', limit: 200 });
+  const { productos, loading: loadProd } = useProductosCatalogo();
+  const { empleados, loading: loadEmp }  = useEmpleados();
+  const { add, saving }                  = useWrite('ientradas');
+
+  const [form, setForm] = useState({ ...BLANK });
+  const s = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   const handleSave = async () => {
     if (!form.fecha || !form.producto || !form.cantidad) {
-      toast('⚠ Fecha, producto y cantidad requeridos', 'error'); return;
+      toast('Fecha, producto y cantidad son requeridos', 'error'); return;
     }
-    await add({ ...form, cantidad: parseFloat(form.cantidad)||0, precio: parseFloat(form.precio)||0 });
-    toast('✓ Entrada registrada');
-    setForm(f => ({ ...f, producto:'', cantidad:'', lote:'', precio:'', responsable:'', obs:'' }));
+    await add({
+      ...form,
+      cantidad:       parseFloat(form.cantidad) || 0,
+      precioUnitario: parseFloat(form.precioUnitario) || 0,
+    });
+    toast('Entrada registrada correctamente');
+    setForm(f => ({ ...f, producto: '', cantidad: '', lote: '', precioUnitario: '', responsable: '' }));
   };
 
-  if (loading) return <LoadingSpinner/>;
+  const todayStr    = today();
+  const entradasHoy = data.filter(r => r.fecha === todayStr).length;
+  const totalUnids  = useMemo(() => data.reduce((s, r) => s + (parseFloat(r.cantidad) || 0), 0), [data]);
 
-  const total = data.reduce((s,r)=>s+(parseFloat(r.cantidad)||0),0);
+  const loadingAll = loading || lp || loadProd || loadEmp;
 
   return (
-    <div>
-      <h1 style={{fontSize:'1.4rem',fontWeight:800,color:C.green,marginBottom:4}}>📥 Ingresos a Bodega</h1>
-      <p style={{fontSize:'.82rem',color:'#6B8070',marginBottom:24}}>Registro de entradas de producto a bodega</p>
-
-      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:12,marginBottom:20}}>
-        {[
-          { label:'Entradas hoy', val: data.filter(r=>r.fecha===today()).length, color:C.acc },
-          { label:'Total registros', val: data.length, color:C.green },
-          { label:'Total unidades (lb)', val: total.toLocaleString(), color:'#2980b9' },
-        ].map(({label,val,color})=>(
-          <div key={label} style={{background:'#fff',border:`1px solid ${C.sand}`,borderRadius:8,padding:16,textAlign:'center'}}>
-            <div style={{fontSize:'1.6rem',fontWeight:800,color}}>{val}</div>
-            <div style={{fontSize:'.75rem',color:'#6B8070',marginTop:2}}>{label}</div>
-          </div>
-        ))}
+    <div style={{ padding: '24px 28px', fontFamily: 'inherit', maxWidth: 1100 }}>
+      {/* Header */}
+      <div style={{ marginBottom: 24 }}>
+        <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, color: T.textDark }}>
+          Ingresos a Bodega
+        </h2>
+        <p style={{ margin: '4px 0 0', fontSize: '.83rem', color: T.textMid }}>
+          Registro de entradas de producto desde proveedores
+        </p>
       </div>
 
-      <div style={{background:'#fff',border:`1px solid ${C.sand}`,borderRadius:8,padding:20,marginBottom:20}}>
-        <div style={{fontWeight:700,color:C.green,marginBottom:16}}>Nueva Entrada</div>
-        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))',gap:12,marginBottom:16}}>
-          <label style={{display:'flex',flexDirection:'column',gap:4,fontSize:'.72rem',fontWeight:700,textTransform:'uppercase',color:C.acc,letterSpacing:'.06em'}}>
-            Fecha
-            <input type="date" value={form.fecha} onChange={e=>setForm(f=>({...f,fecha:e.target.value}))}
-              style={{padding:'9px 12px',border:`1.5px solid ${C.sand}`,borderRadius:4,fontSize:'.85rem',outline:'none'}}/>
-          </label>
-          <label style={{display:'flex',flexDirection:'column',gap:4,fontSize:'.72rem',fontWeight:700,textTransform:'uppercase',color:C.acc,letterSpacing:'.06em'}}>
-            Hora
-            <input type="time" value={form.hora} onChange={e=>setForm(f=>({...f,hora:e.target.value}))}
-              style={{padding:'9px 12px',border:`1.5px solid ${C.sand}`,borderRadius:4,fontSize:'.85rem',outline:'none'}}/>
-          </label>
-          <label style={{display:'flex',flexDirection:'column',gap:4,fontSize:'.72rem',fontWeight:700,textTransform:'uppercase',color:C.acc,letterSpacing:'.06em'}}>
-            Producto
-            <select value={form.producto} onChange={e=>setForm(f=>({...f,producto:e.target.value}))}
-              style={{padding:'9px 12px',border:`1.5px solid ${C.sand}`,borderRadius:4,fontSize:'.85rem',outline:'none'}}>
-              <option value="">— Seleccionar —</option>
-              {(productos||[]).map(p=><option key={p.id} value={p.nombre}>{p.nombre}</option>)}
-            </select>
-          </label>
-          <label style={{display:'flex',flexDirection:'column',gap:4,fontSize:'.72rem',fontWeight:700,textTransform:'uppercase',color:C.acc,letterSpacing:'.06em'}}>
-            Cantidad
-            <input type="number" min="0" value={form.cantidad} onChange={e=>setForm(f=>({...f,cantidad:e.target.value}))}
-              style={{padding:'9px 12px',border:`1.5px solid ${C.sand}`,borderRadius:4,fontSize:'.85rem',outline:'none'}}/>
-          </label>
-          <label style={{display:'flex',flexDirection:'column',gap:4,fontSize:'.72rem',fontWeight:700,textTransform:'uppercase',color:C.acc,letterSpacing:'.06em'}}>
-            Unidad
-            <select value={form.unidad} onChange={e=>setForm(f=>({...f,unidad:e.target.value}))}
-              style={{padding:'9px 12px',border:`1.5px solid ${C.sand}`,borderRadius:4,fontSize:'.85rem',outline:'none'}}>
-              {['lb','kg','caja','unidad','quintal','tonelada'].map(u=><option key={u} value={u}>{u}</option>)}
-            </select>
-          </label>
-          <label style={{display:'flex',flexDirection:'column',gap:4,fontSize:'.72rem',fontWeight:700,textTransform:'uppercase',color:C.acc,letterSpacing:'.06em'}}>
-            Proveedor
-            <select value={form.proveedor} onChange={e=>setForm(f=>({...f,proveedor:e.target.value}))}
-              style={{padding:'9px 12px',border:`1.5px solid ${C.sand}`,borderRadius:4,fontSize:'.85rem',outline:'none'}}>
-              <option value="">— Seleccionar —</option>
-              {(proveedores||[]).map(p=><option key={p.id} value={p.nombre}>{p.nombre}</option>)}
-            </select>
-          </label>
-          {[['lote','Lote / Guía'],['precio','Precio unitario (Q)'],['responsable','Responsable']].map(([id,label])=>(
-            <label key={id} style={{display:'flex',flexDirection:'column',gap:4,fontSize:'.72rem',fontWeight:700,textTransform:'uppercase',color:C.acc,letterSpacing:'.06em'}}>
-              {label}
-              <input value={form[id]} onChange={e=>setForm(f=>({...f,[id]:e.target.value}))}
-                style={{padding:'9px 12px',border:`1.5px solid ${C.sand}`,borderRadius:4,fontSize:'.85rem',outline:'none'}}/>
-            </label>
-          ))}
+      {/* Metrics */}
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 24 }}>
+        <MetricCard label="Entradas hoy"   value={loadingAll ? '…' : entradasHoy} accent={T.secondary} />
+        <MetricCard label="Total registros" value={loadingAll ? '…' : data.length}  accent={T.primary} />
+        <MetricCard label="Total unidades"  value={loadingAll ? '…' : totalUnids.toLocaleString()} accent={T.warn} />
+      </div>
+
+      {/* Form */}
+      <div style={card}>
+        <div style={{ fontWeight: 700, fontSize: '.95rem', color: T.textDark, marginBottom: 20, paddingBottom: 12, borderBottom: '1px solid #F0F0F0' }}>
+          Nueva entrada
         </div>
-        <textarea value={form.obs} onChange={e=>setForm(f=>({...f,obs:e.target.value}))}
-          placeholder="Observaciones..." rows={2}
-          style={{width:'100%',padding:'9px 12px',border:`1.5px solid ${C.sand}`,borderRadius:4,fontSize:'.85rem',outline:'none',resize:'vertical'}}/>
-        <button onClick={handleSave} disabled={saving}
-          style={{marginTop:12,padding:'12px 28px',background:saving?'#ccc':C.green,color:'#fff',border:'none',borderRadius:6,fontWeight:700,fontSize:'.88rem',cursor:saving?'not-allowed':'pointer'}}>
-          {saving?'Guardando...':'Registrar Entrada'}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))', gap: 14, marginBottom: 16 }}>
+          <label style={LS}>
+            Fecha
+            <input type="date" value={form.fecha} onChange={e => s('fecha', e.target.value)} style={IS} />
+          </label>
+          <label style={LS}>
+            Hora
+            <input type="time" value={form.hora} onChange={e => s('hora', e.target.value)} style={IS} />
+          </label>
+          <label style={LS}>
+            Producto *
+            <select value={form.producto} onChange={e => s('producto', e.target.value)} style={IS}>
+              <option value="">— Seleccionar —</option>
+              {productos.map(p => <option key={p.id || p.nombre} value={p.nombre}>{p.nombre}</option>)}
+            </select>
+          </label>
+          <label style={LS}>
+            Cantidad *
+            <input type="number" min="0" step="0.01" value={form.cantidad}
+              onChange={e => s('cantidad', e.target.value)} style={IS} />
+          </label>
+          <label style={LS}>
+            Unidad
+            <select value={form.unidad} onChange={e => s('unidad', e.target.value)} style={IS}>
+              {UNIDADES.map(u => <option key={u} value={u}>{u}</option>)}
+            </select>
+          </label>
+          <label style={LS}>
+            Proveedor
+            <select value={form.proveedor} onChange={e => s('proveedor', e.target.value)} style={IS}>
+              <option value="">— Seleccionar —</option>
+              {proveedores.map(p => <option key={p.id} value={p.nombre}>{p.nombre}</option>)}
+            </select>
+          </label>
+          <label style={LS}>
+            Lote / Guía
+            <input value={form.lote} onChange={e => s('lote', e.target.value)} style={IS} />
+          </label>
+          <label style={LS}>
+            Precio unitario (Q)
+            <input type="number" min="0" step="0.01" value={form.precioUnitario}
+              onChange={e => s('precioUnitario', e.target.value)} style={IS} />
+          </label>
+          <label style={LS}>
+            Responsable
+            <select value={form.responsable} onChange={e => s('responsable', e.target.value)} style={IS}>
+              <option value="">— Seleccionar —</option>
+              {empleados.map(e => <option key={e.id} value={e.nombre}>{e.nombre}</option>)}
+            </select>
+          </label>
+        </div>
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          style={{
+            padding: '11px 28px', background: saving ? T.border : T.primary,
+            color: T.white, border: 'none', borderRadius: 6, fontWeight: 600,
+            fontSize: '.88rem', cursor: saving ? 'not-allowed' : 'pointer',
+            transition: 'background .15s',
+          }}
+        >
+          {saving ? 'Guardando…' : 'Registrar entrada'}
         </button>
       </div>
 
-      <div style={{background:'#fff',border:`1px solid ${C.sand}`,borderRadius:8,padding:20}}>
-        <div style={{fontWeight:700,marginBottom:12,color:C.green}}>Historial ({data.length})</div>
-        <div style={{overflowX:'auto'}}>
-          <table style={{width:'100%',borderCollapse:'collapse',fontSize:'.8rem'}}>
-            <thead><tr style={{background:C.bg}}>
-              {['Fecha','Producto','Cantidad','Unidad','Proveedor','Lote','Precio','Responsable'].map(h=>(
-                <th key={h} style={{padding:'7px 10px',textAlign:'left',fontWeight:700,color:'#6B8070',borderBottom:`1px solid ${C.sand}`}}>{h}</th>
-              ))}
-            </tr></thead>
-            <tbody>
-              {data.slice(0,60).map(r=>(
-                <tr key={r.id} style={{borderBottom:`1px solid ${C.sand}`}}>
-                  <td style={{padding:'7px 10px',fontWeight:600}}>{r.fecha}</td>
-                  <td style={{padding:'7px 10px'}}>{r.producto||'—'}</td>
-                  <td style={{padding:'7px 10px',fontWeight:600,color:C.acc}}>{r.cantidad?.toLocaleString()}</td>
-                  <td style={{padding:'7px 10px'}}>{r.unidad||'—'}</td>
-                  <td style={{padding:'7px 10px'}}>{r.proveedor||'—'}</td>
-                  <td style={{padding:'7px 10px'}}>{r.lote||'—'}</td>
-                  <td style={{padding:'7px 10px'}}>Q {(r.precio||0).toFixed(2)}</td>
-                  <td style={{padding:'7px 10px'}}>{r.responsable||'—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {/* History table */}
+      <div style={card}>
+        <div style={{ fontWeight: 700, fontSize: '.9rem', color: T.textDark, marginBottom: 16 }}>
+          Historial ({data.length})
         </div>
+        {loadingAll ? (
+          <Skeleton rows={8} />
+        ) : data.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '48px 24px', color: T.textMid, fontSize: '.88rem' }}>
+            Sin entradas registradas aún.
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: T.primary }}>
+                  {['Fecha', 'Hora', 'Producto', 'Cantidad', 'Unidad', 'Proveedor', 'Lote', 'Precio/U', 'Responsable'].map(h => (
+                    <th key={h} style={thSt}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {data.slice(0, 100).map((r, i) => (
+                  <tr key={r.id} style={{ background: i % 2 === 1 ? '#F9FBF9' : '#fff' }}>
+                    <td style={{ ...tdSt, fontWeight: 600 }}>{r.fecha}</td>
+                    <td style={{ ...tdSt, color: T.textMid }}>{r.hora || '—'}</td>
+                    <td style={tdSt}>{r.producto || '—'}</td>
+                    <td style={{ ...tdSt, fontWeight: 600, color: T.secondary }}>{(r.cantidad || 0).toLocaleString()}</td>
+                    <td style={{ ...tdSt, color: T.textMid }}>{r.unidad || '—'}</td>
+                    <td style={tdSt}>{r.proveedor || '—'}</td>
+                    <td style={{ ...tdSt, color: T.textMid }}>{r.lote || '—'}</td>
+                    <td style={tdSt}>Q {(r.precioUnitario || 0).toFixed(2)}</td>
+                    <td style={{ ...tdSt, color: T.textMid }}>{r.responsable || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
