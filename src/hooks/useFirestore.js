@@ -28,6 +28,7 @@ export function useCollection(colName, opts = {}) {
         setLoading(false);
       },
       err => {
+        console.error(`[useCollection:${colName}]`, err.message, err);
         setError(err.message);
         setLoading(false);
       }

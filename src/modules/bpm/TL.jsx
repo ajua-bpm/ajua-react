@@ -109,7 +109,8 @@ export default function TL() {
   const toast = useToast();
   const { empleados, loading: empLoading } = useEmpleados();
   const { conductores, loading: condLoading } = useConductores();
-  const { data, loading } = useCollection('tl', { orderField: 'fecha', orderDir: 'desc', limit: 50 });
+  const { data: rawData, loading } = useCollection('tl');
+  const data = [...(rawData || [])].sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '')).slice(0, 50);
   const { add, saving } = useWrite('tl');
 
   // ─── DEBUG temporal ───────────────────────────────────────────────────────
