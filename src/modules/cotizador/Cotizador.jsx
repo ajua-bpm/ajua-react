@@ -45,9 +45,9 @@ const BLANK_COT  = { fecha:today(), cliente:'', tipo:'Interno', validezDias:'30'
 
 function TabCotizaciones() {
   const toast = useToast();
-  const { data, loading }   = useCollection('cotizaciones', { orderField:'fecha', orderDir:'desc', limit:200 });
+  const { data, loading }   = useCollection('cotizadorRapido', { orderField:'fecha', orderDir:'desc', limit:200 });
   const { clientes }        = useClientes();
-  const { add, update, saving } = useWrite('cotizaciones');
+  const { add, update, saving } = useWrite('cotizadorRapido');
 
   const [form, setForm]   = useState({...BLANK_COT, items:[{...BLANK_ITEM}]});
   const [editId, setEditId] = useState(null);
@@ -186,8 +186,8 @@ function TabCotizaciones() {
 // ─── TAB 2: PRODUCTOS ───────────────────────────────────────────────────────
 function TabProductos() {
   const toast = useToast();
-  const { data, loading } = useCollection('iproductos', { orderField:'nombre', limit:200 });
-  const { add, update, remove, saving } = useWrite('iproductos');
+  const { data, loading } = useCollection('iProductos', { orderField:'nombre', limit:200 });
+  const { add, update, remove, saving } = useWrite('iProductos');
   const [form, setForm]   = useState({ nombre:'', codigo:'', categoria:'', unidad:'lb', precioBase:'' });
   const [editId, setEditId] = useState(null);
 
@@ -265,9 +265,9 @@ function TabProductos() {
 // ─── TAB 3: PRESENTACIONES ──────────────────────────────────────────────────
 function TabPresentaciones() {
   const toast = useToast();
-  const { data, loading } = useCollection('ipresentaciones', { orderField:'nombre', limit:200 });
+  const { data, loading } = useCollection('iPresentaciones', { orderField:'nombre', limit:200 });
   const { productos }     = useProductosCatalogo();
-  const { add, update, remove, saving } = useWrite('ipresentaciones');
+  const { add, update, remove, saving } = useWrite('iPresentaciones');
   const [form, setForm]   = useState({ nombre:'', producto:'', peso:'', unidad:'lb', precio:'', codigoBarras:'' });
   const [editId, setEditId] = useState(null);
 
