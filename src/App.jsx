@@ -29,7 +29,7 @@ import Proveedores from './modules/inventario/Proveedores';
 // Ventas
 import VentasGT from './modules/ventas/VentasGT';
 import VentasInt from './modules/ventas/VentasInt';
-import Maquila from './modules/ventas/Maquila';
+import GastosSemanales from './modules/ventas/GastosSemanales';
 import Walmart from './modules/walmart/Walmart';
 
 // Finanzas
@@ -94,7 +94,7 @@ export default function App() {
           {/* Ventas */}
           <Route path="ventas/gt"              element={<VentasGT />} />
           <Route path="ventas/int"             element={<VentasInt />} />
-          <Route path="ventas/maquila"         element={<Maquila />} />
+          <Route path="gastos/semanales"          element={<GastosSemanales />} />
           <Route path="walmart"                element={<Walmart />} />
 
           {/* Finanzas */}

@@ -1,151 +1,463 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
+import { useEmpleados } from '../../hooks/useMainData';
 import { useCollection, useWrite } from '../../hooks/useFirestore';
-import LoadingSpinner from '../../components/LoadingSpinner';
 import { useToast } from '../../components/Toast';
+import Skeleton from '../../components/Skeleton';
 
-const C = { green:'#1A3D28', acc:'#4A9E6A', sand:'#E8DCC8', danger:'#c0392b', bg:'#F9F6EF', warn:'#e67e22' };
-const today = () => new Date().toISOString().slice(0,10);
-
-const AREAS = ['Cooler 1','Cooler 2','Pre-carga','Bodega general','Área de proceso','Baños','Externo'];
-const TIPOS = ['Vidrio','Plástico','Metal','Madera','Otro material extraño'];
-const ACCIONES = ['Retirado y desechado','Área bloqueada temporalmente','Producto retenido para inspección','Notificado a supervisor','Investigación en proceso'];
-
-const SEV = {
-  bajo:  { color:'#27ae60', bg:'rgba(39,174,96,.12)',   label:'Bajo' },
-  medio: { color:'#e67e22', bg:'rgba(230,126,34,.12)',  label:'Medio' },
-  alto:  { color:'#c0392b', bg:'rgba(192,57,43,.12)',   label:'Alto' },
+// ─── Design tokens ────────────────────────────────────────────────────────────
+const T = {
+  primary: '#1B5E20', secondary: '#2E7D32', accent: '#43A047',
+  white: '#FFFFFF', bgLight: '#F5F5F5', bgCard: '#FFFFFF',
+  border: '#E0E0E0', textDark: '#1A1A18', textMid: '#6B6B60',
+  danger: '#C62828', warn: '#E65100', green2: '#E8F5E9',
 };
 
-export default function VYP() {
-  const toast = useToast();
-  const { data, loading } = useCollection('vyp', { orderField:'fecha', orderDir:'desc', limit:200 });
-  const { add, saving } = useWrite('vyp');
+// ─── Data from bpm.html (exact) ───────────────────────────────────────────────
+const MESES = [
+  'Enero','Febrero','Marzo','Abril','Mayo','Junio',
+  'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre',
+];
 
-  const [form, setForm] = useState({
-    fecha: today(), resp: '', area: '', tipo: 'Vidrio',
-    descripcion: '', cantidad: '', severidad: 'medio',
-    accion: '', foto: '', obs: '',
-  });
+const VP_ITEMS = [
+  { nivel: 'NIVEL 1', item: 'Dispensador de jabón 1' },
+  { nivel: 'NIVEL 1', item: 'Dispensador de Gel' },
+  { nivel: 'NIVEL 1', item: 'Lámpara 1' },
+  { nivel: 'NIVEL 1', item: 'Lámpara 2' },
+  { nivel: 'NIVEL 1', item: 'Lámpara 3' },
+  { nivel: 'NIVEL 1', item: 'Lámpara 4' },
+  { nivel: 'NIVEL 1', item: 'Ventilador 1' },
+  { nivel: 'NIVEL 1', item: 'Ventilador 2' },
+  { nivel: 'NIVEL 1', item: 'Ventilador 3' },
+  { nivel: 'NIVEL 1', item: 'Ventilador 4' },
+  { nivel: 'NIVEL 1', item: 'Trampa para roedores 1' },
+  { nivel: 'NIVEL 1', item: 'Trampa para roedores 2' },
+  { nivel: 'NIVEL 2', item: 'Dispensador de jabón 1' },
+  { nivel: 'NIVEL 2', item: 'Trampa para roedores 3' },
+  { nivel: 'NIVEL 2', item: 'Trampa para roedores 4' },
+  { nivel: 'NIVEL 2', item: 'Ventilador 1' },
+  { nivel: 'NIVEL 2', item: 'Ventilador 2' },
+  { nivel: 'NIVEL 2', item: 'Ventilador 3' },
+  { nivel: 'NIVEL 2', item: 'Lámpara 1' },
+  { nivel: 'NIVEL 2', item: 'Lámpara 2' },
+  { nivel: 'NIVEL 2', item: 'Lámpara 3' },
+];
 
-  const handleSave = async () => {
-    if(!form.fecha || !form.area || !form.descripcion) {
-      toast('⚠ Fecha, área y descripción requeridos','error'); return;
-    }
-    await add(form);
-    toast('✓ Hallazgo VYP registrado');
-    setForm(f => ({...f, area:'', descripcion:'', cantidad:'', accion:'', foto:'', obs:'', resp:''}));
-  };
+const VYP_AREAS = [
+  'Bodega','Pre-carga','Cooler 1','Cooler 2','Parqueo','Oficina','Baños','Otro',
+];
 
-  if(loading) return <LoadingSpinner/>;
+const VYP_TIPOS   = ['Vidrio','Plástico','Ambos'];
+const VYP_ACCIONES = ['Retirado','Reportado','Pendiente'];
 
-  const totalAlto  = data.filter(r=>r.severidad==='alto').length;
-  const totalMedio = data.filter(r=>r.severidad==='medio').length;
+const today  = () => new Date().toISOString().slice(0, 10);
+const curMes = () => MESES[new Date().getMonth()];
 
+// ─── Shared UI helpers ────────────────────────────────────────────────────────
+const inp = (val, onChange, type = 'text', extra = {}) => (
+  <input type={type} value={val} onChange={e => onChange(e.target.value)}
+    style={{ padding: '9px 12px', border: '1.5px solid #E0E0E0', borderRadius: 6,
+      fontSize: '.88rem', outline: 'none', width: '100%', fontFamily: 'inherit',
+      boxSizing: 'border-box', ...extra }} />
+);
+
+const sel = (val, onChange, opts) => (
+  <select value={val} onChange={e => onChange(e.target.value)}
+    style={{ padding: '9px 12px', border: '1.5px solid #E0E0E0', borderRadius: 6,
+      fontSize: '.88rem', outline: 'none', width: '100%', fontFamily: 'inherit',
+      background: '#fff', cursor: 'pointer' }}>
+    {opts}
+  </select>
+);
+
+const Lbl = ({ text, children }) => (
+  <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+    <span style={{ fontSize: '.7rem', fontWeight: 700, textTransform: 'uppercase',
+      letterSpacing: '.07em', color: T.secondary }}>{text}</span>
+    {children}
+  </label>
+);
+
+const Card = ({ children, style = {} }) => (
+  <div style={{ background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 10,
+    padding: 24, marginBottom: 20, ...style }}>
+    {children}
+  </div>
+);
+
+const SecTitle = ({ children }) => (
+  <div style={{ fontSize: '.8rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em',
+    color: T.secondary, marginBottom: 16, paddingBottom: 10, borderBottom: `1px solid ${T.border}` }}>
+    {children}
+  </div>
+);
+
+const CatHeader = ({ text }) => (
+  <div style={{ fontSize: '.65rem', letterSpacing: '.1em', textTransform: 'uppercase',
+    color: T.secondary, fontWeight: 700, padding: '8px 0 4px',
+    borderBottom: `1px solid ${T.border}`, marginBottom: 4 }}>
+    {text}
+  </div>
+);
+
+const ThCell = ({ children }) => (
+  <th style={{ padding: '9px 12px', textAlign: 'left', color: T.white,
+    fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em' }}>
+    {children}
+  </th>
+);
+const TdCell = ({ children, style = {} }) => (
+  <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0', ...style }}>
+    {children}
+  </td>
+);
+
+const EmpSel = ({ value, onChange, empleados, empLoading }) => empLoading
+  ? <Skeleton height={38} />
+  : sel(value, onChange,
+      <>
+        <option value="">— Seleccionar responsable —</option>
+        {empleados.map(e => <option key={e.id} value={e.nombre}>{e.nombre}{e.cargo ? ' · ' + e.cargo : ''}</option>)}
+      </>
+    );
+
+// SI/NO/NA tristate for VP inventory
+function Tristate3({ value, onChange }) {
+  const opts = [
+    { v: 'cumple',    l: 'SI',  ac: T.accent },
+    { v: 'no_cumple', l: 'NO',  ac: T.danger },
+    { v: 'na',        l: 'N/A', ac: T.textMid },
+  ];
   return (
-    <div>
-      <h1 style={{fontSize:'1.4rem',fontWeight:800,color:C.green,marginBottom:4}}>🔍 Vidrio y Plástico</h1>
-      <p style={{fontSize:'.82rem',color:'#6B8070',marginBottom:16}}>Registro de hallazgos de materiales extraños — vidrio, plástico, metal</p>
-
-      {/* Resumen */}
-      {(totalAlto>0||totalMedio>0)&&(
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:16}}>
-          <div style={{background:SEV.alto.bg,border:`1px solid ${SEV.alto.color}44`,borderRadius:8,padding:'10px 14px'}}>
-            <div style={{fontSize:'.7rem',fontWeight:700,color:SEV.alto.color,textTransform:'uppercase'}}>Severidad Alta</div>
-            <div style={{fontSize:'1.8rem',fontWeight:800,color:SEV.alto.color}}>{totalAlto}</div>
-          </div>
-          <div style={{background:SEV.medio.bg,border:`1px solid ${SEV.medio.color}44`,borderRadius:8,padding:'10px 14px'}}>
-            <div style={{fontSize:'.7rem',fontWeight:700,color:SEV.medio.color,textTransform:'uppercase'}}>Severidad Media</div>
-            <div style={{fontSize:'1.8rem',fontWeight:800,color:SEV.medio.color}}>{totalMedio}</div>
-          </div>
-        </div>
-      )}
-
-      {/* Formulario */}
-      <div style={{background:'#fff',border:`1px solid ${C.sand}`,borderRadius:8,padding:20,marginBottom:20}}>
-        <div style={{fontWeight:700,fontSize:'.9rem',color:C.green,marginBottom:14}}>Registrar Hallazgo</div>
-
-        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))',gap:12,marginBottom:12}}>
-          <label style={L}>Fecha<input type="date" value={form.fecha} onChange={e=>setForm(f=>({...f,fecha:e.target.value}))} style={I}/></label>
-          <label style={L}>Responsable<input value={form.resp} onChange={e=>setForm(f=>({...f,resp:e.target.value}))} style={I}/></label>
-          <label style={L}>Área
-            <select value={form.area} onChange={e=>setForm(f=>({...f,area:e.target.value}))} style={I}>
-              <option value="">— Seleccionar —</option>
-              {AREAS.map(a=><option key={a}>{a}</option>)}
-            </select>
-          </label>
-          <label style={L}>Tipo material
-            <select value={form.tipo} onChange={e=>setForm(f=>({...f,tipo:e.target.value}))} style={I}>
-              {TIPOS.map(t=><option key={t}>{t}</option>)}
-            </select>
-          </label>
-          <label style={L}>Cantidad / tamaño
-            <input value={form.cantidad} onChange={e=>setForm(f=>({...f,cantidad:e.target.value}))} placeholder="ej: 3 fragmentos" style={I}/>
-          </label>
-          <label style={L}>Severidad
-            <select value={form.severidad} onChange={e=>setForm(f=>({...f,severidad:e.target.value}))} style={{...I,color:SEV[form.severidad]?.color,fontWeight:700}}>
-              <option value="bajo">Bajo</option>
-              <option value="medio">Medio</option>
-              <option value="alto">Alto</option>
-            </select>
-          </label>
-        </div>
-
-        <label style={{...L,display:'block',marginBottom:12}}>
-          Descripción del hallazgo *
-          <input value={form.descripcion} onChange={e=>setForm(f=>({...f,descripcion:e.target.value}))} placeholder="Descripción detallada..." style={I}/>
-        </label>
-
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:12}}>
-          <label style={L}>Acción tomada
-            <select value={form.accion} onChange={e=>setForm(f=>({...f,accion:e.target.value}))} style={I}>
-              <option value="">— Seleccionar —</option>
-              {ACCIONES.map(a=><option key={a}>{a}</option>)}
-            </select>
-          </label>
-          <label style={L}>Foto (URL o código)
-            <input value={form.foto} onChange={e=>setForm(f=>({...f,foto:e.target.value}))} placeholder="URL foto..." style={I}/>
-          </label>
-        </div>
-
-        <textarea value={form.obs} onChange={e=>setForm(f=>({...f,obs:e.target.value}))} placeholder="Observaciones adicionales..." rows={2}
-          style={{width:'100%',padding:'9px 12px',border:`1.5px solid ${C.sand}`,borderRadius:4,fontSize:'.85rem',outline:'none',resize:'vertical',marginBottom:12}}/>
-
-        <button onClick={handleSave} disabled={saving} style={{padding:'12px 28px',background:saving?'#ccc':C.danger,color:'#fff',border:'none',borderRadius:6,fontWeight:700,fontSize:'.88rem',cursor:saving?'not-allowed':'pointer'}}>
-          {saving?'Guardando...':'Registrar Hallazgo'}
+    <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+      {opts.map(o => (
+        <button key={o.v} onClick={() => onChange(o.v === value ? '' : o.v)}
+          style={{ padding: '4px 9px', borderRadius: 5, border: '1.5px solid',
+            cursor: 'pointer', fontWeight: 700, fontSize: '.75rem', fontFamily: 'inherit',
+            background: value === o.v ? o.ac : T.white,
+            borderColor: value === o.v ? o.ac : T.border,
+            color: value === o.v ? T.white : T.textMid }}>
+          {o.l}
         </button>
-      </div>
-
-      {/* Historial */}
-      <div style={{background:'#fff',border:`1px solid ${C.sand}`,borderRadius:8,padding:20}}>
-        <div style={{fontWeight:700,marginBottom:12,color:C.green}}>Historial ({data.length})</div>
-        <div style={{display:'flex',flexDirection:'column',gap:10}}>
-          {data.slice(0,50).map(r=>{
-            const sev = SEV[r.severidad] || SEV.medio;
-            return (
-              <div key={r.id} style={{border:`1px solid ${C.sand}`,borderRadius:6,padding:'12px 14px',borderLeft:`4px solid ${sev.color}`}}>
-                <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:8,flexWrap:'wrap'}}>
-                  <div>
-                    <div style={{fontWeight:700,fontSize:'.85rem',color:C.green}}>{r.tipo||'—'} · {r.area||'—'}</div>
-                    <div style={{fontSize:'.78rem',color:'#555',marginTop:2}}>{r.descripcion||'—'}</div>
-                    {r.accion&&<div style={{fontSize:'.72rem',color:'#6B8070',marginTop:4}}>Acción: {r.accion}</div>}
-                  </div>
-                  <div style={{textAlign:'right',flexShrink:0}}>
-                    <div style={{fontSize:'.72rem',fontWeight:600,color:'#6B8070'}}>{r.fecha}</div>
-                    <span style={{display:'inline-block',marginTop:4,padding:'2px 8px',borderRadius:100,fontSize:'.65rem',fontWeight:700,background:sev.bg,color:sev.color}}>
-                      {sev.label}
-                    </span>
-                  </div>
-                </div>
-                {r.resp&&<div style={{fontSize:'.7rem',color:'#9aaa9e',marginTop:6}}>Responsable: {r.resp}</div>}
-              </div>
-            );
-          })}
-          {data.length===0&&<div style={{textAlign:'center',padding:'40px',color:'#9aaa9e'}}>Sin hallazgos registrados</div>}
-        </div>
-      </div>
+      ))}
     </div>
   );
 }
 
-const L = { display:'flex',flexDirection:'column',gap:4,fontSize:'.72rem',fontWeight:700,textTransform:'uppercase',color:'#4A9E6A',letterSpacing:'.06em' };
-const I = { padding:'9px 12px',border:'1.5px solid #E8DCC8',borderRadius:4,fontSize:'.85rem',outline:'none',fontFamily:'inherit',width:'100%',marginTop:2 };
+// ─── Tab 1: Inventario Mensual (collection: vp) ───────────────────────────────
+function TabVP({ empleados, empLoading }) {
+  const toast = useToast();
+  const { data: registros, loading: histLoading } = useCollection('vp', { orderField: 'fecha', orderDir: 'desc', limit: 200 });
+  const { add, remove, saving } = useWrite('vp');
+
+  const initChecks = () => VP_ITEMS.map(() => '');
+  const [fecha, setFecha]   = useState(today());
+  const [resp, setResp]     = useState('');
+  const [mes, setMes]       = useState(curMes());
+  const [checks, setChecks] = useState(initChecks);
+
+  const setCheck = (i, v) => setChecks(prev => prev.map((c, idx) => idx === i ? v : c));
+
+  const ok  = checks.filter(c => c === 'cumple').length;
+  const nok = checks.filter(c => c === 'no_cumple').length;
+  const pct = (ok + nok) > 0 ? Math.round(ok / (ok + nok) * 100) : 0;
+
+  const handleSave = async () => {
+    if (!fecha || !resp) { toast('⚠ Complete fecha y responsable', 'error'); return; }
+    try {
+      await add({ fecha, mes, resp, checks, ok, nok });
+      toast('✓ Revisión de vidrio y plástico guardada');
+      setChecks(initChecks());
+    } catch (e) { toast('Error: ' + e.message, 'error'); }
+  };
+
+  let lastNivel = '';
+  return (
+    <>
+      <Card>
+        <SecTitle>Nueva Revisión Mensual</SecTitle>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14, marginBottom: 16 }}>
+          <Lbl text="Fecha de Revisión">{inp(fecha, setFecha, 'date')}</Lbl>
+          <Lbl text="Responsable"><EmpSel value={resp} onChange={setResp} empleados={empleados} empLoading={empLoading} /></Lbl>
+          <Lbl text="Mes de Revisión">
+            {sel(mes, setMes, MESES.map(m => <option key={m} value={m}>{m}</option>))}
+          </Lbl>
+        </div>
+
+        <div style={{ overflowX: 'auto', marginBottom: 14 }}>
+          {VP_ITEMS.map((x, i) => {
+            const showNivel = x.nivel !== lastNivel;
+            if (showNivel) lastNivel = x.nivel;
+            return (
+              <div key={i}>
+                {showNivel && <CatHeader text={x.nivel} />}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '8px 0', borderBottom: `1px solid ${T.border}` }}>
+                  <div style={{ flex: 1, marginRight: 12 }}>
+                    <div style={{ fontSize: '.72rem', color: T.textMid }}>{x.nivel}</div>
+                    <div style={{ fontSize: '.85rem', color: T.textDark }}>{x.item}</div>
+                  </div>
+                  <Tristate3 value={checks[i]} onChange={v => setCheck(i, v)} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <button onClick={handleSave} disabled={saving}
+            style={{ padding: '10px 22px', background: saving ? '#BDBDBD' : T.primary,
+              color: T.white, border: 'none', borderRadius: 6, fontWeight: 700,
+              fontSize: '.88rem', cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+            {saving ? 'Guardando...' : 'Guardar Revisión'}
+          </button>
+        </div>
+      </Card>
+
+      <Card>
+        <SecTitle>Historial de Revisiones</SecTitle>
+        {histLoading ? <Skeleton height={100} /> : (registros || []).length === 0
+          ? <p style={{ textAlign: 'center', padding: 32, color: T.textMid, fontSize: '.85rem' }}>Sin registros</p>
+          : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ background: T.primary }}>
+                    {['Fecha','Mes','Responsable','Cumplen','No Cumplen','% OK',''].map(h => <ThCell key={h}>{h}</ThCell>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {(registros || []).slice(0, 100).map((r, i) => {
+                    const p = (r.ok + r.nok) > 0 ? Math.round(r.ok / (r.ok + r.nok) * 100) : 0;
+                    return (
+                      <tr key={r.id} style={{ background: i % 2 === 0 ? T.white : '#F9FBF9' }}>
+                        <TdCell style={{ fontWeight: 600 }}>{r.fecha}</TdCell>
+                        <TdCell>{r.mes || '—'}</TdCell>
+                        <TdCell>{r.resp || '—'}</TdCell>
+                        <TdCell style={{ color: T.accent, fontWeight: 600 }}>{r.ok ?? '—'}</TdCell>
+                        <TdCell style={{ color: T.danger, fontWeight: 600 }}>{r.nok ?? '—'}</TdCell>
+                        <TdCell style={{ fontWeight: 700, color: p >= 80 ? T.accent : T.danger }}>{p}%</TdCell>
+                        <TdCell>
+                          <button onClick={() => remove(r.id)}
+                            style={{ background: 'none', border: `1px solid ${T.border}`,
+                              borderRadius: 4, padding: '3px 8px', cursor: 'pointer',
+                              fontSize: '.75rem', color: T.textMid }}>✕</button>
+                        </TdCell>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+      </Card>
+    </>
+  );
+}
+
+// ─── Tab 2: Hallazgos (collection: vyp) ──────────────────────────────────────
+function TabVYP({ empleados, empLoading }) {
+  const toast = useToast();
+  const { data: registros, loading: histLoading } = useCollection('vyp', { orderField: 'fecha', orderDir: 'desc', limit: 200 });
+  const { add, remove, saving } = useWrite('vyp');
+
+  const [fecha, setFecha]   = useState(today());
+  const [area, setArea]     = useState('');
+  const [resp, setResp]     = useState('');
+  const [tipo, setTipo]     = useState('Vidrio');
+  const [accion, setAccion] = useState('Retirado');
+  const [desc, setDesc]     = useState('');
+  const [foto, setFoto]     = useState(null);
+  const fotoRef             = useRef(null);
+
+  const handleFoto = (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => setFoto(ev.target.result);
+    reader.readAsDataURL(file);
+  };
+
+  const clearFoto = () => {
+    setFoto(null);
+    if (fotoRef.current) fotoRef.current.value = '';
+  };
+
+  const handleSave = async () => {
+    if (!fecha || !area || !resp) { toast('⚠ Complete fecha, área y responsable', 'error'); return; }
+    try {
+      await add({ fecha, area, tipo, desc, accion, resp, foto: foto || null });
+      toast('✓ Hallazgo registrado');
+      setDesc(''); clearFoto();
+    } catch (e) { toast('Error: ' + e.message, 'error'); }
+  };
+
+  const accionBadge = (ac) => {
+    if (ac === 'Pendiente') return { bg: '#FFEBEE', c: T.danger, l: '⚠ Pendiente' };
+    if (ac === 'Retirado')  return { bg: T.green2, c: T.secondary, l: '✓ Retirado' };
+    return { bg: '#E3F2FD', c: '#1565C0', l: ac || '—' };
+  };
+
+  return (
+    <>
+      <Card style={{ borderLeft: `3px solid ${T.danger}` }}>
+        <SecTitle>🚨 Reporte de Hallazgo — Contaminación</SecTitle>
+        <p style={{ fontSize: '.7rem', color: T.textMid, marginBottom: 16, marginTop: -8 }}>
+          Reportar vidrio o plástico encontrado en cualquier área. Registrar inmediatamente.
+        </p>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14, marginBottom: 14 }}>
+          <Lbl text="Fecha">{inp(fecha, setFecha, 'date')}</Lbl>
+          <Lbl text="Área donde se encontró">
+            {sel(area, setArea,
+              <>
+                <option value="">— Seleccionar área —</option>
+                {VYP_AREAS.map(a => <option key={a} value={a}>{a}</option>)}
+              </>
+            )}
+          </Lbl>
+          <Lbl text="Responsable que reporta">
+            <EmpSel value={resp} onChange={setResp} empleados={empleados} empLoading={empLoading} />
+          </Lbl>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+          <Lbl text="Tipo de hallazgo">
+            {sel(tipo, setTipo, VYP_TIPOS.map(t => <option key={t} value={t}>{t}</option>))}
+          </Lbl>
+          <Lbl text="Acción tomada">
+            {sel(accion, setAccion, VYP_ACCIONES.map(a => <option key={a} value={a}>{a}</option>))}
+          </Lbl>
+        </div>
+
+        <div style={{ marginBottom: 14 }}>
+          <Lbl text="Descripción del hallazgo">
+            <textarea value={desc} onChange={e => setDesc(e.target.value)}
+              placeholder="Qué se encontró, cantidad, estado, posible origen..."
+              rows={2}
+              style={{ padding: '9px 12px', border: '1.5px solid #E0E0E0', borderRadius: 6,
+                fontSize: '.85rem', outline: 'none', width: '100%', fontFamily: 'inherit',
+                resize: 'vertical', boxSizing: 'border-box' }} />
+          </Lbl>
+        </div>
+
+        {/* Photo */}
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: '.72rem', color: T.textMid, marginBottom: 5 }}>📷 Foto (opcional)</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <input ref={fotoRef} type="file" id="vyp-foto-input" accept="image/*"
+              onChange={handleFoto} style={{ fontSize: '.7rem' }} />
+            {foto && (
+              <button onClick={clearFoto}
+                style={{ padding: '4px 10px', background: 'none', border: `1px solid ${T.danger}`,
+                  borderRadius: 4, cursor: 'pointer', fontSize: '.72rem', color: T.danger, fontFamily: 'inherit' }}>
+                ✕ Quitar foto
+              </button>
+            )}
+          </div>
+          {foto && (
+            <div style={{ marginTop: 6 }}>
+              <img src={foto} alt="preview" style={{ maxHeight: 80, borderRadius: 4, border: `1px solid ${T.border}` }} />
+            </div>
+          )}
+        </div>
+
+        <button onClick={handleSave} disabled={saving}
+          style={{ padding: '10px 22px', background: saving ? '#BDBDBD' : T.primary,
+            color: T.white, border: 'none', borderRadius: 6, fontWeight: 700,
+            fontSize: '.88rem', cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+          {saving ? 'Guardando...' : 'Registrar Hallazgo'}
+        </button>
+      </Card>
+
+      <Card>
+        <SecTitle>Historial de Hallazgos</SecTitle>
+        {histLoading ? <Skeleton height={100} /> : (registros || []).length === 0
+          ? <p style={{ textAlign: 'center', padding: 32, color: T.textMid, fontSize: '.85rem' }}>Sin reportes de hallazgos</p>
+          : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ background: T.primary }}>
+                    {['Fecha','Área','Tipo','Descripción','Acción','Responsable','Foto',''].map(h => <ThCell key={h}>{h}</ThCell>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {(registros || []).slice(0, 100).map((r, i) => {
+                    const badge = accionBadge(r.accion);
+                    return (
+                      <tr key={r.id} style={{ background: i % 2 === 0 ? T.white : '#F9FBF9' }}>
+                        <TdCell style={{ fontWeight: 600 }}>{r.fecha}</TdCell>
+                        <TdCell style={{ fontSize: '.78rem' }}>{r.area || '—'}</TdCell>
+                        <TdCell>
+                          <span style={{ padding: '3px 8px', borderRadius: 100, fontSize: '.65rem', fontWeight: 600,
+                            background: '#E3F2FD', color: '#1565C0' }}>{r.tipo || '—'}</span>
+                        </TdCell>
+                        <TdCell style={{ fontSize: '.75rem', maxWidth: 140 }}>{r.desc || '—'}</TdCell>
+                        <TdCell>
+                          <span style={{ padding: '3px 8px', borderRadius: 100, fontSize: '.65rem', fontWeight: 600,
+                            background: badge.bg, color: badge.c }}>{badge.l}</span>
+                        </TdCell>
+                        <TdCell style={{ fontSize: '.78rem' }}>{r.resp || '—'}</TdCell>
+                        <TdCell>
+                          {r.foto
+                            ? <img src={r.foto} alt="" style={{ height: 28, borderRadius: 3, cursor: 'pointer' }} title="Ver foto" />
+                            : '—'}
+                        </TdCell>
+                        <TdCell>
+                          <button onClick={() => remove(r.id)}
+                            style={{ background: 'none', border: `1px solid ${T.border}`,
+                              borderRadius: 4, padding: '3px 8px', cursor: 'pointer',
+                              fontSize: '.75rem', color: T.textMid }}>✕</button>
+                        </TdCell>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+      </Card>
+    </>
+  );
+}
+
+// ─── Main VYP component ───────────────────────────────────────────────────────
+const TABS = [
+  { key: 'vp',  label: 'Inventario Mensual' },
+  { key: 'vyp', label: '🚨 Hallazgos' },
+];
+
+export default function VYP() {
+  const [activeTab, setActiveTab] = useState('vp');
+  const { empleados, loading: empLoading } = useEmpleados();
+
+  return (
+    <div style={{ fontFamily: 'Inter, system-ui, sans-serif', color: T.textDark, maxWidth: 900, margin: '0 auto' }}>
+      <div style={{ marginBottom: 20 }}>
+        <h1 style={{ fontSize: '1.35rem', fontWeight: 800, color: T.primary, margin: 0 }}>
+          🔍 Vidrio y Plástico
+        </h1>
+        <p style={{ fontSize: '.82rem', color: T.textMid, marginTop: 4, marginBottom: 0 }}>
+          Revisión mensual de inventario · Reporte de hallazgos de contaminación
+        </p>
+      </div>
+
+      {/* Tab bar */}
+      <div style={{ display: 'flex', gap: 2, marginBottom: 20, borderBottom: `2px solid ${T.border}` }}>
+        {TABS.map(t => (
+          <button key={t.key} onClick={() => setActiveTab(t.key)}
+            style={{ padding: '10px 18px', background: 'none', border: 'none',
+              borderBottom: activeTab === t.key ? `3px solid ${T.primary}` : '3px solid transparent',
+              cursor: 'pointer', fontWeight: activeTab === t.key ? 700 : 500,
+              color: activeTab === t.key ? T.primary : T.textMid,
+              fontSize: '.82rem', fontFamily: 'inherit', transition: 'all .15s',
+              marginBottom: -2 }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'vp'  && <TabVP  empleados={empleados} empLoading={empLoading} />}
+      {activeTab === 'vyp' && <TabVYP empleados={empleados} empLoading={empLoading} />}
+    </div>
+  );
+}

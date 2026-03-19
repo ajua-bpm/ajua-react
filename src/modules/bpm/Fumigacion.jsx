@@ -9,295 +9,299 @@ const T = {
   primary: '#1B5E20', secondary: '#2E7D32', accent: '#43A047',
   white: '#FFFFFF', bgLight: '#F5F5F5', bgCard: '#FFFFFF',
   border: '#E0E0E0', textDark: '#1A1A18', textMid: '#6B6B60',
-  danger: '#C62828', warn: '#E65100',
+  danger: '#C62828', warn: '#E65100', green2: '#E8F5E9',
 };
 
-const AREAS = ['Cooler 1', 'Cooler 2', 'Pre-carga', 'Bodega', 'Baños'];
-const today = () => new Date().toISOString().slice(0, 10);
-const nowTime = () => new Date().toTimeString().slice(0, 5);
+// ─── Data from bpm.html (exact) ───────────────────────────────────────────────
+const INSTALACIONES = [
+  'Instalación Completa',
+  'Cooler 1 (0–4°C)',
+  'Cooler 2 (-18°C)',
+  'Pre-carga',
+  'Bodega General',
+  'Parqueo Interior',
+];
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+const MESES = [
+  'Enero','Febrero','Marzo','Abril','Mayo','Junio',
+  'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre',
+];
+
+const TIPOS = [
+  { value: 'Fumigación General',      label: 'Fumigación General (empresa externa)' },
+  { value: 'Desinfección con Cloro',  label: '🧴 Desinfección con Cloro (interna, semanal)' },
+  { value: 'Sanitización Agua-Cloro', label: 'Sanitización Agua-Cloro' },
+  { value: 'Control de Insectos',     label: 'Control de Insectos' },
+];
+
+const RESULTADOS = [
+  { value: 'realizado',    label: '✓ Realizado' },
+  { value: 'pendiente',   label: '⏳ Pendiente' },
+  { value: 'reprogramado',label: '↻ Reprogramado' },
+];
+
+const CLORO_AREAS = [
+  { id: 'c1', label: '❄️ Cooler 1' },
+  { id: 'c2', label: '❄️ Cooler 2' },
+  { id: 'pc', label: '📦 Pre-carga' },
+  { id: 'bg', label: '🏭 Bodega General' },
+];
+
+const today  = () => new Date().toISOString().slice(0, 10);
+const curMes = () => MESES[new Date().getMonth()];
+
+// ─── Shared UI helpers ────────────────────────────────────────────────────────
 const inp = (val, onChange, type = 'text', extra = {}) => (
   <input type={type} value={val} onChange={e => onChange(e.target.value)}
-    style={{
-      padding: '9px 12px', border: '1.5px solid #E0E0E0', borderRadius: 6,
-      fontSize: '.88rem', outline: 'none', width: '100%', fontFamily: 'inherit', ...extra,
-    }} />
+    style={{ padding: '9px 12px', border: '1.5px solid #E0E0E0', borderRadius: 6,
+      fontSize: '.88rem', outline: 'none', width: '100%', fontFamily: 'inherit',
+      boxSizing: 'border-box', ...extra }} />
 );
 
 const sel = (val, onChange, opts) => (
   <select value={val} onChange={e => onChange(e.target.value)}
-    style={{
-      padding: '9px 12px', border: '1.5px solid #E0E0E0', borderRadius: 6,
+    style={{ padding: '9px 12px', border: '1.5px solid #E0E0E0', borderRadius: 6,
       fontSize: '.88rem', outline: 'none', width: '100%', fontFamily: 'inherit',
-      background: '#fff', cursor: 'pointer',
-    }}>
+      background: '#fff', cursor: 'pointer' }}>
     {opts}
   </select>
 );
 
-const Badge = ({ type }) => {
-  const M = {
-    cumple:    { bg: '#E8F5E9', c: '#2E7D32', l: '✓ Cumple' },
-    no_cumple: { bg: '#FFEBEE', c: '#C62828', l: '✗ No cumple' },
-    ok:        { bg: '#E8F5E9', c: '#2E7D32', l: '✓ OK' },
-    no_ok:     { bg: '#FFEBEE', c: '#C62828', l: '✗ No OK' },
-  };
-  const m = M[type] || { bg: '#F5F5F5', c: '#6B6B60', l: type };
-  return <span style={{ padding: '3px 10px', borderRadius: 100, fontSize: '.7rem', fontWeight: 600, background: m.bg, color: m.c }}>{m.l}</span>;
-};
-
 const Lbl = ({ text, children }) => (
   <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-    <span style={{ fontSize: '.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: T.secondary }}>{text}</span>
+    <span style={{ fontSize: '.7rem', fontWeight: 700, textTransform: 'uppercase',
+      letterSpacing: '.07em', color: T.secondary }}>{text}</span>
     {children}
   </label>
 );
 
 const Card = ({ children, style = {} }) => (
-  <div style={{ background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 10, padding: 24, marginBottom: 20, ...style }}>
+  <div style={{ background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 10,
+    padding: 24, marginBottom: 20, ...style }}>
     {children}
   </div>
 );
 
-const SectionTitle = ({ children }) => (
-  <div style={{
-    fontSize: '.8rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em',
-    color: T.secondary, marginBottom: 16, paddingBottom: 10, borderBottom: `1px solid ${T.border}`,
-  }}>{children}</div>
+const SecTitle = ({ children }) => (
+  <div style={{ fontSize: '.8rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em',
+    color: T.secondary, marginBottom: 16, paddingBottom: 10, borderBottom: `1px solid ${T.border}` }}>
+    {children}
+  </div>
 );
 
-// ─── PPM indicator ────────────────────────────────────────────────────────────
-function PpmIndicator({ ppm }) {
-  const val = Number(ppm);
-  if (!ppm || isNaN(val)) return null;
-  const inRange = val >= 100 && val <= 200;
-  return (
-    <div style={{
-      display: 'inline-flex', alignItems: 'center', gap: 6,
-      padding: '4px 12px', borderRadius: 6,
-      background: inRange ? '#E8F5E9' : '#FFEBEE',
-      border: `1px solid ${inRange ? '#C8E6C9' : '#FFCDD2'}`,
-      fontSize: '.78rem', fontWeight: 600,
-      color: inRange ? T.secondary : T.danger,
-      marginTop: 6,
-    }}>
-      {inRange ? '✓ En rango (100–200 ppm)' : '⚠ Fuera de rango — objetivo: 150 ppm'}
-    </div>
-  );
-}
+const ThCell = ({ children }) => (
+  <th style={{ padding: '9px 12px', textAlign: 'left', color: T.white,
+    fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em' }}>
+    {children}
+  </th>
+);
+const TdCell = ({ children, style = {} }) => (
+  <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0', ...style }}>
+    {children}
+  </td>
+);
 
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function Fumigacion() {
   const toast = useToast();
   const { empleados, loading: empLoading } = useEmpleados();
   const { data: registros, loading: histLoading } = useCollection('fum', { orderField: 'fecha', orderDir: 'desc', limit: 200 });
-  const { add, saving } = useWrite('fum');
+  const { add, remove, saving } = useWrite('fum');
 
   const [form, setForm] = useState({
-    fecha: today(),
-    hora: nowTime(),
-    responsable: '',
-    area: '',
-    concentracionPpm: '',
-    volumenLitros: '',
-    resultado: 'ok',
-    obs: '',
+    instalacion: 'Instalación Completa',
+    mes:         curMes(),
+    semana:      '1',
+    resp:        '',
+    fecha:       today(),
+    tipo:        'Fumigación General',
+    resultado:   'realizado',
+    obs:         '',
   });
 
-  const set = (field, value) => setForm(f => ({ ...f, [field]: value }));
+  // Cloro panel state
+  const [cloroAreas, setCloroAreas] = useState({ c1: false, c2: false, pc: false, bg: false });
+  const [cloroConc, setCloroConc]   = useState('');
+
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const showCloroPanel = form.tipo === 'Desinfección con Cloro';
 
   const handleSave = async () => {
-    if (!form.fecha)          { toast('Ingresá la fecha', 'error'); return; }
-    if (!form.responsable)    { toast('Seleccioná el responsable', 'error'); return; }
-    if (!form.area)           { toast('Seleccioná el área', 'error'); return; }
-    if (!form.concentracionPpm) { toast('Ingresá la concentración en ppm', 'error'); return; }
+    if (!form.fecha)  { toast('⚠ Complete la fecha de realización', 'error'); return; }
+    if (!form.resp)   { toast('⚠ Seleccione responsable', 'error'); return; }
+
+    const cloro = showCloroPanel
+      ? CLORO_AREAS.filter(a => cloroAreas[a.id]).map(a => ({ area: a.label, concentracion: cloroConc }))
+      : [];
 
     try {
       await add({
-        fecha: form.fecha,
-        hora: form.hora,
-        responsable: form.responsable,
-        area: form.area,
-        concentracionPpm: Number(form.concentracionPpm) || 0,
-        volumenLitros: Number(form.volumenLitros) || 0,
-        resultado: form.resultado,
-        obs: form.obs,
+        instalacion: form.instalacion,
+        mes:         form.mes,
+        semana:      form.semana,
+        resp:        form.resp,
+        fecha:       form.fecha,
+        tipo:        form.tipo,
+        resultado:   form.resultado,
+        cloro,
+        cloroConc:   showCloroPanel ? (cloroConc || '') : '',
+        obs:         form.obs,
+        creadoEn:    new Date().toISOString(),
       });
-      toast('Registro de desinfección guardado correctamente');
-      setForm(f => ({
-        ...f,
-        area: '',
-        concentracionPpm: '',
-        volumenLitros: '',
-        resultado: 'ok',
-        obs: '',
-        hora: nowTime(),
-      }));
-    } catch (e) {
-      toast('Error al guardar: ' + e.message, 'error');
-    }
+      toast('✓ Control de fumigación registrado');
+      setForm(f => ({ ...f, obs: '', fecha: today() }));
+      setCloroAreas({ c1: false, c2: false, pc: false, bg: false });
+      setCloroConc('');
+    } catch (e) { toast('Error: ' + e.message, 'error'); }
   };
 
-  const ppmVal = Number(form.concentracionPpm);
-  const ppmInRange = ppmVal >= 100 && ppmVal <= 200;
+  const resColor = (v) => v === 'realizado' ? T.accent : v === 'pendiente' ? T.warn : T.textMid;
 
   return (
-    <div style={{ fontFamily: 'Inter, sans-serif', color: T.textDark, maxWidth: 860, margin: '0 auto' }}>
-
-      <div style={{ marginBottom: 24 }}>
+    <div style={{ fontFamily: 'Inter, system-ui, sans-serif', color: T.textDark, maxWidth: 900, margin: '0 auto' }}>
+      <div style={{ marginBottom: 20 }}>
         <h1 style={{ fontSize: '1.35rem', fontWeight: 800, color: T.primary, margin: 0 }}>
-          Fumigación — Agua y Cloro
+          Control de Fumigación / Sanitización
         </h1>
         <p style={{ fontSize: '.82rem', color: T.textMid, marginTop: 4, marginBottom: 0 }}>
-          Registro de desinfección con agua y cloro · Concentración objetivo: 150 ppm
+          Fumigación externa mensual · Desinfección con cloro semanal — 2026
         </p>
       </div>
 
       <Card>
-        <SectionTitle>Nuevo Registro</SectionTitle>
+        <SecTitle>Registrar Control</SecTitle>
 
-        {/* Row 1: fecha, hora */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
-          <Lbl text="Fecha">{inp(form.fecha, v => set('fecha', v), 'date')}</Lbl>
-          <Lbl text="Hora">{inp(form.hora, v => set('hora', v), 'time')}</Lbl>
-        </div>
-
-        {/* Row 2: responsable, area */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+        {/* Row 1: instalacion, mes, semana, responsable */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14, marginBottom: 14 }}>
+          <Lbl text="Instalación / Área">
+            {sel(form.instalacion, v => set('instalacion', v),
+              INSTALACIONES.map(x => <option key={x} value={x}>{x}</option>))}
+          </Lbl>
+          <Lbl text="Mes">
+            {sel(form.mes, v => set('mes', v),
+              MESES.map(m => <option key={m} value={m}>{m}</option>))}
+          </Lbl>
+          <Lbl text="Semana">
+            {sel(form.semana, v => set('semana', v),
+              ['1','2','3','4'].map(n => <option key={n} value={n}>{n}</option>))}
+          </Lbl>
           <Lbl text="Responsable">
             {empLoading
               ? <Skeleton height={38} />
-              : sel(form.responsable, v => set('responsable', v),
+              : sel(form.resp, v => set('resp', v),
                   <>
-                    <option value="">— Seleccionar —</option>
+                    <option value="">— Seleccionar responsable —</option>
                     {empleados.map(e => <option key={e.id} value={e.nombre}>{e.nombre}{e.cargo ? ' · ' + e.cargo : ''}</option>)}
                   </>
-                )
-            }
-          </Lbl>
-          <Lbl text="Área">
-            {sel(form.area, v => set('area', v),
-              <>
-                <option value="">— Seleccionar área —</option>
-                {AREAS.map(a => <option key={a} value={a}>{a}</option>)}
-              </>
-            )}
+                )}
           </Lbl>
         </div>
 
-        {/* Row 3: concentracion, volumen */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
-          <Lbl text="Concentración (ppm)">
-            {inp(form.concentracionPpm, v => set('concentracionPpm', v), 'number', { min: 0 })}
-            {form.concentracionPpm && <PpmIndicator ppm={form.concentracionPpm} />}
+        {/* Row 2: fecha, tipo, resultado */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14, marginBottom: 14 }}>
+          <Lbl text="Fecha Realización">{inp(form.fecha, v => set('fecha', v), 'date')}</Lbl>
+          <Lbl text="Tipo de Control">
+            {sel(form.tipo, v => set('tipo', v),
+              TIPOS.map(t => <option key={t.value} value={t.value}>{t.label}</option>))}
           </Lbl>
-          <Lbl text="Volumen (litros)">
-            {inp(form.volumenLitros, v => set('volumenLitros', v), 'number', { min: 0 })}
+          <Lbl text="Resultado">
+            {sel(form.resultado, v => set('resultado', v),
+              RESULTADOS.map(r => <option key={r.value} value={r.value}>{r.label}</option>))}
           </Lbl>
         </div>
 
-        {/* Resultado radio */}
-        <div style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: '.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: T.secondary, marginBottom: 10 }}>
-            Resultado
+        {/* Cloro panel */}
+        {showCloroPanel && (
+          <div style={{ padding: '10px 14px', border: '1.5px solid rgba(100,180,100,.35)',
+            borderRadius: 6, background: 'rgba(92,200,92,.04)', marginBottom: 12 }}>
+            <div style={{ fontSize: '.68rem', fontWeight: 600, color: T.secondary, marginBottom: 8 }}>
+              🧴 Desinfección con Cloro — campos adicionales
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              <Lbl text="Áreas desinfectadas">
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 6, fontSize: '.78rem' }}>
+                  {CLORO_AREAS.map(a => (
+                    <label key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer' }}>
+                      <input type="checkbox" checked={cloroAreas[a.id]}
+                        onChange={e => setCloroAreas(prev => ({ ...prev, [a.id]: e.target.checked }))}
+                        style={{ accentColor: T.accent }} />
+                      {a.label}
+                    </label>
+                  ))}
+                </div>
+              </Lbl>
+              <Lbl text="Concentración de Cloro (%)">
+                <input type="number" value={cloroConc} onChange={e => setCloroConc(e.target.value)}
+                  placeholder="Ej: 0.5" step="0.1" min="0" max="10"
+                  style={{ padding: '9px 12px', border: '1.5px solid #E0E0E0', borderRadius: 6,
+                    fontSize: '.88rem', outline: 'none', width: 130, fontFamily: 'inherit' }} />
+              </Lbl>
+            </div>
           </div>
-          <div style={{ display: 'flex', gap: 10 }}>
-            {[
-              { val: 'ok',    label: '✓ OK',    activeColor: T.accent },
-              { val: 'no_ok', label: '✗ No OK', activeColor: T.danger },
-            ].map(({ val, label, activeColor }) => (
-              <button
-                key={val}
-                onClick={() => set('resultado', val)}
-                style={{
-                  padding: '8px 20px', borderRadius: 6, border: '1.5px solid',
-                  cursor: 'pointer', fontSize: '.85rem', fontWeight: 600,
-                  fontFamily: 'inherit', transition: 'all .15s',
-                  background: form.resultado === val ? activeColor : T.white,
-                  borderColor: form.resultado === val ? activeColor : T.border,
-                  color: form.resultado === val ? T.white : T.textMid,
-                }}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+        )}
+
+        {/* Observaciones */}
+        <div style={{ marginBottom: 12 }}>
+          <Lbl text="Observaciones">
+            <textarea value={form.obs} onChange={e => set('obs', e.target.value)}
+              placeholder="Productos utilizados, empresa, condiciones..."
+              rows={2}
+              style={{ padding: '9px 12px', border: '1.5px solid #E0E0E0', borderRadius: 6,
+                fontSize: '.85rem', outline: 'none', width: '100%', fontFamily: 'inherit',
+                resize: 'vertical', boxSizing: 'border-box' }} />
+          </Lbl>
         </div>
 
-        <Lbl text="Observaciones">
-          <textarea
-            value={form.obs}
-            onChange={e => set('obs', e.target.value)}
-            placeholder="Observaciones, condiciones del área, acciones..."
-            rows={3}
-            style={{
-              padding: '9px 12px', border: '1.5px solid #E0E0E0', borderRadius: 6,
-              fontSize: '.88rem', outline: 'none', width: '100%', fontFamily: 'inherit',
-              resize: 'vertical', boxSizing: 'border-box',
-            }}
-          />
-        </Lbl>
-
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          style={{
-            marginTop: 16, padding: '11px 28px',
-            background: saving ? '#BDBDBD' : T.primary,
-            color: T.white, border: 'none', borderRadius: 6,
-            fontWeight: 700, fontSize: '.88rem', cursor: saving ? 'not-allowed' : 'pointer',
-            fontFamily: 'inherit',
-          }}
-        >
-          {saving ? 'Guardando...' : 'Guardar Registro FUM'}
+        <button onClick={handleSave} disabled={saving}
+          style={{ padding: '10px 22px', background: saving ? '#BDBDBD' : T.primary,
+            color: T.white, border: 'none', borderRadius: 6, fontWeight: 700,
+            fontSize: '.88rem', cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+          {saving ? 'Guardando...' : 'Registrar'}
         </button>
       </Card>
 
-      {/* History */}
+      {/* History table */}
       <Card>
-        <SectionTitle>Historial ({(registros || []).length} registros)</SectionTitle>
-
-        {histLoading ? (
-          <Skeleton height={160} />
-        ) : (registros || []).length === 0 ? (
-          <p style={{ textAlign: 'center', padding: 32, color: T.textMid, fontSize: '.85rem' }}>Sin registros aún.</p>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ background: T.primary }}>
-                  {['Fecha', 'Hora', 'Responsable', 'Área', 'PPM', 'Resultado'].map(h => (
-                    <th key={h} style={{
-                      padding: '10px 14px', textAlign: 'left', color: T.white,
-                      fontSize: '.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em',
-                    }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {(registros || []).slice(0, 100).map((r, i) => {
-                  const ppm = r.concentracionPpm;
-                  const inRange = ppm >= 100 && ppm <= 200;
-                  return (
+        <SecTitle>Cronograma 2026</SecTitle>
+        {histLoading ? <Skeleton height={140} /> : (registros || []).length === 0
+          ? <p style={{ textAlign: 'center', padding: 32, color: T.textMid, fontSize: '.85rem' }}>Sin registros</p>
+          : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ background: T.primary }}>
+                    {['Instalación','Mes','Semana','Responsable','Fecha','Tipo','Estado','Obs',''].map(h => <ThCell key={h}>{h}</ThCell>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {(registros || []).slice(0, 100).map((r, i) => (
                     <tr key={r.id} style={{ background: i % 2 === 0 ? T.white : '#F9FBF9' }}>
-                      <td style={{ padding: '9px 14px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0', fontWeight: 600 }}>{r.fecha}</td>
-                      <td style={{ padding: '9px 14px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0' }}>{r.hora || '—'}</td>
-                      <td style={{ padding: '9px 14px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0' }}>{r.responsable || '—'}</td>
-                      <td style={{ padding: '9px 14px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0' }}>{r.area || '—'}</td>
-                      <td style={{ padding: '9px 14px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0', fontWeight: 700, color: ppm ? (inRange ? T.accent : T.danger) : T.textMid }}>
-                        {ppm ? `${ppm} ppm` : '—'}
-                      </td>
-                      <td style={{ padding: '9px 14px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0' }}>
-                        <Badge type={r.resultado === 'ok' ? 'ok' : 'no_ok'} />
-                      </td>
+                      <TdCell style={{ fontSize: '.78rem' }}>{r.instalacion || '—'}</TdCell>
+                      <TdCell>{r.mes || '—'}</TdCell>
+                      <TdCell style={{ textAlign: 'center' }}>{r.semana || '—'}</TdCell>
+                      <TdCell>{r.resp || '—'}</TdCell>
+                      <TdCell style={{ fontWeight: 600 }}>{r.fecha || '—'}</TdCell>
+                      <TdCell style={{ fontSize: '.75rem' }}>{r.tipo || '—'}</TdCell>
+                      <TdCell>
+                        <span style={{ padding: '3px 8px', borderRadius: 100, fontSize: '.68rem', fontWeight: 600,
+                          background: r.resultado === 'realizado' ? T.green2 : r.resultado === 'pendiente' ? '#FFF3E0' : '#F5F5F5',
+                          color: resColor(r.resultado) }}>
+                          {RESULTADOS.find(x => x.value === r.resultado)?.label || r.resultado || '—'}
+                        </span>
+                      </TdCell>
+                      <TdCell style={{ fontSize: '.72rem', maxWidth: 140 }}>{r.obs || '—'}</TdCell>
+                      <TdCell>
+                        <button onClick={() => remove(r.id)}
+                          style={{ background: 'none', border: `1px solid ${T.border}`,
+                            borderRadius: 4, padding: '3px 8px', cursor: 'pointer',
+                            fontSize: '.75rem', color: T.textMid }}>✕</button>
+                      </TdCell>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
       </Card>
     </div>
   );

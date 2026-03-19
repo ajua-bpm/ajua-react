@@ -29,7 +29,7 @@ const NAV = [
   { section: 'Ventas' },
   { to: '/ventas/gt',              icon: '🇬🇹', label: 'Despachos GT' },
   { to: '/ventas/int',             icon: '✈️', label: 'Exportación' },
-  { to: '/ventas/maquila',         icon: '⚙️', label: 'Maquila' },
+  { to: '/gastos/semanales',        icon: '📅', label: 'Gastos Semanales' },
   { to: '/walmart',                icon: '🏪', label: 'Pedidos Walmart' },
   { section: 'Finanzas' },
   { to: '/gastos',                 icon: '💸', label: 'Gastos Diarios' },
