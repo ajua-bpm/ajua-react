@@ -7,7 +7,7 @@ import Skeleton from '../../components/Skeleton';
 // ── Design tokens ─────────────────────────────────────────────────
 const T = {
   primary: '#1B5E20', secondary: '#2E7D32', danger: '#C62828',
-  warn: '#E65100', textDark: '#1A1A18', textMid: '#6B6B60',
+  warn: '#E65100', info: '#1565C0', textDark: '#1A1A18', textMid: '#6B6B60',
   border: '#E0E0E0', bgGreen: '#E8F5E9', white: '#FFFFFF',
   bgLight: '#F5F5F5',
 };
@@ -24,28 +24,29 @@ const fmt   = (n, dec = 2) => Number(n || 0).toLocaleString('es-GT', { minimumFr
 
 // ── Constants ─────────────────────────────────────────────────────
 const PAISES = [
-  { value: 'Mexico',         label: 'Mexico', flag: '' },
-  { value: 'El Salvador',    label: 'El Salvador', flag: '' },
-  { value: 'Honduras',       label: 'Honduras', flag: '' },
-  { value: 'Costa Rica',     label: 'Costa Rica', flag: '' },
-  { value: 'Estados Unidos', label: 'Estados Unidos', flag: '' },
-  { value: 'Otro',           label: 'Otro', flag: '' },
+  { value: 'MX',   label: 'Mexico'       },
+  { value: 'SV',   label: 'El Salvador'  },
+  { value: 'HN',   label: 'Honduras'     },
+  { value: 'CR',   label: 'Costa Rica'   },
+  { value: 'NI',   label: 'Nicaragua'    },
+  { value: 'BZ',   label: 'Belice'       },
+  { value: 'otro', label: 'Otro'         },
 ];
 
-const MONEDAS = ['MXN', 'USD', 'GTQ'];
+// GTQ and MXN only, matching bpm.html
+const MONEDAS = [
+  { value: 'gtq', label: 'GTQ — Quetzales'     },
+  { value: 'mxn', label: 'MXN — Pesos mexicanos' },
+];
 
 const TIPOS_OP = [
-  { value: 'Contenedor completo',    label: 'Contenedor completo' },
-  { value: 'Parcial con transporte', label: 'Parcial con transporte' },
-  { value: 'Solo producto',          label: 'Solo producto' },
-  { value: 'Frontera MX',            label: 'Frontera MX' },
+  { value: 'contenedor_completo', label: 'Contenedor completo',  sub: 'Carga total' },
+  { value: 'parcial_transporte',  label: 'Parcial + transporte', sub: 'Carga parcial' },
+  { value: 'solo_producto',       label: 'Solo producto',        sub: 'Sin transporte' },
+  { value: 'frontera_mx',         label: 'Hasta frontera MX',    sub: 'Entrega frontera' },
 ];
 
 const INCLUYE_OPTS = ['Producto', 'Transporte', 'Papeleria', 'Aduana'];
-
-const FORMAS_PAGO = ['Transferencia', 'OSMO', 'Cash', 'Credito'];
-
-const UNIDADES = ['lb', 'kg', 'caja', 'unidad', 'quintal', 'bulto'];
 
 const BADGE_CFG = {
   pendiente:   { bg: '#FFF3E0', c: '#E65100',  label: 'Pendiente'   },
@@ -57,14 +58,17 @@ const BADGE_CFG = {
 
 const FILTER_TABS = ['todos', 'pendiente', 'en_transito', 'entregado', 'cobrado', 'cancelado'];
 
-const BLANK_PROD = { producto: '', cantidad: '', unidad: 'lb', precioMoneda: '' };
+// Products: Producto | Bultos | Lbs/Bulto | Total LBS | Precio/lb | Total
+const BLANK_PROD = { producto: '', bultos: '', lbsBulto: '', precioLb: '' };
 const BLANK = {
-  fecha: today(), pais: 'Mexico', moneda: 'MXN', tc: '',
-  tipoOperacion: 'Contenedor completo', placa: '', cartaPorte: '', ducaRef: '',
+  fecha: today(), pais: 'MX', comprador: '', moneda: 'gtq', tc: '',
+  tipoOperacion: 'contenedor_completo',
   incluye: ['Producto'],
   productos: [{ ...BLANK_PROD }],
-  formaPago: 'Transferencia', numFel: '',
+  flete: '', papeleria: '', otros: '',
+  porte: '', placa: '',
   estado: 'pendiente', obs: '', fotoUrl: '',
+  cotId: '', cotLabel: '',
 };
 
 // ── Badge ─────────────────────────────────────────────────────────
@@ -87,69 +91,70 @@ function MetricCard({ label, value, accent }) {
   );
 }
 
-// ── Products table ────────────────────────────────────────────────
-function ProductosTable({ productos, catalogo, moneda, tc, onChange }) {
+// ── Products table — Bultos/Lbs/PrecioLb ─────────────────────────
+function ProductosTable({ productos, catalogo, moneda, onChange }) {
   const add    = () => onChange([...productos, { ...BLANK_PROD }]);
   const remove = i  => onChange(productos.filter((_, j) => j !== i));
   const set    = (i, k, v) => onChange(productos.map((p, j) => j === i ? { ...p, [k]: v } : p));
 
-  const tcNum = parseFloat(tc) || 0;
+  const monLabel = moneda === 'mxn' ? 'MXN' : 'GTQ';
 
-  const totalMoneda = productos.reduce((s, p) => s + (parseFloat(p.cantidad) || 0) * (parseFloat(p.precioMoneda) || 0), 0);
-  const totalGTQ    = moneda !== 'GTQ' && tcNum > 0 ? totalMoneda * tcNum : (moneda === 'GTQ' ? totalMoneda : 0);
+  const totals = productos.reduce((acc, p) => {
+    const bultos  = parseFloat(p.bultos)   || 0;
+    const lbsBulto = parseFloat(p.lbsBulto) || 0;
+    const totalLbs = bultos * lbsBulto;
+    const total    = totalLbs * (parseFloat(p.precioLb) || 0);
+    return { bultos: acc.bultos + bultos, lbs: acc.lbs + totalLbs, total: acc.total + total };
+  }, { bultos: 0, lbs: 0, total: 0 });
 
   return (
     <div style={{ border: `1px solid ${T.border}`, borderRadius: 8, overflow: 'hidden', marginBottom: 14 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 90px 90px 110px 110px 110px 28px', background: T.bgGreen, padding: '8px 10px', fontSize: '.7rem', fontWeight: 700, color: T.primary, textTransform: 'uppercase', letterSpacing: '.04em' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 70px 80px 90px 110px 100px 28px', background: T.bgGreen, padding: '8px 10px', fontSize: '.7rem', fontWeight: 700, color: T.primary, textTransform: 'uppercase', letterSpacing: '.04em' }}>
         <span>Producto</span>
-        <span>Cantidad</span>
-        <span>Unidad</span>
-        <span>Precio ({moneda})</span>
-        <span style={{ textAlign: 'right' }}>Subtotal {moneda}</span>
-        <span style={{ textAlign: 'right' }}>Subtotal GTQ</span>
+        <span>Bultos</span>
+        <span>Lbs/Bulto</span>
+        <span>Total LBS</span>
+        <span>Precio/lb ({monLabel})</span>
+        <span style={{ textAlign: 'right' }}>Total {monLabel}</span>
         <span />
       </div>
       {productos.map((p, i) => {
-        const subMoneda = (parseFloat(p.cantidad) || 0) * (parseFloat(p.precioMoneda) || 0);
-        const subGTQ    = moneda !== 'GTQ' && tcNum > 0 ? subMoneda * tcNum : (moneda === 'GTQ' ? subMoneda : 0);
+        const bultos   = parseFloat(p.bultos)   || 0;
+        const lbsBulto = parseFloat(p.lbsBulto) || 0;
+        const totalLbs = bultos * lbsBulto;
+        const total    = totalLbs * (parseFloat(p.precioLb) || 0);
         return (
-          <div key={i} style={{ display: 'grid', gridTemplateColumns: '2fr 90px 90px 110px 110px 110px 28px', padding: '6px 10px', borderTop: `1px solid #F0F0F0`, alignItems: 'center', gap: 6 }}>
+          <div key={i} style={{ display: 'grid', gridTemplateColumns: '2fr 70px 80px 90px 110px 100px 28px', padding: '6px 10px', borderTop: '1px solid #F0F0F0', alignItems: 'center', gap: 6 }}>
             <select value={p.producto} onChange={e => set(i, 'producto', e.target.value)} style={{ ...IS, fontSize: '.82rem', padding: '5px 7px' }}>
               <option value="">— Producto —</option>
               {catalogo.map(c => <option key={c.id || c.nombre} value={c.nombre}>{c.nombre}</option>)}
             </select>
-            <input type="number" min="0" step="0.01" value={p.cantidad} onChange={e => set(i, 'cantidad', e.target.value)}
+            <input type="number" min="0" step="1" value={p.bultos} onChange={e => set(i, 'bultos', e.target.value)}
               placeholder="0" style={{ ...IS, fontSize: '.82rem', padding: '5px 7px' }} />
-            <select value={p.unidad} onChange={e => set(i, 'unidad', e.target.value)} style={{ ...IS, fontSize: '.82rem', padding: '5px 7px' }}>
-              {UNIDADES.map(u => <option key={u} value={u}>{u}</option>)}
-            </select>
-            <input type="number" min="0" step="0.01" value={p.precioMoneda} onChange={e => set(i, 'precioMoneda', e.target.value)}
+            <input type="number" min="0" step="0.01" value={p.lbsBulto} onChange={e => set(i, 'lbsBulto', e.target.value)}
+              placeholder="0" style={{ ...IS, fontSize: '.82rem', padding: '5px 7px' }} />
+            <span style={{ fontSize: '.82rem', fontWeight: 600, color: T.textDark, paddingLeft: 4 }}>
+              {fmt(totalLbs, 1)}
+            </span>
+            <input type="number" min="0" step="0.0001" value={p.precioLb} onChange={e => set(i, 'precioLb', e.target.value)}
               placeholder="0.00" style={{ ...IS, fontSize: '.82rem', padding: '5px 7px' }} />
             <span style={{ fontSize: '.83rem', fontWeight: 700, color: T.secondary, textAlign: 'right', paddingRight: 4 }}>
-              {moneda} {fmt(subMoneda)}
-            </span>
-            <span style={{ fontSize: '.83rem', color: T.textMid, textAlign: 'right', paddingRight: 4 }}>
-              {subGTQ > 0 ? `Q ${fmt(subGTQ)}` : '—'}
+              {fmt(total)}
             </span>
             {productos.length > 1 && (
-              <button onClick={() => remove(i)} style={{ background: 'none', border: 'none', color: T.danger, cursor: 'pointer', fontWeight: 700, fontSize: '1rem', padding: 0 }}>×</button>
+              <button onClick={() => remove(i)} style={{ background: 'none', border: 'none', color: T.danger, cursor: 'pointer', fontWeight: 700, fontSize: '1rem', padding: 0 }}>x</button>
             )}
           </div>
         );
       })}
-      <div style={{ padding: '8px 10px', borderTop: `1px solid ${T.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#FAFAFA' }}>
+      <div style={{ padding: '8px 10px', borderTop: `1px solid ${T.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#FAFAFA', flexWrap: 'wrap', gap: 8 }}>
         <button onClick={add} style={{ background: 'none', border: `1px solid ${T.border}`, borderRadius: 4, padding: '5px 12px', fontSize: '.78rem', fontWeight: 600, cursor: 'pointer', color: T.textMid }}>
           + Agregar producto
         </button>
-        <div style={{ display: 'flex', gap: 20, alignItems: 'center' }}>
-          <div style={{ fontWeight: 700, fontSize: '.95rem', color: T.secondary }}>
-            {moneda} {fmt(totalMoneda)}
-          </div>
-          {totalGTQ > 0 && (
-            <div style={{ fontSize: '.85rem', color: T.textMid }}>
-              = Q {fmt(totalGTQ)} GTQ
-            </div>
-          )}
+        <div style={{ display: 'flex', gap: 16, fontSize: '.83rem', fontWeight: 700 }}>
+          <span>Bultos: <strong style={{ color: T.primary }}>{fmt(totals.bultos, 0)}</strong></span>
+          <span>LBS: <strong style={{ color: T.primary }}>{fmt(totals.lbs, 1)}</strong></span>
+          <span>Total {monLabel}: <strong style={{ color: T.secondary }}>{fmt(totals.total)}</strong></span>
         </div>
       </div>
     </div>
@@ -161,11 +166,11 @@ export default function VentasInt() {
   const toast = useToast();
 
   const { data, loading }              = useCollection('vintVentas', { orderField: 'fecha', orderDir: 'desc', limit: 300 });
+  const { data: cotData }              = useCollection('cotizadorRapido', { orderField: 'fecha', orderDir: 'desc', limit: 200 });
   const { productos: catalogo, loading: loadProd } = useProductosCatalogo();
-  const { add, update, saving }        = useWrite('vintVentas');
+  const { add, remove, saving }        = useWrite('vintVentas');
 
   const [form, setForm]     = useState({ ...BLANK, productos: [{ ...BLANK_PROD }] });
-  const [editId, setEditId] = useState(null);
   const [filter, setFilter] = useState('todos');
 
   const s = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -175,10 +180,46 @@ export default function VentasInt() {
     incluye: f.incluye.includes(val) ? f.incluye.filter(x => x !== val) : [...f.incluye, val],
   }));
 
+  // Cotizaciones aceptadas
+  const cotAceptadas = useMemo(() => (cotData || []).filter(c => c.estado === 'aceptada'), [cotData]);
+
+  const cargarCotizacion = (cotId) => {
+    if (!cotId) { s('cotId', ''); s('cotLabel', ''); return; }
+    const cot = cotAceptadas.find(c => c.id === cotId);
+    if (!cot) return;
+    const prods = (cot.productos || cot.items || []).map(p => ({
+      producto:  p.producto || p.nombre || '',
+      bultos:    String(p.bultos || ''),
+      lbsBulto:  String(p.lbsBulto || p.lbs_bulto || ''),
+      precioLb:  String(p.precioLb || p.precio || ''),
+    }));
+    setForm(f => ({
+      ...f,
+      cotId,
+      cotLabel: `${cot.cliente || cot.comprador || ''} — ${cot.fecha || ''}`,
+      comprador: cot.cliente || cot.comprador || f.comprador,
+      productos: prods.length ? prods : [{ ...BLANK_PROD }],
+    }));
+    toast('Cotizacion cargada');
+  };
+
   // Totals
-  const tcNum       = parseFloat(form.tc) || 0;
-  const totalMoneda = form.productos.reduce((s, p) => s + (parseFloat(p.cantidad) || 0) * (parseFloat(p.precioMoneda) || 0), 0);
-  const totalGTQ    = form.moneda !== 'GTQ' && tcNum > 0 ? totalMoneda * tcNum : (form.moneda === 'GTQ' ? totalMoneda : 0);
+  const tcNum = parseFloat(form.tc) || 0;
+  const prodTotals = form.productos.reduce((acc, p) => {
+    const bultos   = parseFloat(p.bultos)   || 0;
+    const lbsBulto = parseFloat(p.lbsBulto) || 0;
+    const totalLbs = bultos * lbsBulto;
+    const total    = totalLbs * (parseFloat(p.precioLb) || 0);
+    return { bultos: acc.bultos + bultos, lbs: acc.lbs + totalLbs, total: acc.total + total };
+  }, { bultos: 0, lbs: 0, total: 0 });
+
+  const fleteN  = parseFloat(form.flete)     || 0;
+  const papN    = parseFloat(form.papeleria) || 0;
+  const otrosN  = parseFloat(form.otros)     || 0;
+  const totalMoneda = prodTotals.total + fleteN + papN + otrosN;
+  const totalGTQ    = form.moneda !== 'gtq' && tcNum > 0 ? totalMoneda * tcNum : (form.moneda === 'gtq' ? totalMoneda : 0);
+
+  const monLabel = form.moneda === 'mxn' ? 'MXN' : 'GTQ';
 
   const handleFoto = e => {
     const file = e.target.files?.[0];
@@ -189,96 +230,84 @@ export default function VentasInt() {
   };
 
   const handleSave = async () => {
-    if (!form.fecha || !form.pais) { toast('Fecha y pais son requeridos', 'error'); return; }
-    if (!form.productos.some(p => p.producto && p.cantidad)) { toast('Agrega al menos un producto con cantidad', 'error'); return; }
+    if (!form.fecha || !form.pais) { toast('Fecha y Pais son requeridos', 'error'); return; }
+    if (!form.productos.some(p => p.producto && p.bultos)) { toast('Agrega al menos un producto con bultos', 'error'); return; }
     const payload = {
       ...form,
       tc: tcNum,
-      productos: form.productos.map(p => ({
-        ...p,
-        cantidad: parseFloat(p.cantidad) || 0,
-        precioMoneda: parseFloat(p.precioMoneda) || 0,
-        subtotalMoneda: (parseFloat(p.cantidad) || 0) * (parseFloat(p.precioMoneda) || 0),
-        subtotalGTQ: form.moneda !== 'GTQ' && tcNum > 0
-          ? (parseFloat(p.cantidad) || 0) * (parseFloat(p.precioMoneda) || 0) * tcNum
-          : (form.moneda === 'GTQ' ? (parseFloat(p.cantidad) || 0) * (parseFloat(p.precioMoneda) || 0) : 0),
-      })),
-      totalMoneda,
-      totalGTQ,
+      productos: form.productos.map(p => {
+        const bultos   = parseFloat(p.bultos)   || 0;
+        const lbsBulto = parseFloat(p.lbsBulto) || 0;
+        const totalLbs = bultos * lbsBulto;
+        const total    = totalLbs * (parseFloat(p.precioLb) || 0);
+        return { ...p, bultos, lbsBulto, totalLbs, precioLb: parseFloat(p.precioLb) || 0, total };
+      }),
+      totalBultos: prodTotals.bultos,
+      totalLbs: parseFloat(prodTotals.lbs.toFixed(2)),
+      totalMoneda: parseFloat(totalMoneda.toFixed(2)),
+      totalGTQ: parseFloat(totalGTQ.toFixed(2)),
       creadoEn: new Date().toISOString(),
     };
     try {
-      if (editId) { await update(editId, payload); toast('Exportacion actualizada'); setEditId(null); }
-      else        { await add(payload); toast('Exportacion registrada'); }
+      await add(payload);
+      toast('Exportacion registrada');
       setForm({ ...BLANK, productos: [{ ...BLANK_PROD }] });
     } catch { toast('Error al guardar', 'error'); }
   };
 
-  const startEdit = r => {
-    setForm({
-      fecha:          r.fecha || today(),
-      pais:           r.pais || 'Mexico',
-      moneda:         r.moneda || 'MXN',
-      tc:             String(r.tc || ''),
-      tipoOperacion:  r.tipoOperacion || 'Contenedor completo',
-      placa:          r.placa || '',
-      cartaPorte:     r.cartaPorte || '',
-      ducaRef:        r.ducaRef || '',
-      incluye:        r.incluye || ['Producto'],
-      productos:      r.productos?.length ? r.productos : [{ ...BLANK_PROD }],
-      formaPago:      r.formaPago || 'Transferencia',
-      numFel:         r.numFel || '',
-      estado:         r.estado || 'pendiente',
-      obs:            r.obs || '',
-      fotoUrl:        r.fotoUrl || '',
-    });
-    setEditId(r.id);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+  const handleDelete = async (id) => {
+    if (!window.confirm('Eliminar este registro?')) return;
+    try { await remove(id); toast('Registro eliminado'); }
+    catch { toast('Error al eliminar', 'error'); }
   };
 
-  const cancelEdit = () => { setForm({ ...BLANK, productos: [{ ...BLANK_PROD }] }); setEditId(null); };
-
-  const cambiarEstado = async (id, estado) => {
-    try { await update(id, { estado }); toast(`Estado: ${BADGE_CFG[estado]?.label || estado}`); }
-    catch { toast('Error al actualizar', 'error'); }
-  };
-
-  const filtered      = filter === 'todos' ? data : data.filter(r => r.estado === filter);
-  const totalVentas   = useMemo(() => data.filter(r => r.estado !== 'cancelado').reduce((s, r) => s + (r.totalMoneda || r.total || 0), 0), [data]);
-  const totalGTQHist  = useMemo(() => data.filter(r => r.estado !== 'cancelado').reduce((s, r) => s + (r.totalGTQ || 0), 0), [data]);
-  const pendientes    = data.filter(r => r.estado === 'pendiente').length;
+  const filtered    = filter === 'todos' ? data : data.filter(r => r.estado === filter);
+  const pendientes  = data.filter(r => r.estado === 'pendiente').length;
 
   const loadingAll = loading || loadProd;
-
-  // Sym for current form moneda
-  const sym = form.moneda === 'GTQ' ? 'Q' : form.moneda;
 
   return (
     <div style={{ padding: '24px 28px', fontFamily: 'inherit', maxWidth: 1200 }}>
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
-        <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, color: T.textDark }}>Despachos — Exportacion Internacional</h2>
+        <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, color: T.textDark }}>Despachos — Exportacion</h2>
         <p style={{ margin: '4px 0 0', fontSize: '.83rem', color: T.textMid }}>
-          Centroamerica, Mexico y Estados Unidos — GTQ, MXN o USD
+          Centroamerica y Mexico sin factura FEL · GTQ o MXN · contenedor completo o parcial
         </p>
       </div>
 
       {/* Metrics */}
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 24 }}>
-        <MetricCard label="Total ventas (moneda)"  value={`${fmt(totalVentas)}`} accent={T.secondary} />
-        <MetricCard label="Equivalente GTQ"         value={`Q ${fmt(totalGTQHist)}`} accent={T.primary} />
-        <MetricCard label="Pendientes"              value={pendientes}           accent={T.warn} />
-        <MetricCard label="Total registros"         value={data.length}          accent={T.textMid} />
+        <MetricCard label="Total registros" value={data.length}  accent={T.textMid} />
+        <MetricCard label="Pendientes"       value={pendientes}  accent={T.warn} />
       </div>
 
       {/* Form */}
-      <div style={{ ...card, borderLeft: `4px solid ${editId ? T.warn : T.primary}` }}>
-        <div style={{ fontWeight: 700, fontSize: '.95rem', color: T.textDark, marginBottom: 20, paddingBottom: 12, borderBottom: `1px solid ${T.border}` }}>
-          {editId ? 'Editar exportacion' : 'Registrar Despacho de Exportacion'}
+      <div style={{ ...card, borderLeft: `4px solid ${T.primary}` }}>
+        <div style={{ fontWeight: 700, fontSize: '.95rem', color: T.textDark, marginBottom: 16, paddingBottom: 12, borderBottom: `1px solid ${T.border}` }}>
+          Registrar Despacho de Exportacion
         </div>
 
-        {/* Row 1: fecha, pais, moneda, tc */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 14, marginBottom: 16 }}>
+        {/* Cotizacion vinculada */}
+        <div style={{ background: 'rgba(27,94,32,.05)', border: '1px solid rgba(27,94,32,.22)', borderRadius: 6, padding: '10px 14px', marginBottom: 14, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '.7rem', color: T.primary, fontWeight: 600, whiteSpace: 'nowrap' }}>Cotizacion aceptada?</span>
+          <select
+            value={form.cotId}
+            onChange={e => cargarCotizacion(e.target.value)}
+            style={{ flex: 1, minWidth: 200, background: '#fff', border: `1px solid rgba(27,94,32,.35)`, color: T.textDark, padding: '6px 8px', borderRadius: 4, fontSize: '.72rem' }}
+          >
+            <option value="">— Cargar desde cotizacion aceptada —</option>
+            {cotAceptadas.map(c => (
+              <option key={c.id} value={c.id}>{c.cliente || c.comprador || 'Sin nombre'} — {c.fecha || ''}</option>
+            ))}
+          </select>
+          {form.cotLabel && (
+            <span style={{ fontSize: '.7rem', color: T.primary, fontWeight: 600 }}>{form.cotLabel}</span>
+          )}
+        </div>
+
+        {/* Row 1: fecha, pais, comprador */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 14, marginBottom: 14 }}>
           <label style={LS}>Fecha<input type="date" value={form.fecha} onChange={e => s('fecha', e.target.value)} style={IS} /></label>
           <label style={LS}>
             Pais destino
@@ -286,55 +315,36 @@ export default function VentasInt() {
               {PAISES.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
             </select>
           </label>
-          <label style={LS}>
-            Moneda
-            <select value={form.moneda} onChange={e => s('moneda', e.target.value)} style={IS}>
-              {MONEDAS.map(m => <option key={m} value={m}>{m}</option>)}
-            </select>
-          </label>
-          {form.moneda !== 'GTQ' && (
-            <label style={LS}>
-              Tipo de cambio vs GTQ
-              <input type="number" min="0" step="0.0001" value={form.tc} onChange={e => s('tc', e.target.value)}
-                placeholder="Ej. 0.50" style={IS} />
-            </label>
-          )}
+          <label style={LS}>Comprador / Empresa<input value={form.comprador} onChange={e => s('comprador', e.target.value)} placeholder="Nombre del comprador" style={IS} /></label>
         </div>
-
-        {/* Live conversion banner */}
-        {form.moneda !== 'GTQ' && tcNum > 0 && totalMoneda > 0 && (
-          <div style={{ background: T.bgGreen, border: `1px solid ${T.secondary}`, borderRadius: 6, padding: '10px 16px', marginBottom: 16, fontSize: '.85rem', fontWeight: 600, color: T.primary }}>
-            Total {form.moneda} {fmt(totalMoneda)} = Q {fmt(totalGTQ)} GTQ (TC: {form.tc})
-          </div>
-        )}
 
         {/* Tipo de operacion */}
-        <div style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', color: T.textMid, letterSpacing: '.06em', marginBottom: 10 }}>Tipo de operacion</div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {TIPOS_OP.map(t => (
-              <label key={t.value} style={{ cursor: 'pointer' }}>
-                <input type="radio" name="vint-op" value={t.value} checked={form.tipoOperacion === t.value} onChange={() => s('tipoOperacion', t.value)} style={{ display: 'none' }} />
-                <div style={{
-                  padding: '8px 14px', borderRadius: 6, fontSize: '.78rem', fontWeight: 600,
-                  border: `2px solid ${form.tipoOperacion === t.value ? T.primary : T.border}`,
-                  background: form.tipoOperacion === t.value ? T.bgGreen : '#fff',
-                  color: form.tipoOperacion === t.value ? T.primary : T.textMid,
-                  cursor: 'pointer',
-                }}>
-                  {t.label}
-                </div>
-              </label>
-            ))}
+        <div style={{ background: `${T.bgLight}`, border: `1px solid ${T.border}`, borderRadius: 6, padding: 12, marginBottom: 12 }}>
+          <div style={{ fontSize: '.6rem', color: T.info, fontWeight: 700, letterSpacing: '.08em', marginBottom: 8 }}>TIPO DE OPERACION</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 8 }}>
+            {TIPOS_OP.map(t => {
+              const sel = form.tipoOperacion === t.value;
+              return (
+                <label key={t.value} style={{ cursor: 'pointer' }}>
+                  <input type="radio" name="vint-op" value={t.value} checked={sel} onChange={() => s('tipoOperacion', t.value)} style={{ display: 'none' }} />
+                  <div style={{
+                    background: sel ? 'rgba(21,101,192,.10)' : '#fff',
+                    border: `2px solid ${sel ? T.info : T.border}`,
+                    borderRadius: 6, padding: '8px', textAlign: 'center',
+                  }}>
+                    <div style={{ fontSize: '.68rem', fontWeight: 700, color: sel ? T.info : T.textDark }}>{t.label}</div>
+                    <div style={{ fontSize: '.6rem', color: T.textMid, marginTop: 2 }}>{t.sub}</div>
+                  </div>
+                </label>
+              );
+            })}
           </div>
-        </div>
 
-        {/* Incluye checkboxes */}
-        <div style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', color: T.textMid, letterSpacing: '.06em', marginBottom: 8 }}>Incluye</div>
-          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+          {/* Incluye checkboxes */}
+          <div style={{ marginTop: 10, display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: '.7rem' }}>
+            <div style={{ fontSize: '.62rem', fontWeight: 700, color: T.textMid, letterSpacing: '.06em', marginRight: 4, alignSelf: 'center' }}>INCLUYE:</div>
             {INCLUYE_OPTS.map(opt => (
-              <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: '.83rem', fontWeight: 500 }}>
+              <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: '.7rem' }}>
                 <input type="checkbox" checked={form.incluye.includes(opt)} onChange={() => toggleIncluye(opt)} />
                 {opt}
               </label>
@@ -342,58 +352,80 @@ export default function VentasInt() {
           </div>
         </div>
 
-        {/* Transport fields */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 14, marginBottom: 16 }}>
-          <label style={LS}>Placa / Transportista<input value={form.placa} onChange={e => s('placa', e.target.value)} placeholder="Placa o transportista" style={IS} /></label>
-          <label style={LS}>No. Carta de Porte<input value={form.cartaPorte} onChange={e => s('cartaPorte', e.target.value)} placeholder="No. carta de porte" style={IS} /></label>
-          <label style={LS}>Referencia DUCA<input value={form.ducaRef} onChange={e => s('ducaRef', e.target.value)} placeholder="Ref. DUCA" style={IS} /></label>
+        {/* Precio pactado / moneda */}
+        <div style={{ background: 'rgba(230,81,0,.04)', border: '1px solid rgba(230,81,0,.18)', borderRadius: 6, padding: 12, marginBottom: 12 }}>
+          <div style={{ fontSize: '.6rem', color: T.warn, fontWeight: 700, letterSpacing: '.08em', marginBottom: 8 }}>PRECIO PACTADO</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 14 }}>
+            <label style={LS}>
+              Moneda
+              <select value={form.moneda} onChange={e => s('moneda', e.target.value)} style={IS}>
+                {MONEDAS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+              </select>
+            </label>
+            {form.moneda !== 'gtq' && (
+              <label style={LS}>
+                TC MXN a GTQ
+                <input type="number" min="0" step="0.0001" value={form.tc} onChange={e => s('tc', e.target.value)}
+                  placeholder="Ej. 0.7428" style={IS} />
+              </label>
+            )}
+            {form.moneda !== 'gtq' && tcNum > 0 && (
+              <label style={LS}>
+                Equiv. GTQ
+                <input value={`Q ${fmt(totalGTQ)}`} readOnly style={{ ...IS, background: T.bgGreen, color: T.primary, fontWeight: 600 }} />
+              </label>
+            )}
+          </div>
         </div>
 
         {/* Products */}
-        <div style={{ fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', color: T.textMid, letterSpacing: '.06em', marginBottom: 10 }}>Productos exportados</div>
+        <div style={{ fontSize: '.6rem', color: T.primary, fontWeight: 700, letterSpacing: '.08em', marginBottom: 8 }}>PRODUCTOS EXPORTADOS</div>
         <ProductosTable
           productos={form.productos}
           catalogo={catalogo}
           moneda={form.moneda}
-          tc={form.tc}
           onChange={prods => s('productos', prods)}
         />
 
-        {/* Totals display */}
+        {/* Totals summary */}
         {totalMoneda > 0 && (
-          <div style={{ background: '#FAFAFA', border: `1px solid ${T.border}`, borderRadius: 6, padding: '10px 16px', marginBottom: 16 }}>
-            <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', fontSize: '.88rem' }}>
-              <span>Total {form.moneda}: <strong style={{ color: T.secondary }}>{sym} {fmt(totalMoneda)}</strong></span>
-              {totalGTQ > 0 && <span>Total GTQ: <strong style={{ color: T.primary }}>Q {fmt(totalGTQ)}</strong></span>}
-              {tcNum > 0 && form.moneda !== 'GTQ' && <span style={{ color: T.textMid, fontSize: '.78rem' }}>TC: {form.tc}</span>}
-            </div>
+          <div style={{ background: T.bgGreen, border: `1px solid #A5D6A7`, borderRadius: 6, padding: '10px 14px', marginBottom: 14, fontSize: '.82rem', display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+            <span>Bultos: <strong style={{ color: T.primary }}>{fmt(prodTotals.bultos, 0)}</strong></span>
+            <span>LBS: <strong style={{ color: T.primary }}>{fmt(prodTotals.lbs, 1)}</strong></span>
+            <span>Total {monLabel}: <strong style={{ color: T.secondary }}>{fmt(totalMoneda)}</strong></span>
+            {totalGTQ > 0 && form.moneda !== 'gtq' && <span>~GTQ: <strong style={{ color: T.textMid }}>Q {fmt(totalGTQ)}</strong></span>}
           </div>
         )}
 
-        {/* Bottom fields */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 14, marginBottom: 16 }}>
-          <label style={LS}>
-            Forma de pago
-            <select value={form.formaPago} onChange={e => s('formaPago', e.target.value)} style={IS}>
-              {FORMAS_PAGO.map(f => <option key={f} value={f}>{f}</option>)}
-            </select>
-          </label>
-          <label style={LS}>No. FEL<input value={form.numFel} onChange={e => s('numFel', e.target.value)} placeholder="Factura electronica" style={IS} /></label>
-          <label style={LS}>
-            Estado
-            <select value={form.estado} onChange={e => s('estado', e.target.value)} style={IS}>
-              {Object.entries(BADGE_CFG).map(([v, b]) => <option key={v} value={v}>{b.label}</option>)}
-            </select>
-          </label>
+        {/* Additional charges */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 14, marginBottom: 14 }}>
+          <label style={LS}>Flete / Transporte<input type="number" min="0" step="0.01" value={form.flete} onChange={e => s('flete', e.target.value)} placeholder="0" style={IS} /></label>
+          <label style={LS}>Papeleria / Docs<input type="number" min="0" step="0.01" value={form.papeleria} onChange={e => s('papeleria', e.target.value)} placeholder="0" style={IS} /></label>
+          <label style={LS}>Otros cargos<input type="number" min="0" step="0.01" value={form.otros} onChange={e => s('otros', e.target.value)} placeholder="0" style={IS} /></label>
+        </div>
+
+        {/* Transport docs */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 14, marginBottom: 14 }}>
+          <label style={LS}>Carta de porte / No. embarque<input value={form.porte} onChange={e => s('porte', e.target.value)} placeholder="No. carta de porte" style={IS} /></label>
+          <label style={LS}>Placa / Transportista<input value={form.placa} onChange={e => s('placa', e.target.value)} placeholder="Placa o transportista" style={IS} /></label>
         </div>
 
         {/* Photo */}
         <div style={{ marginBottom: 14 }}>
           <div style={{ fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', color: T.textMid, letterSpacing: '.06em', marginBottom: 8 }}>Foto del documento (opcional)</div>
-          <input type="file" accept="image/*" capture="environment" onChange={handleFoto} style={{ fontSize: '.82rem' }} />
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button onClick={() => toast('Camara no disponible en este contexto', 'warn')}
+              style={{ padding: '6px 12px', background: '#fff', border: `1px solid ${T.border}`, borderRadius: 4, fontSize: '.72rem', fontWeight: 600, cursor: 'pointer', color: T.textMid }}>
+              Fotografiar doc
+            </button>
+            <label style={{ padding: '6px 12px', background: '#fff', border: `1px solid ${T.border}`, borderRadius: 4, fontSize: '.72rem', fontWeight: 600, cursor: 'pointer', color: T.textMid }}>
+              Cargar imagen
+              <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFoto} />
+            </label>
+          </div>
           {form.fotoUrl && (
             <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
-              <img src={form.fotoUrl} alt="foto" style={{ height: 80, borderRadius: 6, border: `1px solid ${T.border}` }} />
+              <img src={form.fotoUrl} alt="foto" style={{ height: 100, borderRadius: 6, border: `1px solid ${T.border}` }} />
               <button onClick={() => s('fotoUrl', '')}
                 style={{ padding: '4px 10px', background: '#FFEBEE', color: T.danger, border: 'none', borderRadius: 4, fontSize: '.72rem', fontWeight: 600, cursor: 'pointer' }}>
                 Quitar
@@ -408,18 +440,10 @@ export default function VentasInt() {
             style={{ ...IS, resize: 'vertical' }} placeholder="Acuerdos, condiciones, credito..." />
         </label>
 
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button onClick={handleSave} disabled={saving}
-            style={{ padding: '11px 28px', background: saving ? T.border : (editId ? T.warn : T.primary), color: T.white, border: 'none', borderRadius: 6, fontWeight: 600, fontSize: '.88rem', cursor: saving ? 'not-allowed' : 'pointer' }}>
-            {saving ? 'Guardando…' : editId ? 'Actualizar exportacion' : 'Registrar Exportacion'}
-          </button>
-          {editId && (
-            <button onClick={cancelEdit}
-              style={{ padding: '11px 20px', background: T.bgLight, border: `1px solid ${T.border}`, borderRadius: 6, fontWeight: 600, fontSize: '.88rem', cursor: 'pointer', color: T.textMid }}>
-              Cancelar
-            </button>
-          )}
-        </div>
+        <button onClick={handleSave} disabled={saving}
+          style={{ padding: '11px 28px', background: saving ? T.border : T.primary, color: T.white, border: 'none', borderRadius: 6, fontWeight: 600, fontSize: '.88rem', cursor: saving ? 'not-allowed' : 'pointer' }}>
+          {saving ? 'Guardando...' : 'Registrar Exportacion'}
+        </button>
       </div>
 
       {/* Filter */}
@@ -437,10 +461,10 @@ export default function VentasInt() {
         ))}
       </div>
 
-      {/* Table */}
+      {/* History table */}
       <div style={card}>
         <div style={{ fontWeight: 700, fontSize: '.9rem', color: T.primary, marginBottom: 16 }}>
-          Historial ({filtered.length})
+          Historial Exportaciones ({filtered.length})
         </div>
 
         {loadingAll ? <Skeleton rows={8} /> : filtered.length === 0 ? (
@@ -452,52 +476,38 @@ export default function VentasInt() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: T.primary }}>
-                  {['Fecha', 'Pais', 'Moneda', 'Total (moneda)', 'Total GTQ', 'Estado', 'Acciones'].map(h => (
+                  {['Fecha', 'Pais', 'Comprador', 'Operacion', 'Productos', 'LBS', 'Total', 'Moneda', '~ GTQ', 'Estado', ''].map(h => (
                     <th key={h} style={thSt}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {filtered.slice(0, 100).map((r, i) => {
-                  const rSym = r.moneda === 'GTQ' ? 'Q' : (r.moneda || 'MXN');
-                  const tMon = r.totalMoneda || r.total || 0;
+                {filtered.slice(0, 150).map((r, i) => {
+                  const paisLabel = PAISES.find(p => p.value === r.pais)?.label || r.pais || '—';
+                  const opLabel   = TIPOS_OP.find(t => t.value === r.tipoOperacion)?.label || r.tipoOperacion || '—';
+                  const prodsStr  = (r.productos || []).map(p => p.producto).filter(Boolean).join(', ');
+                  const lbs       = r.totalLbs != null ? r.totalLbs : (r.productos || []).reduce((s, p) => s + ((parseFloat(p.bultos)||0)*(parseFloat(p.lbsBulto)||0)), 0);
+                  const tMon      = r.totalMoneda != null ? r.totalMoneda : (r.total || 0);
+                  const monDisp   = r.moneda === 'mxn' ? 'MXN' : 'GTQ';
                   return (
                     <tr key={r.id} style={{ background: i % 2 === 1 ? '#F9FBF9' : '#fff' }}>
                       <td style={{ ...tdSt, fontWeight: 600 }}>{r.fecha}</td>
-                      <td style={tdSt}>{r.pais || '—'}</td>
-                      <td style={{ ...tdSt, fontSize: '.78rem', color: T.textMid }}>{r.moneda || '—'}</td>
-                      <td style={{ ...tdSt, fontWeight: 700, color: T.secondary }}>
-                        {rSym} {fmt(tMon)}
-                      </td>
-                      <td style={{ ...tdSt, fontWeight: 700, color: T.primary }}>
+                      <td style={tdSt}>{paisLabel}</td>
+                      <td style={tdSt}>{r.comprador || '—'}</td>
+                      <td style={{ ...tdSt, fontSize: '.75rem', color: T.textMid }}>{opLabel}</td>
+                      <td style={{ ...tdSt, fontSize: '.75rem', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{prodsStr || '—'}</td>
+                      <td style={{ ...tdSt, fontSize: '.8rem' }}>{fmt(lbs, 1)}</td>
+                      <td style={{ ...tdSt, fontWeight: 700, color: T.secondary }}>{fmt(tMon)}</td>
+                      <td style={{ ...tdSt, fontSize: '.78rem', color: T.textMid }}>{monDisp}</td>
+                      <td style={{ ...tdSt, fontSize: '.78rem', color: T.textMid }}>
                         {r.totalGTQ > 0 ? `Q ${fmt(r.totalGTQ)}` : '—'}
                       </td>
                       <td style={tdSt}><Badge estado={r.estado} /></td>
                       <td style={tdSt}>
-                        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-                          <button onClick={() => startEdit(r)}
-                            style={{ padding: '4px 10px', background: T.secondary, color: T.white, border: 'none', borderRadius: 4, fontSize: '.72rem', fontWeight: 600, cursor: 'pointer' }}>
-                            Editar
-                          </button>
-                          {r.estado === 'pendiente' && (
-                            <button onClick={() => cambiarEstado(r.id, 'en_transito')}
-                              style={{ padding: '4px 10px', background: '#1565C0', color: T.white, border: 'none', borderRadius: 4, fontSize: '.72rem', fontWeight: 600, cursor: 'pointer' }}>
-                              En transito
-                            </button>
-                          )}
-                          {r.estado === 'en_transito' && (
-                            <button onClick={() => cambiarEstado(r.id, 'entregado')}
-                              style={{ padding: '4px 10px', background: T.secondary, color: T.white, border: 'none', borderRadius: 4, fontSize: '.72rem', fontWeight: 600, cursor: 'pointer' }}>
-                              Entregar
-                            </button>
-                          )}
-                          {r.estado === 'entregado' && (
-                            <button onClick={() => cambiarEstado(r.id, 'cobrado')}
-                              style={{ padding: '4px 10px', background: T.primary, color: T.white, border: 'none', borderRadius: 4, fontSize: '.72rem', fontWeight: 600, cursor: 'pointer' }}>
-                              Cobrar
-                            </button>
-                          )}
-                        </div>
+                        <button onClick={() => handleDelete(r.id)}
+                          style={{ padding: '3px 8px', background: '#FFEBEE', color: T.danger, border: 'none', borderRadius: 4, fontSize: '.7rem', fontWeight: 600, cursor: 'pointer' }}>
+                          Eliminar
+                        </button>
                       </td>
                     </tr>
                   );

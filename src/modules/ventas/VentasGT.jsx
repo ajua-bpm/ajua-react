@@ -1,13 +1,13 @@
 import { useState, useMemo } from 'react';
 import { useCollection, useWrite } from '../../hooks/useFirestore';
-import { useClientes, useProductosCatalogo } from '../../hooks/useMainData';
+import { useProductosCatalogo } from '../../hooks/useMainData';
 import { useToast } from '../../components/Toast';
 import Skeleton from '../../components/Skeleton';
 
 // ── Design tokens ─────────────────────────────────────────────────
 const T = {
   primary: '#1B5E20', secondary: '#2E7D32', danger: '#C62828',
-  warn: '#E65100', textDark: '#1A1A18', textMid: '#6B6B60',
+  warn: '#E65100', info: '#1565C0', textDark: '#1A1A18', textMid: '#6B6B60',
   border: '#E0E0E0', bgGreen: '#E8F5E9', white: '#FFFFFF',
   bgLight: '#F5F5F5',
 };
@@ -22,58 +22,26 @@ const IS     = { padding: '9px 12px', border: `1.5px solid ${T.border}`, borderR
 const today = () => new Date().toISOString().slice(0, 10);
 const fmt   = n  => Number(n || 0).toLocaleString('es-GT', { minimumFractionDigits: 2 });
 
-function addDays(isoDate, days) {
-  const d = new Date(isoDate);
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
-}
-
 // ── Constants ─────────────────────────────────────────────────────
 const TIPOS = [
-  { value: 'mercado',      label: 'Mercado / Mayorista' },
-  { value: 'distribuidor', label: 'Distribuidor / Lote' },
-  { value: 'restaurante',  label: 'Restaurante / Negocio' },
-  { value: 'mayorista',    label: 'Mayorista especial' },
+  { value: 'mercado',      label: 'Mercado / Mayorista',    sub: 'Por quintal o libra' },
+  { value: 'distribuidor', label: 'Distribuidor / Lote',    sub: 'Carga completa o parcial' },
+  { value: 'restaurante',  label: 'Restaurante / Negocio',  sub: 'Varias unidades' },
 ];
 
-const FORMAS_PAGO = ['Efectivo', 'Cheque', 'Transferencia', 'Credito'];
+const FORMAS_PAGO = ['efectivo', 'transferencia', 'cheque', 'credito'];
+const FORMAS_PAGO_LABEL = { efectivo: 'Efectivo', transferencia: 'Transferencia', cheque: 'Cheque', credito: 'Credito' };
 
 const UNIDADES = ['lb', 'quintal', 'arroba', 'caja', 'bulto', 'unidad', 'kg', 'lote'];
 
-const BADGE_CFG = {
-  pendiente: { bg: '#FFF3E0', c: '#E65100',  label: 'Pendiente' },
-  entregado: { bg: '#E3F2FD', c: '#1565C0',  label: 'Entregado' },
-  cobrado:   { bg: '#E8F5E9', c: '#2E7D32',  label: 'Cobrado'   },
-  cancelado: { bg: '#FFEBEE', c: '#C62828',  label: 'Cancelado' },
-};
-
-const FILTER_TABS = ['todos', 'pendiente', 'entregado', 'cobrado', 'cancelado'];
-
 const BLANK_IT = { producto: '', cantidad: '', unidad: 'lb', precioUnit: '' };
 const BLANK = {
-  fecha: today(), cliente: '', tipo: 'mercado', productos: [{ ...BLANK_IT }],
-  formaPago: 'Efectivo', diasCredito: '', numFel: '', estado: 'pendiente', obs: '', fotoUrl: '',
+  fecha: today(), comprador: '', tel: '', tipo: 'mercado',
+  docTab: 'xml', numFactura: '', fechaFactura: '', nitComprador: '',
+  productos: [{ ...BLANK_IT }],
+  formaPago: 'efectivo', diasCredito: '', recibo: '',
+  cotId: '', cotLabel: '', obs: '', fotoUrl: '',
 };
-
-// ── Status badge ──────────────────────────────────────────────────
-function Badge({ estado }) {
-  const b = BADGE_CFG[estado] || { bg: '#F5F5F5', c: '#6B6B60', label: estado || '—' };
-  return (
-    <span style={{ padding: '3px 10px', borderRadius: 100, fontSize: '.7rem', fontWeight: 600, background: b.bg, color: b.c, whiteSpace: 'nowrap' }}>
-      {b.label}
-    </span>
-  );
-}
-
-// ── MetricCard ────────────────────────────────────────────────────
-function MetricCard({ label, value, accent }) {
-  return (
-    <div style={{ ...card, marginBottom: 0, flex: '1 1 150px', borderTop: `3px solid ${accent || T.primary}` }}>
-      <div style={{ fontSize: '.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em', color: T.textMid, marginBottom: 6 }}>{label}</div>
-      <div style={{ fontSize: '1.45rem', fontWeight: 700, color: accent || T.textDark, lineHeight: 1.1 }}>{value}</div>
-    </div>
-  );
-}
 
 // ── Products table ────────────────────────────────────────────────
 function ProductosTable({ productos, catalogo, onChange }) {
@@ -91,7 +59,7 @@ function ProductosTable({ productos, catalogo, onChange }) {
       {productos.map((p, i) => {
         const sub = (parseFloat(p.cantidad) || 0) * (parseFloat(p.precioUnit) || 0);
         return (
-          <div key={i} style={{ display: 'grid', gridTemplateColumns: '2fr 90px 90px 100px 90px 28px', padding: '6px 10px', borderTop: `1px solid #F0F0F0`, alignItems: 'center', gap: 6 }}>
+          <div key={i} style={{ display: 'grid', gridTemplateColumns: '2fr 90px 90px 100px 90px 28px', padding: '6px 10px', borderTop: '1px solid #F0F0F0', alignItems: 'center', gap: 6 }}>
             <select value={p.producto} onChange={e => set(i, 'producto', e.target.value)} style={{ ...IS, fontSize: '.82rem', padding: '5px 7px' }}>
               <option value="">— Producto —</option>
               {catalogo.map(c => <option key={c.id || c.nombre} value={c.nombre}>{c.nombre}</option>)}
@@ -107,7 +75,7 @@ function ProductosTable({ productos, catalogo, onChange }) {
               Q {fmt(sub)}
             </span>
             {productos.length > 1 && (
-              <button onClick={() => remove(i)} style={{ background: 'none', border: 'none', color: T.danger, cursor: 'pointer', fontWeight: 700, fontSize: '1rem', padding: 0 }}>×</button>
+              <button onClick={() => remove(i)} style={{ background: 'none', border: 'none', color: T.danger, cursor: 'pointer', fontWeight: 700, fontSize: '1rem', padding: 0 }}>x</button>
             )}
           </div>
         );
@@ -122,30 +90,69 @@ function ProductosTable({ productos, catalogo, onChange }) {
   );
 }
 
+// ── MetricCard ────────────────────────────────────────────────────
+function MetricCard({ label, value, accent }) {
+  return (
+    <div style={{ ...card, marginBottom: 0, flex: '1 1 150px', borderTop: `3px solid ${accent || T.primary}` }}>
+      <div style={{ fontSize: '.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em', color: T.textMid, marginBottom: 6 }}>{label}</div>
+      <div style={{ fontSize: '1.45rem', fontWeight: 700, color: accent || T.textDark, lineHeight: 1.1 }}>{value}</div>
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────
 export default function VentasGT() {
   const toast = useToast();
 
   const { data, loading }              = useCollection('vgtVentas', { orderField: 'fecha', orderDir: 'desc', limit: 300 });
-  const { clientes, loading: loadCli } = useClientes();
+  const { data: cotData }              = useCollection('cotizadorRapido', { orderField: 'fecha', orderDir: 'desc', limit: 200 });
   const { productos: catalogo, loading: loadProd } = useProductosCatalogo();
-  const { add, update, saving }        = useWrite('vgtVentas');
+  const { add, remove, saving }        = useWrite('vgtVentas');
 
   const [form, setForm]     = useState({ ...BLANK, productos: [{ ...BLANK_IT }] });
-  const [editId, setEditId] = useState(null);
-  const [filter, setFilter] = useState('todos');
 
   const s  = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  // IVA calculation
-  const subtotalBruto  = form.productos.reduce((sum, p) => sum + (parseFloat(p.cantidad) || 0) * (parseFloat(p.precioUnit) || 0), 0);
-  const base           = subtotalBruto / 1.12;
-  const iva            = base * 0.12;
+  // Cotizaciones aceptadas
+  const cotAceptadas = useMemo(() => (cotData || []).filter(c => c.estado === 'aceptada'), [cotData]);
 
-  // fechaVencimiento auto
-  const fechaVenc = form.formaPago === 'Credito' && form.diasCredito && form.fecha
-    ? addDays(form.fecha, parseInt(form.diasCredito) || 0)
-    : '';
+  // Calculations
+  const totalBruto = form.productos.reduce((sum, p) => sum + (parseFloat(p.cantidad) || 0) * (parseFloat(p.precioUnit) || 0), 0);
+  // IVA: price is assumed inclusive → base = total/1.12
+  const base         = totalBruto / 1.12;
+  const iva          = base * 0.12;
+  // Retencion 15% of IVA when total > Q2500
+  const retencion    = totalBruto > 2500 ? iva * 0.15 : 0;
+  const aCobrar      = totalBruto - retencion;
+
+  const pesoTotal = form.productos.reduce((s, p) => {
+    const cant = parseFloat(p.cantidad) || 0;
+    const unit = p.unidad;
+    if (unit === 'quintal') return s + cant * 100;
+    if (unit === 'arroba')  return s + cant * 25;
+    if (unit === 'kg')      return s + cant * 2.205;
+    return s + cant; // lb, caja, bulto, unidad, lote treated as-is
+  }, 0);
+
+  const cargarCotizacion = (cotId) => {
+    if (!cotId) { s('cotId', ''); s('cotLabel', ''); return; }
+    const cot = cotAceptadas.find(c => c.id === cotId);
+    if (!cot) return;
+    const prods = (cot.productos || cot.items || []).map(p => ({
+      producto: p.producto || p.nombre || '',
+      cantidad: String(p.cantidad || p.lbs || ''),
+      unidad: p.unidad || 'lb',
+      precioUnit: String(p.precioUnit || p.precio || ''),
+    }));
+    setForm(f => ({
+      ...f,
+      cotId,
+      cotLabel: `${cot.cliente || cot.comprador || ''} — ${cot.fecha || ''}`,
+      comprador: cot.cliente || cot.comprador || f.comprador,
+      productos: prods.length ? prods : [{ ...BLANK_IT }],
+    }));
+    toast('Cotizacion cargada');
+  };
 
   const handleFoto = e => {
     const file = e.target.files?.[0];
@@ -156,7 +163,7 @@ export default function VentasGT() {
   };
 
   const handleSave = async () => {
-    if (!form.fecha || !form.cliente) { toast('Fecha y cliente son requeridos', 'error'); return; }
+    if (!form.fecha || !form.comprador) { toast('Fecha y Comprador son requeridos', 'error'); return; }
     if (!form.productos.some(p => p.producto && p.cantidad)) { toast('Agrega al menos un producto con cantidad', 'error'); return; }
     const payload = {
       ...form,
@@ -166,158 +173,202 @@ export default function VentasGT() {
         precioUnit: parseFloat(p.precioUnit) || 0,
         subtotal: (parseFloat(p.cantidad) || 0) * (parseFloat(p.precioUnit) || 0),
       })),
-      subtotal: subtotalBruto,
+      totalBruto,
+      base: parseFloat(base.toFixed(2)),
       iva: parseFloat(iva.toFixed(2)),
-      total: subtotalBruto,
+      retencion: parseFloat(retencion.toFixed(2)),
+      aCobrar: parseFloat(aCobrar.toFixed(2)),
+      pesoTotal: parseFloat(pesoTotal.toFixed(2)),
       diasCredito: parseInt(form.diasCredito) || 0,
-      fechaVencimiento: fechaVenc,
       creadoEn: new Date().toISOString(),
     };
     try {
-      if (editId) { await update(editId, payload); toast('Venta actualizada'); setEditId(null); }
-      else        { await add(payload); toast('Venta GT registrada'); }
+      await add(payload);
+      toast('Despacho local registrado');
       setForm({ ...BLANK, productos: [{ ...BLANK_IT }] });
     } catch { toast('Error al guardar', 'error'); }
   };
 
-  const startEdit = r => {
-    setForm({
-      fecha:       r.fecha || today(),
-      cliente:     r.cliente || '',
-      tipo:        r.tipo || 'mercado',
-      productos:   r.productos?.length ? r.productos : [{ ...BLANK_IT }],
-      formaPago:   r.formaPago || 'Efectivo',
-      diasCredito: r.diasCredito || '',
-      numFel:      r.numFel || '',
-      estado:      r.estado || 'pendiente',
-      obs:         r.obs || '',
-      fotoUrl:     r.fotoUrl || '',
-    });
-    setEditId(r.id);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+  const handleDelete = async (id) => {
+    if (!window.confirm('Eliminar este registro?')) return;
+    try { await remove(id); toast('Registro eliminado'); }
+    catch { toast('Error al eliminar', 'error'); }
   };
 
-  const cancelEdit    = () => { setForm({ ...BLANK, productos: [{ ...BLANK_IT }] }); setEditId(null); };
-  const cambiarEstado = async (id, estado) => {
-    try { await update(id, { estado }); toast(`Estado: ${BADGE_CFG[estado]?.label || estado}`); }
-    catch { toast('Error al actualizar', 'error'); }
-  };
-
-  const filtered = filter === 'todos' ? data : data.filter(r => r.estado === filter);
-
-  const totalVentas = useMemo(() => data.filter(r => r.estado !== 'cancelado').reduce((s, r) => s + (r.total || 0), 0), [data]);
-  const pendientes  = data.filter(r => r.estado === 'pendiente').length;
-  const cobrado     = useMemo(() => data.filter(r => r.estado === 'cobrado').reduce((s, r) => s + (r.total || 0), 0), [data]);
-
-  const loadingAll = loading || loadCli || loadProd;
+  const loadingAll = loading || loadProd;
 
   return (
     <div style={{ padding: '24px 28px', fontFamily: 'inherit', maxWidth: 1100 }}>
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
-        <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, color: T.textDark }}>Despachos — Mercado Local Guatemala</h2>
+        <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, color: T.textDark }}>Despachos — Locales Guatemala</h2>
         <p style={{ margin: '4px 0 0', fontSize: '.83rem', color: T.textMid }}>
-          Mercado mayorista, distribuidores, restaurantes y mayoristas
+          Mercado mayorista · distribuidores · restaurantes · contenedor completo o parcial — sin FEL requerida
         </p>
       </div>
 
       {/* Metrics */}
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 24 }}>
-        <MetricCard label="Total ventas GTQ" value={`Q ${fmt(totalVentas)}`} accent={T.secondary} />
-        <MetricCard label="Pendientes"        value={pendientes}              accent={T.warn} />
-        <MetricCard label="Cobrado GTQ"       value={`Q ${fmt(cobrado)}`}    accent={T.primary} />
-        <MetricCard label="Total registros"   value={data.length}            accent={T.textMid} />
+        <MetricCard label="Total registros"  value={data.length}  accent={T.textMid} />
       </div>
 
       {/* Form */}
-      <div style={{ ...card, borderLeft: `4px solid ${editId ? T.warn : T.primary}` }}>
-        <div style={{ fontWeight: 700, fontSize: '.95rem', color: T.textDark, marginBottom: 20, paddingBottom: 12, borderBottom: `1px solid ${T.border}` }}>
-          {editId ? 'Editar venta GT' : 'Registrar Despacho Local'}
+      <div style={{ ...card, borderLeft: `4px solid ${T.primary}` }}>
+        <div style={{ fontWeight: 700, fontSize: '.95rem', color: T.textDark, marginBottom: 16, paddingBottom: 12, borderBottom: `1px solid ${T.border}` }}>
+          Registrar Despacho Local
         </div>
 
-        {/* Tipo selector */}
-        <div style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', color: T.textMid, letterSpacing: '.06em', marginBottom: 10 }}>Tipo de venta</div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {TIPOS.map(t => (
-              <label key={t.value} style={{ cursor: 'pointer' }}>
-                <input type="radio" name="vgt-tipo" value={t.value} checked={form.tipo === t.value} onChange={() => s('tipo', t.value)} style={{ display: 'none' }} />
-                <div style={{
-                  padding: '8px 14px', borderRadius: 6, fontSize: '.78rem', fontWeight: 600,
-                  border: `2px solid ${form.tipo === t.value ? T.primary : T.border}`,
-                  background: form.tipo === t.value ? T.bgGreen : '#fff',
-                  color: form.tipo === t.value ? T.primary : T.textMid,
-                  cursor: 'pointer',
-                }}>
-                  {t.label}
-                </div>
-              </label>
+        {/* Cotizacion vinculada */}
+        <div style={{ background: 'rgba(27,94,32,.05)', border: '1px solid rgba(27,94,32,.22)', borderRadius: 6, padding: '10px 14px', marginBottom: 14, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '.7rem', color: T.primary, fontWeight: 600, whiteSpace: 'nowrap' }}>Cotizacion aceptada?</span>
+          <select
+            value={form.cotId}
+            onChange={e => cargarCotizacion(e.target.value)}
+            style={{ flex: 1, minWidth: 200, background: '#fff', border: `1px solid rgba(27,94,32,.35)`, color: T.textDark, padding: '6px 8px', borderRadius: 4, fontSize: '.72rem' }}
+          >
+            <option value="">— Cargar desde cotizacion aceptada —</option>
+            {cotAceptadas.map(c => (
+              <option key={c.id} value={c.id}>{c.cliente || c.comprador || 'Sin nombre'} — {c.fecha || ''}</option>
             ))}
+          </select>
+          {form.cotLabel && (
+            <span style={{ fontSize: '.7rem', color: T.primary, fontWeight: 600 }}>{form.cotLabel}</span>
+          )}
+        </div>
+
+        {/* Tipo selector — 3 cards */}
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: '.6rem', fontWeight: 700, textTransform: 'uppercase', color: T.textMid, letterSpacing: '.08em', marginBottom: 8 }}>Tipo de despacho</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+            {TIPOS.map(t => {
+              const sel = form.tipo === t.value;
+              return (
+                <label key={t.value} style={{ cursor: 'pointer' }}>
+                  <input type="radio" name="vgt-tipo" value={t.value} checked={sel} onChange={() => s('tipo', t.value)} style={{ display: 'none' }} />
+                  <div style={{
+                    background: sel ? 'rgba(27,94,32,.08)' : '#fff',
+                    border: `2px solid ${sel ? T.primary : T.border}`,
+                    borderRadius: 6, padding: '10px', textAlign: 'center',
+                  }}>
+                    <div style={{ fontSize: '.72rem', fontWeight: 700, marginTop: 3, color: sel ? T.primary : T.textDark }}>{t.label}</div>
+                    <div style={{ fontSize: '.6rem', color: T.textMid, marginTop: 2 }}>{t.sub}</div>
+                  </div>
+                </label>
+              );
+            })}
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 14, marginBottom: 16 }}>
-          <label style={LS}>Fecha *<input type="date" value={form.fecha} onChange={e => s('fecha', e.target.value)} style={IS} /></label>
-          <label style={LS}>
-            Cliente *
-            <select value={form.cliente} onChange={e => s('cliente', e.target.value)} style={IS}>
-              <option value="">— Seleccionar —</option>
-              {clientes.map(c => <option key={c.id || c.nombre} value={c.nombre}>{c.nombre}</option>)}
-            </select>
-          </label>
-          <label style={LS}>
-            Forma de pago
-            <select value={form.formaPago} onChange={e => s('formaPago', e.target.value)} style={IS}>
-              {FORMAS_PAGO.map(f => <option key={f} value={f}>{f}</option>)}
-            </select>
-          </label>
-          {form.formaPago === 'Credito' && (
-            <label style={LS}>Dias de credito<input type="number" min="0" value={form.diasCredito} onChange={e => s('diasCredito', e.target.value)} placeholder="0" style={IS} /></label>
-          )}
-          {form.formaPago === 'Credito' && fechaVenc && (
-            <label style={LS}>Fecha vencimiento<input type="date" value={fechaVenc} readOnly style={{ ...IS, background: T.bgGreen, color: T.primary, fontWeight: 600 }} /></label>
-          )}
-          <label style={LS}>No. FEL<input value={form.numFel} onChange={e => s('numFel', e.target.value)} placeholder="Factura electronica" style={IS} /></label>
-          <label style={LS}>
-            Estado
-            <select value={form.estado} onChange={e => s('estado', e.target.value)} style={IS}>
-              {Object.entries(BADGE_CFG).map(([v, b]) => <option key={v} value={v}>{b.label}</option>)}
-            </select>
-          </label>
+        {/* Base fields */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 14, marginBottom: 14 }}>
+          <label style={LS}>Fecha<input type="date" value={form.fecha} onChange={e => s('fecha', e.target.value)} style={IS} /></label>
+          <label style={LS}>Comprador / Negocio<input value={form.comprador} onChange={e => s('comprador', e.target.value)} placeholder="Nombre o mercado" style={IS} /></label>
+          <label style={LS}>Telefono / Referencia<input value={form.tel} onChange={e => s('tel', e.target.value)} placeholder="Tel. o referencia" style={IS} /></label>
         </div>
 
+        {/* Document section */}
+        <div style={{ background: 'rgba(21,101,192,.04)', border: '1px solid rgba(21,101,192,.18)', borderRadius: 6, padding: 12, marginBottom: 12 }}>
+          <div style={{ fontSize: '.6rem', color: T.info, fontWeight: 700, letterSpacing: '.08em', marginBottom: 8 }}>DOCUMENTO DE VENTA (opcional pero recomendado)</div>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+            <button
+              onClick={() => s('docTab', 'xml')}
+              style={{ padding: '6px 14px', borderRadius: 4, fontSize: '.68rem', fontWeight: 600, cursor: 'pointer', border: 'none',
+                background: form.docTab === 'xml' ? T.primary : '#fff',
+                color: form.docTab === 'xml' ? T.white : T.textMid,
+                outline: form.docTab !== 'xml' ? `1px solid ${T.border}` : 'none' }}
+            >
+              XML FEL
+            </button>
+            <button
+              onClick={() => s('docTab', 'manual')}
+              style={{ padding: '6px 14px', borderRadius: 4, fontSize: '.68rem', fontWeight: 600, cursor: 'pointer', border: 'none',
+                background: form.docTab === 'manual' ? T.primary : '#fff',
+                color: form.docTab === 'manual' ? T.white : T.textMid,
+                outline: form.docTab !== 'manual' ? `1px solid ${T.border}` : 'none' }}
+            >
+              Manual / Sin factura
+            </button>
+          </div>
+
+          {form.docTab === 'xml' && (
+            <div>
+              <div style={{ fontSize: '.68rem', color: T.textMid, marginBottom: 8 }}>
+                Carga el XML FEL — extrae productos, cantidades y precios.<br />
+                Precio ya incluye IVA. Retencion 15% si total supera Q2,500.
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <label style={{ padding: '6px 12px', background: T.primary, color: T.white, borderRadius: 4, cursor: 'pointer', fontSize: '.72rem', fontWeight: 600 }}>
+                  Cargar XML FEL
+                  <input type="file" accept=".xml" style={{ display: 'none' }} onChange={() => toast('XML: parsing no disponible en React — ingrese manualmente', 'warn')} />
+                </label>
+                <label style={{ padding: '6px 12px', background: '#fff', border: `1px solid ${T.border}`, color: T.textMid, borderRadius: 4, cursor: 'pointer', fontSize: '.68rem', fontWeight: 600 }}>
+                  Foto factura
+                  <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFoto} />
+                </label>
+                {form.fotoUrl && <span style={{ fontSize: '.7rem', color: T.secondary, fontWeight: 600 }}>Foto cargada</span>}
+              </div>
+            </div>
+          )}
+
+          {form.docTab === 'manual' && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
+              <label style={LS}>No. Factura / Recibo<input value={form.numFactura} onChange={e => s('numFactura', e.target.value)} placeholder="Serie-No." style={IS} /></label>
+              <label style={LS}>Fecha factura<input type="date" value={form.fechaFactura} onChange={e => s('fechaFactura', e.target.value)} style={IS} /></label>
+              <label style={LS}>NIT comprador<input value={form.nitComprador} onChange={e => s('nitComprador', e.target.value)} placeholder="NIT o CF" style={IS} /></label>
+            </div>
+          )}
+        </div>
+
+        {/* Retencion warning */}
+        {totalBruto > 2500 && (
+          <div style={{ background: 'rgba(198,40,40,.06)', border: '1px solid rgba(198,40,40,.2)', borderRadius: 4, padding: '8px 12px', marginBottom: 10, fontSize: '.7rem' }}>
+            <strong style={{ color: T.danger }}>Retencion ISR:</strong> El total supera Q2,500 — se retendra 15% del IVA al cliente.
+            <span style={{ color: T.danger, fontWeight: 700, marginLeft: 8 }}>Q {fmt(retencion)}</span>
+          </div>
+        )}
+
         {/* Products */}
-        <div style={{ fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', color: T.textMid, letterSpacing: '.06em', marginBottom: 10 }}>Productos</div>
+        <div style={{ fontSize: '.6rem', fontWeight: 700, textTransform: 'uppercase', color: T.warn, letterSpacing: '.08em', marginBottom: 8 }}>PRODUCTOS Y PRECIOS</div>
         <ProductosTable
           productos={form.productos}
           catalogo={catalogo}
           onChange={prods => s('productos', prods)}
         />
 
-        {/* IVA summary */}
-        {subtotalBruto > 0 && (
-          <div style={{ background: T.bgGreen, border: `1px solid ${T.secondary}`, borderRadius: 6, padding: '10px 14px', marginBottom: 14, fontSize: '.82rem' }}>
-            <span style={{ marginRight: 20 }}>Subtotal (base): <strong>Q {fmt(base)}</strong></span>
-            <span style={{ marginRight: 20, color: T.warn }}>IVA 12%: <strong>Q {fmt(iva)}</strong></span>
-            <span style={{ color: T.primary, fontWeight: 700 }}>Total: <strong>Q {fmt(subtotalBruto)}</strong></span>
+        {/* Totals summary */}
+        {totalBruto > 0 && (
+          <div style={{ background: T.bgGreen, border: `1px solid #A5D6A7`, borderRadius: 6, padding: '10px 14px', marginBottom: 14, fontSize: '.82rem', display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+            <span>Peso total: <strong style={{ color: T.primary }}>{fmt(pesoTotal)} lbs</strong></span>
+            <span>Total Q: <strong style={{ color: T.primary }}>Q {fmt(totalBruto)}</strong></span>
+            <span style={{ color: T.textMid }}>Base (sin IVA): <strong>Q {fmt(base)}</strong></span>
+            <span style={{ color: T.warn }}>IVA 12%: <strong>Q {fmt(iva)}</strong></span>
+            {retencion > 0 && <span style={{ color: T.danger }}>Retencion: <strong>Q {fmt(retencion)}</strong></span>}
+            <span style={{ color: T.secondary, fontWeight: 700 }}>A cobrar: <strong>Q {fmt(aCobrar)}</strong></span>
           </div>
         )}
 
-        {/* Photo */}
-        <div style={{ marginBottom: 14 }}>
-          <div style={{ fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', color: T.textMid, letterSpacing: '.06em', marginBottom: 8 }}>Foto (opcional)</div>
-          <input type="file" accept="image/*" capture="environment" onChange={handleFoto}
-            style={{ fontSize: '.82rem' }} />
-          {form.fotoUrl && (
-            <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
-              <img src={form.fotoUrl} alt="foto" style={{ height: 80, borderRadius: 6, border: `1px solid ${T.border}` }} />
-              <button onClick={() => s('fotoUrl', '')}
-                style={{ padding: '4px 10px', background: '#FFEBEE', color: T.danger, border: 'none', borderRadius: 4, fontSize: '.72rem', fontWeight: 600, cursor: 'pointer' }}>
-                Quitar
-              </button>
-            </div>
-          )}
+        {/* Payment */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 14, marginBottom: 14 }}>
+          <label style={LS}>
+            Forma de pago
+            <select value={form.formaPago} onChange={e => s('formaPago', e.target.value)} style={IS}>
+              {FORMAS_PAGO.map(f => <option key={f} value={f}>{FORMAS_PAGO_LABEL[f]}</option>)}
+            </select>
+          </label>
+          <label style={LS}>Dias de credito<input type="number" min="0" value={form.diasCredito} onChange={e => s('diasCredito', e.target.value)} placeholder="0 (contado)" style={IS} /></label>
+          <label style={LS}>No. recibo / comprobante<input value={form.recibo} onChange={e => s('recibo', e.target.value)} placeholder="Recibo, transferencia #" style={IS} /></label>
         </div>
+
+        {/* Photo preview */}
+        {form.fotoUrl && (
+          <div style={{ marginBottom: 14, display: 'flex', alignItems: 'center', gap: 10 }}>
+            <img src={form.fotoUrl} alt="foto" style={{ height: 100, borderRadius: 6, border: `1px solid ${T.border}` }} />
+            <button onClick={() => s('fotoUrl', '')}
+              style={{ padding: '4px 10px', background: '#FFEBEE', color: T.danger, border: 'none', borderRadius: 4, fontSize: '.72rem', fontWeight: 600, cursor: 'pointer' }}>
+              Quitar foto
+            </button>
+          </div>
+        )}
 
         <label style={{ ...LS, marginBottom: 16 }}>
           Observaciones
@@ -325,89 +376,54 @@ export default function VentasGT() {
             style={{ ...IS, resize: 'vertical' }} placeholder="Notas de la venta..." />
         </label>
 
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button onClick={handleSave} disabled={saving}
-            style={{ padding: '11px 28px', background: saving ? T.border : (editId ? T.warn : T.primary), color: T.white, border: 'none', borderRadius: 6, fontWeight: 600, fontSize: '.88rem', cursor: saving ? 'not-allowed' : 'pointer' }}>
-            {saving ? 'Guardando…' : editId ? 'Actualizar venta' : 'Registrar Despacho'}
-          </button>
-          {editId && (
-            <button onClick={cancelEdit}
-              style={{ padding: '11px 20px', background: T.bgLight, border: `1px solid ${T.border}`, borderRadius: 6, fontWeight: 600, fontSize: '.88rem', cursor: 'pointer', color: T.textMid }}>
-              Cancelar
-            </button>
-          )}
-        </div>
+        <button onClick={handleSave} disabled={saving}
+          style={{ padding: '11px 28px', background: saving ? T.border : T.primary, color: T.white, border: 'none', borderRadius: 6, fontWeight: 600, fontSize: '.88rem', cursor: saving ? 'not-allowed' : 'pointer' }}>
+          {saving ? 'Guardando...' : 'Registrar Despacho'}
+        </button>
       </div>
 
-      {/* Table */}
+      {/* History table */}
       <div style={card}>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 16 }}>
-          <div style={{ fontWeight: 700, fontSize: '.9rem', color: T.textDark, marginRight: 4 }}>
-            Historial ({filtered.length})
-          </div>
-          {FILTER_TABS.map(ft => (
-            <button key={ft} onClick={() => setFilter(ft)} style={{
-              padding: '5px 14px', borderRadius: 20, fontSize: '.75rem', fontWeight: 600, cursor: 'pointer',
-              border: `1.5px solid ${filter === ft ? T.primary : T.border}`,
-              background: filter === ft ? T.primary : T.white,
-              color: filter === ft ? T.white : T.textMid,
-            }}>
-              {ft === 'todos' ? 'Todos' : BADGE_CFG[ft]?.label || ft}
-            </button>
-          ))}
+        <div style={{ fontWeight: 700, fontSize: '.9rem', color: T.textDark, marginBottom: 16 }}>
+          Historial Despachos Locales ({data.length})
         </div>
 
-        {loadingAll ? <Skeleton rows={8} /> : filtered.length === 0 ? (
+        {loadingAll ? <Skeleton rows={8} /> : data.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '48px 24px', color: T.textMid, fontSize: '.88rem' }}>
-            Sin ventas {filter !== 'todos' ? `con estado "${BADGE_CFG[filter]?.label}"` : 'registradas'} aun.
+            Sin despachos registrados aun.
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: T.primary }}>
-                  {['Fecha', 'Cliente', 'Tipo', 'Total', 'IVA', 'FEL', 'Estado', 'Vence', 'Acciones'].map(h => (
+                  {['Fecha', 'Tipo', 'Comprador', 'Productos', 'Peso lbs', 'Total Q', 'IVA Q', 'A cobrar Q', 'OC/Ref', ''].map(h => (
                     <th key={h} style={thSt}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {filtered.slice(0, 100).map((r, i) => {
+                {data.slice(0, 150).map((r, i) => {
                   const tipoLabel = TIPOS.find(t => t.value === r.tipo)?.label || r.tipo || '—';
-                  const ivaVal = r.iva || (r.total ? r.total / 1.12 * 0.12 : 0);
+                  const prodsStr  = (r.productos || []).map(p => `${p.producto} ${p.cantidad}${p.unidad}`).join(', ');
+                  const ivaVal    = r.iva != null ? r.iva : (r.totalBruto ? r.totalBruto / 1.12 * 0.12 : 0);
+                  const aCobrarV  = r.aCobrar != null ? r.aCobrar : (r.totalBruto || 0);
                   return (
                     <tr key={r.id} style={{ background: i % 2 === 1 ? '#F9FBF9' : '#fff' }}>
                       <td style={{ ...tdSt, fontWeight: 600 }}>{r.fecha}</td>
-                      <td style={tdSt}>{r.cliente || '—'}</td>
                       <td style={{ ...tdSt, fontSize: '.78rem', color: T.textMid }}>{tipoLabel}</td>
-                      <td style={{ ...tdSt, fontWeight: 700, color: T.primary }}>Q {fmt(r.total)}</td>
+                      <td style={tdSt}>{r.comprador || '—'}</td>
+                      <td style={{ ...tdSt, fontSize: '.75rem', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{prodsStr || '—'}</td>
+                      <td style={{ ...tdSt, fontSize: '.8rem' }}>{r.pesoTotal ? fmt(r.pesoTotal) : '—'}</td>
+                      <td style={{ ...tdSt, fontWeight: 700, color: T.primary }}>Q {fmt(r.totalBruto || r.total)}</td>
                       <td style={{ ...tdSt, fontSize: '.78rem', color: T.textMid }}>Q {fmt(ivaVal)}</td>
-                      <td style={{ ...tdSt, fontSize: '.78rem', fontFamily: 'monospace', color: r.numFel ? T.secondary : T.textMid }}>
-                        {r.numFel || <em style={{ opacity: .6 }}>—</em>}
-                      </td>
-                      <td style={tdSt}><Badge estado={r.estado} /></td>
-                      <td style={{ ...tdSt, fontSize: '.78rem', color: r.fechaVencimiento ? T.warn : T.textMid }}>
-                        {r.fechaVencimiento || '—'}
-                      </td>
+                      <td style={{ ...tdSt, fontWeight: 700, color: T.secondary }}>Q {fmt(aCobrarV)}</td>
+                      <td style={{ ...tdSt, fontSize: '.75rem', color: T.textMid }}>{r.recibo || r.numFactura || '—'}</td>
                       <td style={tdSt}>
-                        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-                          <button onClick={() => startEdit(r)}
-                            style={{ padding: '4px 10px', background: T.secondary, color: T.white, border: 'none', borderRadius: 4, fontSize: '.72rem', fontWeight: 600, cursor: 'pointer' }}>
-                            Editar
-                          </button>
-                          {r.estado === 'pendiente' && (
-                            <button onClick={() => cambiarEstado(r.id, 'entregado')}
-                              style={{ padding: '4px 10px', background: '#1565C0', color: T.white, border: 'none', borderRadius: 4, fontSize: '.72rem', fontWeight: 600, cursor: 'pointer' }}>
-                              Entregar
-                            </button>
-                          )}
-                          {r.estado === 'entregado' && (
-                            <button onClick={() => cambiarEstado(r.id, 'cobrado')}
-                              style={{ padding: '4px 10px', background: T.primary, color: T.white, border: 'none', borderRadius: 4, fontSize: '.72rem', fontWeight: 600, cursor: 'pointer' }}>
-                              Cobrar
-                            </button>
-                          )}
-                        </div>
+                        <button onClick={() => handleDelete(r.id)}
+                          style={{ padding: '3px 8px', background: '#FFEBEE', color: T.danger, border: 'none', borderRadius: 4, fontSize: '.7rem', fontWeight: 600, cursor: 'pointer' }}>
+                          Eliminar
+                        </button>
                       </td>
                     </tr>
                   );

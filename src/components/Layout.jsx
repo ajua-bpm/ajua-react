@@ -24,7 +24,7 @@ const NAV = [
   { section: 'Inventario' },
   { to: '/stock',                  icon: '📦', label: 'Stock en Vivo' },
   { to: '/inventario/entrada',     icon: '📥', label: 'Ingresos Bodega' },
-  { to: '/inventario/salida',      icon: '📤', label: 'Salidas Bodega' },
+  { to: '/inventario/salida',      icon: '💰', label: 'Ventas Walmart' },
   { to: '/inventario/proveedores', icon: '🏭', label: 'Proveedores' },
   { section: 'Ventas' },
   { to: '/ventas/gt',              icon: '🇬🇹', label: 'Despachos GT' },
