@@ -69,7 +69,7 @@ export default function AL() {
   const toast = useToast();
   const { empleados, loading: empLoading } = useEmpleados();
   const { data: registros, loading: histLoading } = useCollection('al', { orderField: 'fecha', orderDir: 'desc', limit: 300 });
-  const { add, saving } = useWrite('al');
+  const { add, remove, saving } = useWrite('al');
 
   const [fecha,        setFecha]        = useState(today());
   const [hora,         setHora]         = useState(nowHM());
@@ -350,26 +350,52 @@ export default function AL() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: T.primary }}>
-                  {['Fecha', 'Turno', 'Responsable', 'Empleados', 'Lavados OK', 'Total', '%', 'Resultado'].map(h => (
+                  {['Fecha', 'Turno', 'H. Ingreso', 'H. Salida', 'Empleados', 'Lavados completos', ''].map(h => (
                     <th key={h} style={{ padding: '10px 14px', textAlign: 'left', color: '#fff', fontSize: '.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {(registros || []).slice(0, 100).map((r, i) => (
-                  <tr key={r.id} style={{ background: i % 2 === 0 ? '#fff' : '#F9FBF9' }}>
-                    <td style={{ ...TD, fontWeight: 600 }}>{r.fecha || '—'}</td>
-                    <td style={TD}>{r.turno || '—'}</td>
-                    <td style={TD}>{r.responsable || '—'}</td>
-                    <td style={{ ...TD, textAlign: 'center' }}>{(r.checks || []).length}</td>
-                    <td style={{ ...TD, textAlign: 'center', color: T.accent, fontWeight: 600 }}>{r.totalOk ?? '—'}</td>
-                    <td style={{ ...TD, textAlign: 'center' }}>{r.totalPosible ?? '—'}</td>
-                    <td style={{ ...TD, fontWeight: 700, color: (r.pct || 0) >= 80 ? T.accent : (r.pct || 0) >= 60 ? T.warn : T.danger }}>
-                      {r.pct != null ? `${r.pct}%` : '—'}
-                    </td>
-                    <td style={TD}><ResultadoBadge resultado={r.resultado} /></td>
-                  </tr>
-                ))}
+                {(registros || []).slice(0, 100).map((r, i) => {
+                  const totalEmp = (r.checks || []).length;
+                  // Count employees who completed ALL active horas (those with at least one true)
+                  const totalCompletos = (r.checks || []).filter(row =>
+                    row.horas && Object.values(row.horas).some(v => v) &&
+                    Object.values(row.horas).every(v => v)
+                  ).length;
+                  const pctComp = totalEmp > 0 ? Math.round(totalCompletos / totalEmp * 100) : 0;
+                  const compColor = pctComp >= 100 ? T.accent : pctComp >= 75 ? T.warn : T.danger;
+                  const compBg    = pctComp >= 100 ? '#E8F5E9' : pctComp >= 75 ? '#FFF3E0' : '#FFEBEE';
+                  return (
+                    <tr key={r.id} style={{ background: i % 2 === 0 ? '#fff' : '#F9FBF9' }}>
+                      <td style={{ ...TD, fontWeight: 600 }}>{r.fecha || '—'}</td>
+                      <td style={TD}>
+                        <span style={{ padding: '3px 10px', borderRadius: 100, fontSize: '.7rem', fontWeight: 700, background: r.turno === 'AM' ? '#E3F2FD' : r.turno === 'PM' ? '#EDE7F6' : '#E8F5E9', color: r.turno === 'AM' ? '#1565C0' : r.turno === 'PM' ? '#4527A0' : T.secondary }}>
+                          {r.turno || '—'}
+                        </span>
+                      </td>
+                      <td style={TD}>{r.hi || '—'}</td>
+                      <td style={TD}>{r.hs || '—'}</td>
+                      <td style={TD}>
+                        <span style={{ padding: '3px 10px', borderRadius: 100, fontSize: '.7rem', fontWeight: 700, background: '#E8F5E9', color: T.secondary }}>
+                          {totalEmp} personas
+                        </span>
+                      </td>
+                      <td style={TD}>
+                        <span style={{ padding: '3px 10px', borderRadius: 100, fontSize: '.7rem', fontWeight: 700, background: compBg, color: compColor }}>
+                          {totalCompletos}/{totalEmp} · {pctComp}%
+                        </span>
+                      </td>
+                      <td style={TD}>
+                        <button
+                          onClick={() => { if (window.confirm('¿Eliminar este registro?')) remove(r.id); }}
+                          title="Eliminar"
+                          style={{ padding: '4px 10px', borderRadius: 5, border: `1.5px solid ${T.danger}`, background: '#fff', color: T.danger, cursor: 'pointer', fontSize: '.75rem', fontWeight: 700, fontFamily: 'inherit' }}
+                        >✕</button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

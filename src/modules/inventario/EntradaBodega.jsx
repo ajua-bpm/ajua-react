@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useCollection, useWrite } from '../../hooks/useFirestore';
-import { useProductosCatalogo, useEmpleados } from '../../hooks/useMainData';
+import { useProductosCatalogo, useClientes } from '../../hooks/useMainData';
 import { useToast } from '../../components/Toast';
 import Skeleton from '../../components/Skeleton';
 
@@ -16,7 +16,7 @@ const card   = { background: '#fff', borderRadius: 8, boxShadow: shadow, padding
 const thSt = {
   color: T.white, padding: '10px 14px', fontSize: '.75rem',
   fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em',
-  textAlign: 'left', whiteSpace: 'nowrap',
+  textAlign: 'left', whiteSpace: 'nowrap', background: T.primary,
 };
 const tdSt = { padding: '9px 14px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0', color: T.textDark };
 
@@ -28,15 +28,24 @@ const LS = {
 const IS = {
   padding: '9px 12px', border: '1.5px solid #E0E0E0', borderRadius: 6,
   fontSize: '.88rem', outline: 'none', fontFamily: 'inherit',
+  width: '100%', boxSizing: 'border-box', marginTop: 2,
 };
 
-const UNIDADES = ['lb', 'kg', 'caja', 'unidad', 'quintal', 'saco', 'barril'];
-const today    = () => new Date().toISOString().slice(0, 10);
-const nowTime  = () => new Date().toTimeString().slice(0, 5);
+const today = () => new Date().toISOString().slice(0, 10);
+const LBS_FACTOR = 2.20462;
 
 const BLANK = {
-  fecha: today(), hora: nowTime(), producto: '', cantidad: '',
-  unidad: 'lb', proveedor: '', lote: '', precioUnitario: '', responsable: '',
+  fecha: today(),
+  producto: '',
+  origen: '',
+  productor: '',
+  proveedor: '',
+  bultos: '',
+  kgBulto: '',
+  costolb: '',
+  duca: '',
+  cotizacion: '',
+  obs: '',
 };
 
 // ── Metric card ──────────────────────────────────────────────────
@@ -57,33 +66,54 @@ function MetricCard({ label, value, accent }) {
 export default function EntradaBodega() {
   const toast = useToast();
 
-  const { data, loading }                = useCollection('ientradas', { orderField: 'fecha', orderDir: 'desc', limit: 300 });
-  const { data: proveedores, loading: lp } = useCollection('proveedores', { orderField: 'nombre', limit: 200 });
-  const { productos, loading: loadProd } = useProductosCatalogo();
-  const { empleados, loading: loadEmp }  = useEmpleados();
-  const { add, saving }                  = useWrite('ientradas');
+  const { data, loading }            = useCollection('ientradas', { orderField: 'fecha', orderDir: 'desc', limit: 300 });
+  const { productos, loading: lp }   = useProductosCatalogo();
+  const { clientes, loading: lc }    = useClientes();
+  const { add, remove, saving }      = useWrite('ientradas');
 
   const [form, setForm] = useState({ ...BLANK });
   const s = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
+  // Auto-calc LBS
+  const lbsBrutas = useMemo(() => {
+    const b = parseFloat(form.bultos) || 0;
+    const k = parseFloat(form.kgBulto) || 0;
+    return b * k * LBS_FACTOR;
+  }, [form.bultos, form.kgBulto]);
+
   const handleSave = async () => {
-    if (!form.fecha || !form.producto || !form.cantidad) {
-      toast('Fecha, producto y cantidad son requeridos', 'error'); return;
+    if (!form.fecha || !form.producto || !form.bultos) {
+      toast('Fecha, producto y bultos son requeridos', 'error'); return;
     }
     await add({
-      ...form,
-      cantidad:       parseFloat(form.cantidad) || 0,
-      precioUnitario: parseFloat(form.precioUnitario) || 0,
+      fecha:      form.fecha,
+      producto:   form.producto,
+      origen:     form.origen,
+      productor:  form.productor,
+      proveedor:  form.proveedor,
+      bultos:     parseFloat(form.bultos) || 0,
+      kgBulto:    parseFloat(form.kgBulto) || 0,
+      lbsBrutas,
+      costolb:    parseFloat(form.costolb) || 0,
+      duca:       form.duca,
+      cotizacion: form.cotizacion,
+      obs:        form.obs,
     });
     toast('Entrada registrada correctamente');
-    setForm(f => ({ ...f, producto: '', cantidad: '', lote: '', precioUnitario: '', responsable: '' }));
+    setForm({ ...BLANK, fecha: today() });
+  };
+
+  const handleDelete = async (id) => {
+    if (!window.confirm('Eliminar este registro?')) return;
+    await remove(id);
+    toast('Registro eliminado');
   };
 
   const todayStr    = today();
   const entradasHoy = data.filter(r => r.fecha === todayStr).length;
-  const totalUnids  = useMemo(() => data.reduce((s, r) => s + (parseFloat(r.cantidad) || 0), 0), [data]);
+  const totalLbs    = useMemo(() => data.reduce((s, r) => s + (parseFloat(r.lbsBrutas) || 0), 0), [data]);
 
-  const loadingAll = loading || lp || loadProd || loadEmp;
+  const loadingAll = loading || lp || lc;
 
   return (
     <div style={{ padding: '24px 28px', fontFamily: 'inherit', maxWidth: 1100 }}>
@@ -93,15 +123,15 @@ export default function EntradaBodega() {
           Ingresos a Bodega
         </h2>
         <p style={{ margin: '4px 0 0', fontSize: '.83rem', color: T.textMid }}>
-          Registro de entradas de producto desde proveedores
+          Registro de entradas de producto desde proveedores / campo
         </p>
       </div>
 
       {/* Metrics */}
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 24 }}>
-        <MetricCard label="Entradas hoy"   value={loadingAll ? '…' : entradasHoy} accent={T.secondary} />
-        <MetricCard label="Total registros" value={loadingAll ? '…' : data.length}  accent={T.primary} />
-        <MetricCard label="Total unidades"  value={loadingAll ? '…' : totalUnids.toLocaleString()} accent={T.warn} />
+        <MetricCard label="Entradas hoy"   value={loadingAll ? '…' : entradasHoy}                         accent={T.secondary} />
+        <MetricCard label="Total registros" value={loadingAll ? '…' : data.length}                         accent={T.primary} />
+        <MetricCard label="Total LBS"       value={loadingAll ? '…' : totalLbs.toLocaleString('es-GT', { maximumFractionDigits: 0 })} accent={T.warn} />
       </div>
 
       {/* Form */}
@@ -109,14 +139,12 @@ export default function EntradaBodega() {
         <div style={{ fontWeight: 700, fontSize: '.95rem', color: T.textDark, marginBottom: 20, paddingBottom: 12, borderBottom: '1px solid #F0F0F0' }}>
           Nueva entrada
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))', gap: 14, marginBottom: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(175px, 1fr))', gap: 14, marginBottom: 16 }}>
+
+          {/* Row 1 */}
           <label style={LS}>
-            Fecha
+            Fecha *
             <input type="date" value={form.fecha} onChange={e => s('fecha', e.target.value)} style={IS} />
-          </label>
-          <label style={LS}>
-            Hora
-            <input type="time" value={form.hora} onChange={e => s('hora', e.target.value)} style={IS} />
           </label>
           <label style={LS}>
             Producto *
@@ -126,40 +154,68 @@ export default function EntradaBodega() {
             </select>
           </label>
           <label style={LS}>
-            Cantidad *
-            <input type="number" min="0" step="0.01" value={form.cantidad}
-              onChange={e => s('cantidad', e.target.value)} style={IS} />
+            Origen / Pais
+            <input value={form.origen} onChange={e => s('origen', e.target.value)}
+              placeholder="Guatemala, Mexico..." style={IS} />
           </label>
           <label style={LS}>
-            Unidad
-            <select value={form.unidad} onChange={e => s('unidad', e.target.value)} style={IS}>
-              {UNIDADES.map(u => <option key={u} value={u}>{u}</option>)}
-            </select>
+            Productor (campo/finca)
+            <input value={form.productor} onChange={e => s('productor', e.target.value)}
+              placeholder="Nombre del productor" style={IS} />
           </label>
           <label style={LS}>
-            Proveedor
+            Proveedor / Intermediario
             <select value={form.proveedor} onChange={e => s('proveedor', e.target.value)} style={IS}>
               <option value="">— Seleccionar —</option>
-              {proveedores.map(p => <option key={p.id} value={p.nombre}>{p.nombre}</option>)}
+              {clientes.map(c => <option key={c.id || c.nombre} value={c.nombre}>{c.nombre}</option>)}
             </select>
           </label>
+
+          {/* Row 2 — quantities */}
           <label style={LS}>
-            Lote / Guía
-            <input value={form.lote} onChange={e => s('lote', e.target.value)} style={IS} />
+            Bultos / Unidades recibidas *
+            <input type="number" min="0" step="1" value={form.bultos}
+              onChange={e => s('bultos', e.target.value)} style={IS} />
           </label>
           <label style={LS}>
-            Precio unitario (Q)
-            <input type="number" min="0" step="0.01" value={form.precioUnitario}
-              onChange={e => s('precioUnitario', e.target.value)} style={IS} />
+            KG bruto por bulto
+            <input type="number" min="0" step="0.01" value={form.kgBulto}
+              onChange={e => s('kgBulto', e.target.value)} style={IS} />
           </label>
           <label style={LS}>
-            Responsable
-            <select value={form.responsable} onChange={e => s('responsable', e.target.value)} style={IS}>
-              <option value="">— Seleccionar —</option>
-              {empleados.map(e => <option key={e.id} value={e.nombre}>{e.nombre}</option>)}
-            </select>
+            LBS brutas totales (auto)
+            <input
+              readOnly
+              value={lbsBrutas > 0 ? lbsBrutas.toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ''}
+              placeholder="Bultos × kg × 2.20462"
+              style={{ ...IS, background: '#F5F5F5', color: T.secondary, fontWeight: 700, cursor: 'default' }}
+            />
+          </label>
+          <label style={LS}>
+            Costo / lb (Q)
+            <input type="number" min="0" step="0.01" value={form.costolb}
+              onChange={e => s('costolb', e.target.value)} style={IS} />
+          </label>
+
+          {/* Row 3 — references */}
+          <label style={LS}>
+            No. DUCA / Referencia
+            <input value={form.duca} onChange={e => s('duca', e.target.value)}
+              placeholder="No. DUCA o referencia" style={IS} />
+          </label>
+          <label style={LS}>
+            Cotizacion vinculada
+            <input value={form.cotizacion} onChange={e => s('cotizacion', e.target.value)}
+              placeholder="No. de cotizacion" style={IS} />
+          </label>
+          <label style={{ ...LS, gridColumn: 'span 2' }}>
+            Observaciones
+            <textarea value={form.obs} onChange={e => s('obs', e.target.value)}
+              rows={2} placeholder="Condiciones de llegada, temperatura, notas..."
+              style={{ ...IS, resize: 'vertical' }} />
           </label>
         </div>
+
         <button
           onClick={handleSave}
           disabled={saving}
@@ -183,30 +239,45 @@ export default function EntradaBodega() {
           <Skeleton rows={8} />
         ) : data.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '48px 24px', color: T.textMid, fontSize: '.88rem' }}>
-            Sin entradas registradas aún.
+            Sin entradas registradas aun.
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
-                <tr style={{ background: T.primary }}>
-                  {['Fecha', 'Hora', 'Producto', 'Cantidad', 'Unidad', 'Proveedor', 'Lote', 'Precio/U', 'Responsable'].map(h => (
+                <tr>
+                  {['Fecha', 'Producto', 'Origen', 'Bultos', 'LBS brutas', 'Costo/lb', 'DUCA', 'Eliminar'].map(h => (
                     <th key={h} style={thSt}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {data.slice(0, 100).map((r, i) => (
+                {data.slice(0, 200).map((r, i) => (
                   <tr key={r.id} style={{ background: i % 2 === 1 ? '#F9FBF9' : '#fff' }}>
-                    <td style={{ ...tdSt, fontWeight: 600 }}>{r.fecha}</td>
-                    <td style={{ ...tdSt, color: T.textMid }}>{r.hora || '—'}</td>
+                    <td style={{ ...tdSt, fontWeight: 600, whiteSpace: 'nowrap' }}>{r.fecha || '—'}</td>
                     <td style={tdSt}>{r.producto || '—'}</td>
-                    <td style={{ ...tdSt, fontWeight: 600, color: T.secondary }}>{(r.cantidad || 0).toLocaleString()}</td>
-                    <td style={{ ...tdSt, color: T.textMid }}>{r.unidad || '—'}</td>
-                    <td style={tdSt}>{r.proveedor || '—'}</td>
-                    <td style={{ ...tdSt, color: T.textMid }}>{r.lote || '—'}</td>
-                    <td style={tdSt}>Q {(r.precioUnitario || 0).toFixed(2)}</td>
-                    <td style={{ ...tdSt, color: T.textMid }}>{r.responsable || '—'}</td>
+                    <td style={{ ...tdSt, color: T.textMid }}>{r.origen || '—'}</td>
+                    <td style={{ ...tdSt, fontWeight: 600, color: T.secondary, textAlign: 'right' }}>
+                      {(r.bultos || 0).toLocaleString()}
+                    </td>
+                    <td style={{ ...tdSt, fontWeight: 700, color: T.primary, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      {(r.lbsBrutas || 0).toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </td>
+                    <td style={{ ...tdSt, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      Q {(r.costolb || 0).toFixed(2)}
+                    </td>
+                    <td style={{ ...tdSt, color: T.textMid }}>{r.duca || '—'}</td>
+                    <td style={{ ...tdSt, textAlign: 'center' }}>
+                      <button
+                        onClick={() => handleDelete(r.id)}
+                        style={{
+                          padding: '3px 10px', background: 'none', border: `1px solid ${T.danger}`,
+                          color: T.danger, borderRadius: 4, cursor: 'pointer', fontSize: '.72rem', fontWeight: 600,
+                        }}
+                      >
+                        x
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>

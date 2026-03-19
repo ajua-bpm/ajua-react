@@ -13,10 +13,10 @@ const T = {
 };
 
 const BASCULAS = [
-  { id: 'B1', nombre: 'Báscula Principal (500kg)' },
-  { id: 'B2', nombre: 'Báscula Secundaria (200kg)' },
-  { id: 'B3', nombre: 'Báscula Pequeña (50kg)' },
-  { id: 'B4', nombre: 'Báscula Digital (5kg)' },
+  { id: 'B1', nombre: 'Báscula Principal' },
+  { id: 'B2', nombre: 'Báscula Secundaria' },
+  { id: 'B3', nombre: 'Báscula Pequeña' },
+  { id: 'B4', nombre: 'Báscula Digital' },
 ];
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -63,7 +63,7 @@ export default function BAS() {
   const { empleados, loading: empLoading } = useEmpleados();
   const { data: registros, loading: histLoading } = useCollection('bas', { orderField: 'fecha', orderDir: 'desc', limit: 200 });
   const { data: calibraciones, loading: calLoading } = useCollection('bas_calibraciones', { orderField: 'fechaCal', orderDir: 'desc', limit: 100 });
-  const { add: addBas, saving: savingBas } = useWrite('bas');
+  const { add: addBas, remove: removeBas, saving: savingBas } = useWrite('bas');
   const { add: addCal, saving: savingCal } = useWrite('bas_calibraciones');
 
   const [tab, setTab] = useState('revision');
@@ -241,7 +241,7 @@ export default function BAS() {
                         type="number"
                         value={variacion[b.id] || ''}
                         onChange={e => setVar(b.id, e.target.value)}
-                        placeholder="Variación en gramos"
+                        placeholder="Variación en lbs"
                         style={{ ...inputStyle, maxWidth: 240, borderColor: T.warn }}
                       />
                     </div>
@@ -275,31 +275,43 @@ export default function BAS() {
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr style={{ background: T.primary }}>
-                      {['Fecha', 'Hora', 'Responsable', 'B1', 'B2', 'B3', 'B4', 'Resultado', 'Obs'].map(h => (
+                      {['Fecha', 'Hora', 'Responsable', 'OK', 'Falla', 'Resultado', 'Obs', ''].map(h => (
                         <th key={h} style={{ padding: '10px 12px', textAlign: 'left', color: T.white, fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', whiteSpace: 'nowrap' }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {(registros || []).slice(0, 100).map((r, i) => (
-                      <tr key={r.id} style={{ background: i % 2 === 0 ? T.white : '#F9FBF9' }}>
-                        <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0', fontWeight: 600 }}>{r.fecha || '—'}</td>
-                        <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0' }}>{r.hora || '—'}</td>
-                        <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0' }}>{r.responsable || '—'}</td>
-                        {(r.basculas || []).map(b => (
-                          <td key={b.id} style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0', textAlign: 'center' }}>
-                            {b.estado === 'ok'
-                              ? <span style={{ color: T.secondary, fontWeight: 700 }}>✓</span>
-                              : b.estado === 'variacion'
-                              ? <span style={{ color: T.warn, fontWeight: 700 }}>⚠{b.variacionGramos ? ` ${b.variacionGramos}g` : ''}</span>
-                              : <span style={{ color: T.textMid }}>—</span>}
+                    {(registros || []).slice(0, 100).map((r, i) => {
+                      const bas = r.basculas || [];
+                      const okCount   = bas.filter(b => b.estado === 'ok').length;
+                      const failCount = bas.filter(b => b.estado === 'variacion').length;
+                      return (
+                        <tr key={r.id} style={{ background: i % 2 === 0 ? T.white : '#F9FBF9' }}>
+                          <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0', fontWeight: 600 }}>{r.fecha || '—'}</td>
+                          <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0' }}>{r.hora || '—'}</td>
+                          <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0' }}>{r.responsable || '—'}</td>
+                          <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0', textAlign: 'center' }}>
+                            <span style={{ padding: '2px 9px', borderRadius: 100, fontSize: '.7rem', fontWeight: 700, background: T.bgGreen, color: T.secondary }}>{okCount}</span>
                           </td>
-                        ))}
-                        {!(r.basculas || []).length && <><td/><td/><td/><td/></>}
-                        <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }}><Badge resultado={r.resultado} /></td>
-                        <td style={{ padding: '8px 12px', fontSize: '.75rem', borderBottom: '1px solid #F0F0F0', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.obs || '—'}</td>
-                      </tr>
-                    ))}
+                          <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0', textAlign: 'center' }}>
+                            {failCount > 0
+                              ? <span style={{ padding: '2px 9px', borderRadius: 100, fontSize: '.7rem', fontWeight: 700, background: '#FFEBEE', color: T.danger }}>
+                                  {failCount}{bas.filter(b => b.estado === 'variacion' && b.variacionGramos).map(b => ` ±${b.variacionGramos} lbs`).join('')}
+                                </span>
+                              : <span style={{ color: T.textMid, fontSize: '.75rem' }}>—</span>}
+                          </td>
+                          <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }}><Badge resultado={r.resultado} /></td>
+                          <td style={{ padding: '8px 12px', fontSize: '.75rem', borderBottom: '1px solid #F0F0F0', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.obs || '—'}</td>
+                          <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }}>
+                            <button
+                              onClick={() => { if (window.confirm('¿Eliminar esta revisión?')) removeBas(r.id); }}
+                              title="Eliminar"
+                              style={{ padding: '4px 10px', borderRadius: 5, border: `1.5px solid ${T.danger}`, background: T.white, color: T.danger, cursor: 'pointer', fontSize: '.75rem', fontWeight: 700, fontFamily: 'inherit' }}
+                            >✕</button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

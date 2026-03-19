@@ -119,6 +119,7 @@ export default function ROD() {
   const [obs,         setObs]         = useState('');
   const [editId,      setEditId]      = useState(null);   // which trap name is being edited
   const [editVal,     setEditVal]     = useState('');
+  const [nextTrapNum, setNextTrapNum] = useState(ALL_TRAMPAS.length + 1);
 
   const setTrampa = (id, field, value) =>
     setTrampas(prev => prev.map(t => t.id !== id ? t : { ...t, [field]: value }));
@@ -128,6 +129,17 @@ export default function ROD() {
     if (editId && editVal.trim()) setTrampa(editId, 'nombre', editVal.trim());
     setEditId(null);
   };
+
+  const addTrampa = () => {
+    const newId = `TX${nextTrapNum}`;
+    setNextTrapNum(n => n + 1);
+    setTrampas(prev => [...prev, { id: newId, nombre: `Nueva Trampa ${nextTrapNum}`, zona: 'EXTRA', estado: 'sin_revisar', obs: '' }]);
+    setEditId(newId);
+    setEditVal(`Nueva Trampa ${nextTrapNum}`);
+  };
+
+  const removeTrampa = (id) =>
+    setTrampas(prev => prev.filter(t => t.id !== id));
 
   // Live summary
   const revisadas  = trampas.filter(t => t.estado !== 'sin_revisar').length;
@@ -194,7 +206,7 @@ export default function ROD() {
 
         {/* Live summary bar */}
         <div style={{ padding: '10px 14px', borderRadius: 6, marginBottom: 20, fontSize: '.82rem', border: `1px solid ${T.border}`, background: '#F9FBF9', display: 'flex', gap: 20, flexWrap: 'wrap' }}>
-          <span>Revisadas: <strong style={{ color: T.secondary }}>{revisadas}/{TOTAL}</strong></span>
+          <span>Revisadas: <strong style={{ color: T.secondary }}>{revisadas}/{trampas.length}</strong></span>
           <span>En lugar: <strong style={{ color: T.secondary }}>{enLugar}</strong></span>
           <span>Novedad: <strong style={{ color: T.warn }}>{conNovedad}</strong></span>
           <span>Sin revisar: <strong style={{ color: T.textMid }}>{sinRev}</strong></span>
@@ -236,7 +248,7 @@ export default function ROD() {
                     )}
 
                     {/* Estado buttons */}
-                    <div style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap', alignItems: 'center' }}>
                       {ESTADOS.map(({ val, label, bg }) => {
                         const active = t.estado === val;
                         return (
@@ -251,6 +263,11 @@ export default function ROD() {
                           </button>
                         );
                       })}
+                      <button
+                        onClick={() => removeTrampa(t.id)}
+                        title="Eliminar trampa"
+                        style={{ padding: '5px 9px', borderRadius: 6, border: `1.5px solid ${T.danger}`, background: '#fff', color: T.danger, cursor: 'pointer', fontSize: '.78rem', fontWeight: 700, fontFamily: 'inherit', flexShrink: 0 }}
+                      >✕</button>
                     </div>
                   </div>
 
@@ -270,6 +287,83 @@ export default function ROD() {
             </div>
           </div>
         ))}
+
+        {/* Extra traps (user-added) */}
+        {trampas.filter(t => t.zona === 'EXTRA').length > 0 && (
+          <div>
+            <div style={{ fontSize: '.6rem', fontWeight: 700, letterSpacing: '.12em', textTransform: 'uppercase', color: T.secondary, padding: '8px 0 6px', marginTop: 8, borderTop: `1px solid ${T.border}` }}>
+              ➕ TRAMPAS ADICIONALES
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
+              {trampas.filter(t => t.zona === 'EXTRA').map(t => (
+                <div key={t.id} style={{
+                  background: t.estado === 'novedad' ? '#FFF8F8' : t.estado === 'en_lugar' ? '#F1F8E9' : '#F9FBF9',
+                  border: `1px solid ${t.estado === 'novedad' ? '#FFCDD2' : t.estado === 'en_lugar' ? '#DCEDC8' : T.border}`,
+                  borderRadius: 8, padding: '10px 14px',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    <span style={{ background: t.estado === 'novedad' ? T.danger : T.primary, color: '#fff', borderRadius: 4, padding: '3px 8px', fontSize: '.72rem', fontWeight: 700, minWidth: 36, textAlign: 'center', flexShrink: 0 }}>
+                      {t.id}
+                    </span>
+                    {editId === t.id ? (
+                      <input
+                        autoFocus value={editVal}
+                        onChange={e => setEditVal(e.target.value)}
+                        onBlur={commitRename}
+                        onKeyDown={e => e.key === 'Enter' && commitRename()}
+                        style={{ padding: '4px 8px', border: `1.5px solid ${T.secondary}`, borderRadius: 5, fontSize: '.83rem', fontFamily: 'inherit', outline: 'none', width: 180 }}
+                      />
+                    ) : (
+                      <span style={{ flex: 1, fontWeight: 500, fontSize: '.85rem', minWidth: 140 }}>
+                        {t.nombre}
+                        <button onClick={() => startRename(t)} title="Renombrar trampa" style={{ marginLeft: 6, background: 'none', border: 'none', cursor: 'pointer', fontSize: '.72rem', color: T.textMid, padding: '0 3px' }}>✏</button>
+                      </span>
+                    )}
+                    <div style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap', alignItems: 'center' }}>
+                      {ESTADOS.map(({ val, label, bg }) => {
+                        const active = t.estado === val;
+                        return (
+                          <button key={val} onClick={() => setTrampa(t.id, 'estado', val)} style={{
+                            padding: '6px 12px', borderRadius: 6, border: '1.5px solid', cursor: 'pointer',
+                            fontSize: '.78rem', fontWeight: 600, fontFamily: 'inherit', transition: 'all .12s',
+                            background: active ? bg : '#fff',
+                            borderColor: active ? bg : T.border,
+                            color: active ? '#fff' : T.textMid,
+                          }}>
+                            {label}
+                          </button>
+                        );
+                      })}
+                      <button
+                        onClick={() => removeTrampa(t.id)}
+                        title="Eliminar trampa"
+                        style={{ padding: '5px 9px', borderRadius: 6, border: `1.5px solid ${T.danger}`, background: '#fff', color: T.danger, cursor: 'pointer', fontSize: '.78rem', fontWeight: 700, fontFamily: 'inherit', flexShrink: 0 }}
+                      >✕</button>
+                    </div>
+                  </div>
+                  {t.estado === 'novedad' && (
+                    <div style={{ marginTop: 8 }}>
+                      <input
+                        type="text" value={t.obs}
+                        onChange={e => setTrampa(t.id, 'obs', e.target.value)}
+                        placeholder="Describir la novedad encontrada..."
+                        style={{ padding: '7px 12px', border: `1.5px solid ${T.danger}`, borderRadius: 6, fontSize: '.83rem', outline: 'none', width: '100%', fontFamily: 'inherit', background: '#fff', boxSizing: 'border-box' }}
+                      />
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Add trap button */}
+        <button
+          onClick={addTrampa}
+          style={{ marginBottom: 16, padding: '8px 18px', borderRadius: 6, border: `1.5px dashed ${T.secondary}`, background: '#F1F8E9', color: T.secondary, cursor: 'pointer', fontSize: '.82rem', fontWeight: 700, fontFamily: 'inherit' }}
+        >
+          + Agregar Trampa
+        </button>
 
         {/* Result preview */}
         <div style={{
@@ -326,7 +420,7 @@ export default function ROD() {
                       <td style={TD}>{r.fecha || '—'}</td>
                       <td style={TD}>{r.hora || '—'}</td>
                       <td style={TD}>{r.responsable || r.resp || '—'}</td>
-                      <td style={{ ...TD, textAlign: 'center', color: T.secondary, fontWeight: 600 }}>{rev}/{TOTAL}</td>
+                      <td style={{ ...TD, textAlign: 'center', color: T.secondary, fontWeight: 600 }}>{rev}/{traps.length}</td>
                       <td style={{ ...TD, textAlign: 'center', color: nov > 0 ? T.danger : T.textMid, fontWeight: nov > 0 ? 700 : 400 }}>{nov}</td>
                       <td style={TD}><ResultadoBadge resultado={r.resultado} /></td>
                     </tr>

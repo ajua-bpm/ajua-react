@@ -149,20 +149,25 @@ function EmailParser({ onParsed }) {
 
 // ── Inline FEL form ───────────────────────────────────────────────
 function FelForm({ record, onSave, onClose }) {
-  const [numFel,       setNumFel]       = useState(record.numFel       || '');
+  const [noFactura,    setNoFactura]    = useState(record.noFactura    || record.numFel  || '');
+  const [serieFel,     setSerieFel]     = useState(record.serieFel     || '');
   const [montoFactura, setMontoFactura] = useState(record.montoFactura || '');
   const [fechaFactura, setFechaFactura] = useState(record.fechaFactura || today());
 
   return (
     <div style={{ marginTop: 8, padding: 12, background: '#F9FBF9', border: `1px solid ${T.border}`, borderRadius: 6 }}>
       <div style={{ fontWeight: 700, fontSize: '.77rem', color: T.textMid, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '.04em' }}>Datos FEL / Factura</div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 8 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px,1fr))', gap: 8, marginBottom: 8 }}>
         <label style={LS}>
-          No. FEL
-          <input value={numFel} onChange={e => setNumFel(e.target.value)} placeholder="Ej. 12345678" style={{ ...IS, fontSize: '.8rem', padding: '6px 8px' }} />
+          No. Factura FEL
+          <input value={noFactura} onChange={e => setNoFactura(e.target.value)} placeholder="Ej. 12345678" style={{ ...IS, fontSize: '.8rem', padding: '6px 8px' }} />
         </label>
         <label style={LS}>
-          Monto Factura Q
+          Serie FEL
+          <input value={serieFel} onChange={e => setSerieFel(e.target.value)} placeholder="Ej. A, FACT..." style={{ ...IS, fontSize: '.8rem', padding: '6px 8px' }} />
+        </label>
+        <label style={LS}>
+          Monto total facturado Q
           <input type="number" min="0" step="0.01" value={montoFactura} onChange={e => setMontoFactura(e.target.value)} placeholder="0.00" style={{ ...IS, fontSize: '.8rem', padding: '6px 8px' }} />
         </label>
         <label style={LS}>
@@ -171,7 +176,7 @@ function FelForm({ record, onSave, onClose }) {
         </label>
       </div>
       <div style={{ display: 'flex', gap: 6 }}>
-        <button onClick={() => onSave({ numFel, montoFactura: parseFloat(montoFactura) || 0, fechaFactura })}
+        <button onClick={() => onSave({ noFel: noFactura, numFel: noFactura, serieFel, montoFactura: parseFloat(montoFactura) || 0, fechaFactura, estadoCobro: 'facturado' })}
           style={{ padding: '5px 14px', background: T.primary, color: WHITE, border: 'none', borderRadius: 4, fontSize: '.75rem', fontWeight: 600, cursor: 'pointer' }}>
           Guardar FEL
         </button>
@@ -482,8 +487,13 @@ function TabPedidos({ data, loading, add, update, remove, saving }) {
 // ═══════════════════════════════════════════════════════════════════
 function TabVentas({ data, update }) {
   const toast = useToast();
+  const [felOpenId, setFelOpenId] = useState(null);
 
-  const entregados = useMemo(() => data.filter(r => r.estado === 'entregado'), [data]);
+  // Show pedidos that are entregado OR already have estadoCobro set (facturado/cobrado)
+  const entregados = useMemo(
+    () => data.filter(r => r.estado === 'entregado' || r.estadoCobro),
+    [data]
+  );
 
   const totalEntregado = entregados.reduce((s, r) => s + (r.montoFactura || r.total || 0), 0);
   const totalCobrado   = entregados.filter(r => r.estadoCobro === 'cobrado').reduce((s, r) => s + (r.montoFactura || r.total || 0), 0);
@@ -491,6 +501,14 @@ function TabVentas({ data, update }) {
   const handleCobrar = async (id) => {
     try { await update(id, { estadoCobro: 'cobrado' }); toast('Marcado como cobrado'); }
     catch { toast('Error al actualizar', 'error'); }
+  };
+
+  const handleFelSave = async (id, felData) => {
+    try {
+      await update(id, { ...felData, estadoCobro: felData.estadoCobro || 'facturado' });
+      setFelOpenId(null);
+      toast('FEL guardado');
+    } catch { toast('Error al guardar FEL', 'error'); }
   };
 
   return (
@@ -515,42 +533,71 @@ function TabVentas({ data, update }) {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: T.primary }}>
-                  {['Fecha', 'OC', 'Descripción', 'Monto Factura', 'No. FEL', 'Estado Cobro', 'Acción'].map(h => (
+                  {['Fecha', 'OC', 'Descripción', 'Monto Factura', 'No. FEL', 'Serie FEL', 'Estado Cobro', 'Acción'].map(h => (
                     <th key={h} style={thSt}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {entregados.map((r, i) => (
-                  <tr key={r.id} style={{ background: i % 2 === 1 ? '#F9FBF9' : WHITE }}>
-                    <td style={{ ...tdSt, fontWeight: 600 }}>{r.fechaEntrega || r.fecha || '—'}</td>
-                    <td style={{ ...tdSt, fontFamily: 'monospace', fontSize: '.8rem' }}>{r.numOC || '—'}</td>
-                    <td style={{ ...tdSt, maxWidth: 180 }}>
-                      <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '.82rem' }}>{r.descripcion || '—'}</div>
-                    </td>
-                    <td style={{ ...tdSt, fontWeight: 700, color: T.primary }}>
-                      {r.montoFactura ? `Q ${fmt(r.montoFactura)}` : r.total ? `Q ${fmt(r.total)}` : '—'}
-                    </td>
-                    <td style={{ ...tdSt, fontFamily: 'monospace', fontSize: '.78rem' }}>{r.numFel || '—'}</td>
-                    <td style={tdSt}>
-                      <Badge cfg={COBRO_CFG} value={r.estadoCobro || 'pendiente'} />
-                    </td>
-                    <td style={tdSt}>
-                      {r.estadoCobro !== 'cobrado' && (
-                        <button onClick={() => handleCobrar(r.id)}
-                          style={{ padding: '4px 12px', background: T.secondary, color: WHITE, border: 'none', borderRadius: 4, fontSize: '.72rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                          Cobrar ✓
-                        </button>
-                      )}
-                    </td>
-                  </tr>
+                  <>
+                    <tr key={r.id} style={{ background: i % 2 === 1 ? '#F9FBF9' : WHITE }}>
+                      <td style={{ ...tdSt, fontWeight: 600 }}>{r.fechaEntrega || r.fecha || '—'}</td>
+                      <td style={{ ...tdSt, fontFamily: 'monospace', fontSize: '.8rem' }}>{r.numOC || '—'}</td>
+                      <td style={{ ...tdSt, maxWidth: 180 }}>
+                        <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '.82rem' }}>{r.descripcion || '—'}</div>
+                      </td>
+                      <td style={{ ...tdSt, fontWeight: 700, color: T.primary }}>
+                        {r.montoFactura ? `Q ${fmt(r.montoFactura)}` : r.total ? `Q ${fmt(r.total)}` : '—'}
+                      </td>
+                      <td style={{ ...tdSt, fontFamily: 'monospace', fontSize: '.78rem' }}>{r.noFel || r.numFel || '—'}</td>
+                      <td style={{ ...tdSt, fontFamily: 'monospace', fontSize: '.78rem' }}>{r.serieFel || '—'}</td>
+                      <td style={tdSt}>
+                        <Badge cfg={COBRO_CFG} value={r.estadoCobro || 'pendiente'} />
+                      </td>
+                      <td style={tdSt}>
+                        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                          {/* FEL button — show if not yet cobrado */}
+                          {r.estadoCobro !== 'cobrado' && (
+                            <button onClick={() => setFelOpenId(felOpenId === r.id ? null : r.id)}
+                              style={{ padding: '4px 9px', background: '#E8F5E9', color: T.secondary, border: `1px solid #C8E6C9`, borderRadius: 4, fontSize: '.7rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                              {r.noFel || r.numFel ? 'Editar FEL' : 'Cargar Factura FEL'}
+                            </button>
+                          )}
+                          {/* Cobrado button — only show once FEL is loaded */}
+                          {(r.noFel || r.numFel) && r.estadoCobro !== 'cobrado' && (
+                            <button onClick={() => handleCobrar(r.id)}
+                              style={{ padding: '4px 12px', background: T.secondary, color: WHITE, border: 'none', borderRadius: 4, fontSize: '.72rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                              ✓ Cobrado
+                            </button>
+                          )}
+                          {r.estadoCobro === 'cobrado' && (
+                            <span style={{ padding: '4px 10px', background: '#E8F5E9', color: T.secondary, borderRadius: 4, fontSize: '.7rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                              ✓ Cobrado
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                    {felOpenId === r.id && (
+                      <tr key={r.id + '_fel'} style={{ background: i % 2 === 1 ? '#F9FBF9' : WHITE }}>
+                        <td colSpan={8} style={{ padding: '0 14px 12px' }}>
+                          <FelForm
+                            record={r}
+                            onSave={felData => handleFelSave(r.id, felData)}
+                            onClose={() => setFelOpenId(null)}
+                          />
+                        </td>
+                      </tr>
+                    )}
+                  </>
                 ))}
               </tbody>
               <tfoot>
                 <tr style={{ background: T.bgGreen, fontWeight: 700 }}>
                   <td colSpan={3} style={{ ...tdSt, fontWeight: 700, color: T.primary }}>TOTALES</td>
                   <td style={{ ...tdSt, fontWeight: 700, color: T.primary }}>Q {fmt(totalEntregado)}</td>
-                  <td colSpan={2} style={tdSt} />
+                  <td colSpan={3} style={tdSt} />
                   <td style={{ ...tdSt, fontWeight: 700, color: T.secondary }}>Q {fmt(totalCobrado)} cobrado</td>
                 </tr>
               </tfoot>

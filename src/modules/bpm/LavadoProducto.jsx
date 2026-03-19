@@ -4,267 +4,350 @@ import { useEmpleados } from '../../hooks/useMainData';
 import { useToast } from '../../components/Toast';
 import Skeleton from '../../components/Skeleton';
 
-// ─── Design tokens ───────────────────────────────────────────────────────────
+// ─── Design tokens ────────────────────────────────────────────────────────────
 const T = {
   primary:   '#1B5E20',
   secondary: '#2E7D32',
+  accent:    '#43A047',
   white:     '#FFFFFF',
   border:    '#E0E0E0',
+  bgLight:   '#F5F5F5',
+  bgGreen:   '#E8F5E9',
   textDark:  '#1A1A18',
   textMid:   '#6B6B60',
   danger:    '#C62828',
   warn:      '#E65100',
   rowAlt:    '#F9FBF9',
 };
+
 const card = {
-  background: '#fff', borderRadius: 8,
-  boxShadow: '0 1px 3px rgba(0,0,0,.10)', padding: 20, marginBottom: 20,
+  background: '#fff', borderRadius: 10,
+  border: `1px solid ${T.border}`, padding: 24, marginBottom: 20,
 };
 
-// ─── Shared input styles ──────────────────────────────────────────────────────
-const LBL = {
-  display: 'flex', flexDirection: 'column', gap: 4,
-  fontSize: '.75rem', fontWeight: 600, textTransform: 'uppercase',
-  letterSpacing: '.06em', color: T.textMid,
-};
 const INP = {
-  padding: '9px 12px', border: `1px solid ${T.border}`, borderRadius: 6,
-  fontSize: '.83rem', outline: 'none', fontFamily: 'inherit',
-  width: '100%', marginTop: 2, background: '#fff', color: T.textDark,
-  transition: 'border-color .15s',
+  padding: '8px 11px', border: `1.5px solid ${T.border}`, borderRadius: 6,
+  fontSize: '.85rem', outline: 'none', fontFamily: 'inherit',
+  width: '100%', boxSizing: 'border-box', background: '#fff', color: T.textDark,
 };
+
+const Lbl = ({ text, children }) => (
+  <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+    <span style={{ fontSize: '.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: T.secondary }}>
+      {text}
+    </span>
+    {children}
+  </label>
+);
+
+const SectionTitle = ({ children }) => (
+  <div style={{ fontSize: '.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: T.secondary, marginBottom: 16, paddingBottom: 10, borderBottom: `1px solid ${T.border}` }}>
+    {children}
+  </div>
+);
 
 const today = () => new Date().toISOString().slice(0, 10);
+const nowHM = () => { const d = new Date(); return d.toTimeString().slice(0, 5); };
 
-const CHECK_LABELS = [
-  '¿Lavado con agua potable?',
-  '¿Desinfectado correctamente?',
-  '¿Secado adecuado?',
-  '¿Aprobado para proceso?',
+// ─── Tank configuration ───────────────────────────────────────────────────────
+const TANKS = [
+  { key: 't1', label: 'Tanque 1' },
+  { key: 't2', label: 'Tanque 2' },
+  { key: 't3', label: 'Tanque 3' },
+  { key: 't4', label: 'Tanque 4' },
 ];
 
-const INIT = () => ({
-  fecha: today(), hora: '', producto: '', lote: '', responsable: '',
-  temperaturaAgua: '', tiempoLavado: '',
-  checks: CHECK_LABELS.map(texto => ({ texto, ok: null })),
-  resultado: '', obs: '',
+const TRATAMIENTOS = [
+  'Agua-Cloro 150PPM',
+  'Agua-Peróxido',
+  'Agua-Cera',
+  'Solo Agua',
+];
+
+const initTank = () => ({
+  tratamiento: 'Agua-Cloro 150PPM',
+  concentracion: '',
+  resultado: 'cumple',
+  obs: '',
 });
 
-export default function LavadoProducto() {
-  const toast = useToast();
-  const { data, loading } = useCollection('lavadoProd', { orderField: 'fecha', orderDir: 'desc', limit: 200 });
-  const { data: productos, loading: prodLoading } = useCollection('iProductos', { orderField: 'nombre', limit: 200 });
-  const { empleados, loading: empLoading } = useEmpleados();
-  const { add, saving } = useWrite('lavadoProd');
+const initForm = () => ({
+  fecha: today(),
+  hora: nowHM(),
+  responsable: '',
+  t1: initTank(),
+  t2: initTank(),
+  t3: initTank(),
+  t4: initTank(),
+  obs: '',
+});
 
-  const [form, setForm] = useState(INIT());
-
-  const setCheck = (i, ok) => {
-    setForm(f => {
-      const checks = f.checks.map((c, idx) => idx === i ? { ...c, ok } : c);
-      const allAnswered = checks.every(c => c.ok !== null);
-      const resultado = allAnswered
-        ? checks.every(c => c.ok === true) ? 'aprobado' : 'rechazado'
-        : '';
-      return { ...f, checks, resultado };
-    });
-  };
-
-  const handleSave = async () => {
-    if (!form.fecha || !form.producto || !form.responsable) {
-      toast('Fecha, producto y responsable son requeridos', 'error'); return;
-    }
-    await add({ ...form });
-    toast('Registro de lavado guardado');
-    setForm(INIT());
-  };
-
-  if (loading || prodLoading || empLoading) {
-    return (
-      <div>
-        <div style={{ height: 28, background: '#E8F5E9', borderRadius: 6, width: 260, marginBottom: 8 }} />
-        <div style={card}><Skeleton rows={6} /></div>
-      </div>
-    );
-  }
-
-  const hasProd = productos && productos.length > 0;
-  const resultadoColor = form.resultado === 'aprobado' ? T.secondary : form.resultado === 'rechazado' ? T.danger : T.textMid;
+// ─── Tank Card ────────────────────────────────────────────────────────────────
+function TankCard({ tankKey, label, data, onChange }) {
+  const isCumple = data.resultado === 'cumple';
+  const showPPM  = data.tratamiento === 'Agua-Cloro 150PPM';
 
   return (
-    <div style={{ maxWidth: 900 }}>
+    <div style={{
+      border: `2px solid ${isCumple ? T.secondary : T.danger}`,
+      borderRadius: 10, padding: 18,
+      background: isCumple ? T.bgGreen : '#FFF8F8',
+    }}>
+      {/* Tank header */}
+      <div style={{ fontSize: '.75rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.1em', color: T.primary, marginBottom: 14 }}>
+        {label}
+      </div>
+
+      {/* Tratamiento */}
+      <div style={{ marginBottom: 12 }}>
+        <Lbl text="Tratamiento">
+          <select
+            value={data.tratamiento}
+            onChange={e => onChange(tankKey, 'tratamiento', e.target.value)}
+            style={{ ...INP, cursor: 'pointer' }}
+          >
+            {TRATAMIENTOS.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </Lbl>
+      </div>
+
+      {/* Concentración — only relevant for Cloro */}
+      {showPPM && (
+        <div style={{ marginBottom: 12 }}>
+          <Lbl text="Concentración (PPM)">
+            <input
+              type="number"
+              min="0"
+              step="1"
+              value={data.concentracion}
+              onChange={e => onChange(tankKey, 'concentracion', e.target.value)}
+              placeholder="150"
+              style={INP}
+            />
+          </Lbl>
+        </div>
+      )}
+
+      {/* Resultado */}
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ fontSize: '.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: T.secondary, marginBottom: 6 }}>
+          Resultado
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {[
+            { v: 'cumple',    l: '✓ Cumple',    bg: T.secondary, tc: T.white },
+            { v: 'no_cumple', l: '✗ No Cumple', bg: T.danger,    tc: T.white },
+          ].map(opt => (
+            <button
+              key={opt.v}
+              onClick={() => onChange(tankKey, 'resultado', opt.v)}
+              style={{
+                flex: 1, padding: '7px 0', borderRadius: 6, border: '1.5px solid',
+                cursor: 'pointer', fontWeight: 700, fontSize: '.78rem', fontFamily: 'inherit',
+                transition: 'all .15s',
+                background: data.resultado === opt.v ? opt.bg : T.white,
+                borderColor: data.resultado === opt.v ? opt.bg : T.border,
+                color: data.resultado === opt.v ? opt.tc : T.textMid,
+              }}
+            >
+              {opt.l}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Obs */}
+      <div>
+        <Lbl text="Observaciones">
+          <textarea
+            value={data.obs}
+            onChange={e => onChange(tankKey, 'obs', e.target.value)}
+            rows={2}
+            placeholder={`Novedades ${label}...`}
+            style={{ ...INP, resize: 'vertical', lineHeight: 1.5 }}
+          />
+        </Lbl>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
+export default function LavadoProducto() {
+  const toast = useToast();
+  const { data, loading: dataLoading } = useCollection('lavadoProd', { orderField: 'fecha', orderDir: 'desc', limit: 200 });
+  const { empleados, loading: empLoading } = useEmpleados();
+  const { add, remove, saving } = useWrite('lavadoProd');
+
+  const [form, setForm] = useState(initForm());
+
+  // Update a top-level form field
+  const setField = (key, val) => setForm(f => ({ ...f, [key]: val }));
+
+  // Update a field inside a tank sub-object
+  const setTankField = (tankKey, field, val) =>
+    setForm(f => ({ ...f, [tankKey]: { ...f[tankKey], [field]: val } }));
+
+  const handleSave = async () => {
+    if (!form.fecha || !form.responsable) {
+      toast('Fecha y responsable son requeridos', 'error'); return;
+    }
+    try {
+      await add({ ...form, creadoEn: new Date().toISOString() });
+      toast('Registro de lavado guardado');
+      setForm(initForm());
+    } catch (e) {
+      toast('Error al guardar: ' + e.message, 'error');
+    }
+  };
+
+  const allCumple = TANKS.every(t => form[t.key].resultado === 'cumple');
+
+  return (
+    <div style={{ maxWidth: 960, fontFamily: 'Inter, system-ui, sans-serif', color: T.textDark }}>
+
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: '1.35rem', fontWeight: 700, color: T.primary, margin: 0 }}>
+        <h1 style={{ fontSize: '1.35rem', fontWeight: 800, color: T.primary, margin: 0 }}>
           Lavado y Desinfección de Producto
         </h1>
         <p style={{ fontSize: '.82rem', color: T.textMid, margin: '4px 0 0' }}>
-          Control del proceso de lavado — BPM Vegetal
+          Control de tanques de lavado — BPM Vegetal
         </p>
       </div>
 
-      {/* ── Form ── */}
+      {/* Form card */}
       <div style={card}>
-        <div style={{ fontSize: '.78rem', fontWeight: 700, color: T.primary, textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 14, paddingBottom: 10, borderBottom: `1px solid ${T.border}` }}>
-          Nuevo Registro
-        </div>
+        <SectionTitle>Nuevo Registro</SectionTitle>
 
-        {/* Row 1: fecha, hora, lote */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px,1fr))', gap: 12, marginBottom: 12 }}>
-          <label style={LBL}>
-            Fecha *
-            <input type="date" value={form.fecha} onChange={e => setForm(f => ({ ...f, fecha: e.target.value }))} style={INP} />
-          </label>
-          <label style={LBL}>
-            Hora
-            <input type="time" value={form.hora} onChange={e => setForm(f => ({ ...f, hora: e.target.value }))} style={INP} />
-          </label>
-          <label style={LBL}>
-            Lote
-            <input value={form.lote} onChange={e => setForm(f => ({ ...f, lote: e.target.value }))} placeholder="Ej: LOT-001" style={INP} />
-          </label>
-          <label style={LBL}>
-            Temp. Agua (°C)
-            <input type="number" step="0.1" value={form.temperaturaAgua} onChange={e => setForm(f => ({ ...f, temperaturaAgua: e.target.value }))} placeholder="18" style={INP} />
-          </label>
-          <label style={LBL}>
-            Tiempo Lavado (min)
-            <input type="number" min="1" value={form.tiempoLavado} onChange={e => setForm(f => ({ ...f, tiempoLavado: e.target.value }))} placeholder="5" style={INP} />
-          </label>
-        </div>
-
-        {/* Row 2: producto, responsable */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
-          <label style={LBL}>
-            Producto *
-            {hasProd ? (
-              <select value={form.producto} onChange={e => setForm(f => ({ ...f, producto: e.target.value }))} style={INP}>
+        {/* Header fields */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 14, marginBottom: 24 }}>
+          <Lbl text="Fecha *">
+            <input type="date" value={form.fecha} onChange={e => setField('fecha', e.target.value)} style={INP} />
+          </Lbl>
+          <Lbl text="Hora">
+            <input type="time" value={form.hora} onChange={e => setField('hora', e.target.value)} style={INP} />
+          </Lbl>
+          <Lbl text="Responsable *">
+            {empLoading ? <Skeleton height={38} /> : (
+              <select value={form.responsable} onChange={e => setField('responsable', e.target.value)} style={{ ...INP, cursor: 'pointer' }}>
                 <option value="">— Seleccionar —</option>
-                {productos.map(p => <option key={p.id} value={p.nombre || p.id}>{p.nombre || p.id}</option>)}
+                {empleados.map(e => <option key={e.nombre} value={e.nombre}>{e.nombre}</option>)}
               </select>
-            ) : (
-              <input value={form.producto} onChange={e => setForm(f => ({ ...f, producto: e.target.value }))} placeholder="Nombre del producto" style={INP} />
             )}
-          </label>
-          <label style={LBL}>
-            Responsable *
-            <select value={form.responsable} onChange={e => setForm(f => ({ ...f, responsable: e.target.value }))} style={INP}>
-              <option value="">— Seleccionar —</option>
-              {empleados.map(e => <option key={e.nombre} value={e.nombre}>{e.nombre}</option>)}
-            </select>
-          </label>
+          </Lbl>
         </div>
 
-        {/* Checklist */}
-        <div style={{ fontSize: '.78rem', fontWeight: 700, color: T.primary, textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 10 }}>
-          Lista de Verificación
+        {/* Tank grid */}
+        <div style={{ fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: T.secondary, marginBottom: 12 }}>
+          Estado de Tanques
         </div>
-        <div style={{ border: `1px solid ${T.border}`, borderRadius: 6, overflow: 'hidden', marginBottom: 16 }}>
-          {CHECK_LABELS.map((label, i) => {
-            const ok = form.checks[i].ok;
-            return (
-              <div key={i} style={{
-                display: 'flex', alignItems: 'center', gap: 12,
-                padding: '11px 14px',
-                background: i % 2 === 1 ? T.rowAlt : '#fff',
-                borderBottom: i < CHECK_LABELS.length - 1 ? `1px solid ${T.border}` : 'none',
-              }}>
-                <span style={{ flex: 1, fontSize: '.83rem', color: T.textDark }}>{label}</span>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  {[{ v: true, label: '✓ Sí' }, { v: false, label: '✗ No' }].map(({ v, label: bl }) => (
-                    <button key={String(v)} onClick={() => setCheck(i, v)} style={{
-                      padding: '5px 14px', borderRadius: 5, fontSize: '.75rem', fontWeight: 600,
-                      cursor: 'pointer', fontFamily: 'inherit',
-                      border: `1.5px solid ${ok === v ? (v ? T.secondary : T.danger) : T.border}`,
-                      background: ok === v ? (v ? T.secondary : T.danger) : '#fff',
-                      color: ok === v ? '#fff' : T.textMid,
-                      transition: 'all .15s',
-                    }}>{bl}</button>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+          gap: 16,
+          marginBottom: 20,
+        }}>
+          {TANKS.map(t => (
+            <TankCard
+              key={t.key}
+              tankKey={t.key}
+              label={t.label}
+              data={form[t.key]}
+              onChange={setTankField}
+            />
+          ))}
         </div>
 
-        {/* Resultado badge */}
-        {form.resultado && (
-          <div style={{ marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: '.75rem', fontWeight: 600, color: T.textMid }}>Resultado automático:</span>
-            <span style={{
-              padding: '3px 12px', borderRadius: 100, fontSize: '.75rem', fontWeight: 700,
-              background: form.resultado === 'aprobado' ? 'rgba(46,125,50,.12)' : 'rgba(198,40,40,.10)',
-              color: resultadoColor,
-            }}>
-              {form.resultado === 'aprobado' ? '✓ Aprobado' : '✗ Rechazado'}
-            </span>
-          </div>
-        )}
+        {/* Global resultado indicator */}
+        <div style={{
+          padding: '10px 16px', borderRadius: 8, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10,
+          background: allCumple ? T.bgGreen : '#FFEBEE',
+          border: `1.5px solid ${allCumple ? T.secondary : T.danger}`,
+        }}>
+          <span style={{ fontSize: '1.1rem' }}>{allCumple ? '✓' : '✗'}</span>
+          <span style={{ fontSize: '.82rem', fontWeight: 700, color: allCumple ? T.secondary : T.danger }}>
+            {allCumple ? 'Todos los tanques cumplen' : 'Uno o más tanques no cumplen'}
+          </span>
+        </div>
 
-        {/* Observaciones */}
-        <label style={{ ...LBL, marginBottom: 14 }}>
-          Observaciones
-          <textarea value={form.obs} onChange={e => setForm(f => ({ ...f, obs: e.target.value }))}
-            rows={2} placeholder="Observaciones adicionales..."
-            style={{ ...INP, resize: 'vertical', lineHeight: 1.5 }} />
-        </label>
+        {/* Observaciones generales */}
+        <div style={{ marginBottom: 20 }}>
+          <Lbl text="Observaciones generales">
+            <textarea value={form.obs} onChange={e => setField('obs', e.target.value)}
+              rows={2} placeholder="Observaciones generales del proceso..."
+              style={{ ...INP, resize: 'vertical', lineHeight: 1.5 }} />
+          </Lbl>
+        </div>
 
         <button onClick={handleSave} disabled={saving} style={{
-          padding: '11px 28px', background: saving ? T.border : T.primary,
-          color: saving ? T.textMid : '#fff', border: 'none', borderRadius: 6,
+          padding: '11px 28px', background: saving ? '#BDBDBD' : T.primary,
+          color: T.white, border: 'none', borderRadius: 6,
           fontWeight: 700, fontSize: '.88rem', cursor: saving ? 'not-allowed' : 'pointer',
-          fontFamily: 'inherit', letterSpacing: '.02em',
+          fontFamily: 'inherit',
         }}>
           {saving ? 'Guardando...' : 'Guardar Registro'}
         </button>
       </div>
 
-      {/* ── History ── */}
+      {/* History card */}
       <div style={card}>
-        <div style={{ fontSize: '.78rem', fontWeight: 700, color: T.primary, textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 14, paddingBottom: 10, borderBottom: `1px solid ${T.border}` }}>
-          Historial — {data.length} registros
-        </div>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ background: T.primary }}>
-                {['Fecha', 'Producto', 'Lote', 'Responsable', 'Temp °C', 'Tiempo', 'Resultado'].map(h => (
-                  <th key={h} style={{
-                    padding: '9px 14px', textAlign: 'left', color: '#fff',
-                    fontSize: '.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em',
-                    whiteSpace: 'nowrap',
-                  }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {data.slice(0, 60).map((r, idx) => (
-                <tr key={r.id} style={{ background: idx % 2 === 1 ? T.rowAlt : '#fff', borderBottom: `1px solid ${T.border}` }}>
-                  <td style={{ padding: '9px 14px', fontSize: '.83rem', fontWeight: 600, color: T.textDark, whiteSpace: 'nowrap' }}>{r.fecha}</td>
-                  <td style={{ padding: '9px 14px', fontSize: '.83rem', color: T.textDark }}>{r.producto || '—'}</td>
-                  <td style={{ padding: '9px 14px', fontSize: '.83rem', color: T.textMid }}>{r.lote || '—'}</td>
-                  <td style={{ padding: '9px 14px', fontSize: '.83rem', color: T.textDark }}>{r.responsable || '—'}</td>
-                  <td style={{ padding: '9px 14px', fontSize: '.83rem', color: T.textMid }}>{r.temperaturaAgua ? `${r.temperaturaAgua}°C` : '—'}</td>
-                  <td style={{ padding: '9px 14px', fontSize: '.83rem', color: T.textMid }}>{r.tiempoLavado ? `${r.tiempoLavado} min` : '—'}</td>
-                  <td style={{ padding: '9px 14px' }}>
-                    <span style={{
-                      padding: '3px 10px', borderRadius: 100, fontSize: '.72rem', fontWeight: 700,
-                      background: r.resultado === 'aprobado' ? 'rgba(46,125,50,.12)' : 'rgba(198,40,40,.10)',
-                      color: r.resultado === 'aprobado' ? T.secondary : T.danger,
-                    }}>
-                      {r.resultado === 'aprobado' ? '✓ Aprobado' : r.resultado === 'rechazado' ? '✗ Rechazado' : r.resultado || '—'}
-                    </span>
-                  </td>
+        <SectionTitle>Historial</SectionTitle>
+        {dataLoading ? <Skeleton height={120} /> : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: T.primary }}>
+                  {['Fecha', 'Hora', 'Responsable', 'T1', 'T2', 'T3', 'T4', 'Obs', ''].map(h => (
+                    <th key={h} style={{
+                      padding: '9px 12px', textAlign: 'left', color: T.white,
+                      fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase',
+                      whiteSpace: 'nowrap', letterSpacing: '.05em',
+                    }}>{h}</th>
+                  ))}
                 </tr>
-              ))}
-              {data.length === 0 && (
-                <tr><td colSpan={7} style={{ padding: '40px', textAlign: 'center', color: T.textMid, fontSize: '.83rem' }}>
-                  Sin registros aún
-                </td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {(data || []).slice(0, 80).map((r, idx) => (
+                  <tr key={r.id} style={{ background: idx % 2 === 1 ? T.rowAlt : '#fff' }}>
+                    <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0', fontWeight: 600, whiteSpace: 'nowrap' }}>{r.fecha || '—'}</td>
+                    <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0', whiteSpace: 'nowrap' }}>{r.hora || '—'}</td>
+                    <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0' }}>{r.responsable || '—'}</td>
+                    {TANKS.map(t => {
+                      const tank = r[t.key] || {};
+                      const ok = tank.resultado === 'cumple';
+                      return (
+                        <td key={t.key} style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }}>
+                          <span style={{
+                            padding: '2px 7px', borderRadius: 100, fontSize: '.68rem', fontWeight: 700,
+                            background: ok ? T.bgGreen : '#FFEBEE',
+                            color: ok ? T.secondary : T.danger,
+                          }}>
+                            {ok ? '✓' : '✗'}
+                          </span>
+                        </td>
+                      );
+                    })}
+                    <td style={{ padding: '8px 12px', fontSize: '.75rem', borderBottom: '1px solid #F0F0F0', maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.obs || '—'}</td>
+                    <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }}>
+                      <button onClick={() => remove(r.id)}
+                        style={{ background: 'none', border: `1px solid ${T.border}`, borderRadius: 4, padding: '3px 8px', cursor: 'pointer', fontSize: '.75rem', color: T.textMid }}>
+                        ✕
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {(data || []).length === 0 && (
+                  <tr>
+                    <td colSpan={9} style={{ padding: '40px', textAlign: 'center', color: T.textMid, fontSize: '.83rem' }}>
+                      Sin registros aún
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

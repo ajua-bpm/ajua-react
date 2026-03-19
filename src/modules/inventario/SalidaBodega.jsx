@@ -18,6 +18,7 @@ const IS    = { padding: '9px 12px', border: `1.5px solid ${T.border}`, borderRa
 const thSt  = { padding: '9px 12px', fontSize: '.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: T.white, background: T.primary, textAlign: 'left', whiteSpace: 'nowrap' };
 const tdSt  = { padding: '8px 12px', fontSize: '.82rem', borderBottom: `1px solid ${T.border}`, color: T.textDark };
 
+const CANALES = ['Walmart Guatemala', 'Local GT', 'Exportacion'];
 const ESTADOS = ['pendiente', 'entregado', 'rechazado', 'cancelado'];
 const ESTADO_COLORS = {
   pendiente:  { bg: '#FFF3E0', c: '#E65100' },
@@ -33,8 +34,9 @@ const fmtQ     = (n) => 'Q ' + (parseFloat(n) || 0).toFixed(2);
 const BLANK_PROD = () => ({ _key: Math.random(), codigo: '', producto: '', cajasPedidas: 0, cajasEnviadas: 0, precioUnit: 0 });
 
 const BLANK_FORM = () => ({
-  fecha: today(), cliente: 'Walmart Guatemala', numOC: '', numEntrega: '',
-  rampa: '', horaEntrega: nowTime(), numFel: '', estado: 'pendiente', obs: '',
+  fecha: today(), cliente: 'Walmart Guatemala', canal: 'Walmart Guatemala',
+  numOC: '', numEntrega: '', rampa: '', horaEntrega: nowTime(),
+  numFel: '', estado: 'pendiente', obs: '',
 });
 
 function EstadoBadge({ estado }) {
@@ -93,7 +95,7 @@ export default function SalidaBodega() {
   const { data: salidas, loading }   = useCollection('isalidas', { orderField: '_ts', orderDir: 'desc', limit: 300 });
   const { productos: catProd }       = useProductosCatalogo();
   const { clientes }                 = useClientes();
-  const { add, saving }              = useWrite('isalidas');
+  const { add, remove, saving }      = useWrite('isalidas');
 
   const [activeTab, setActiveTab]     = useState('registrar');
   const [form, setForm]               = useState(BLANK_FORM());
@@ -155,6 +157,7 @@ export default function SalidaBodega() {
     await add({
       fecha:       form.fecha,
       cliente:     form.cliente,
+      canal:       form.canal,
       numOC:       form.numOC,
       numEntrega:  form.numEntrega,
       rampa:       form.rampa,
@@ -165,6 +168,7 @@ export default function SalidaBodega() {
       iva,
       retencion,
       total:       subtotalConIva,
+      montoTotal:  subtotalConIva,
       totalACobrar,
       totalCajas,
       estado:      form.estado,
@@ -308,6 +312,12 @@ export default function SalidaBodega() {
                 </select>
               </label>
               <label style={LS}>
+                Canal
+                <select value={form.canal} onChange={e => sf('canal', e.target.value)} style={IS}>
+                  {CANALES.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </label>
+              <label style={LS}>
                 Orden de compra (OC) *
                 <input value={form.numOC} onChange={e => sf('numOC', e.target.value)}
                   placeholder="Numero de OC" style={IS} />
@@ -447,44 +457,49 @@ export default function SalidaBodega() {
       {activeTab === 'historial' && (
         <div style={card}>
           <div style={{ fontWeight: 700, fontSize: '.9rem', color: T.primary, marginBottom: 16 }}>
-            Historial ventas Walmart ({salidas.length})
+            Historial salidas ({salidas.length})
           </div>
           {loading ? <Skeleton rows={8} /> : salidas.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '48px 0', color: T.textMid, fontSize: '.88rem' }}>
-              Sin ventas registradas
+              Sin salidas registradas
             </div>
           ) : (
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr>
-                    {['Fecha', 'OC', 'Cliente', 'Productos', 'Total (con IVA)', 'A cobrar', 'Estado', 'Acciones'].map(h => (
+                    {['Fecha', 'Canal', 'Productos', 'Cliente', 'Cajas', 'Monto', 'Eliminar'].map(h => (
                       <th key={h} style={thSt}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {salidas.slice(0, 100).map((r, i) => {
+                  {salidas.slice(0, 200).map((r, i) => {
                     const prodNames = (r.productos || []).map(p => p.producto).filter(Boolean).join(', ');
                     return (
                       <tr key={r.id} style={{ background: i % 2 ? '#F9FBF9' : '#fff' }}>
-                        <td style={{ ...tdSt, whiteSpace: 'nowrap' }}>{r.fecha || '—'}</td>
-                        <td style={{ ...tdSt, fontWeight: 600 }}>{r.numOC || '—'}</td>
-                        <td style={{ ...tdSt, fontSize: '.78rem' }}>{r.cliente || '—'}</td>
+                        <td style={{ ...tdSt, whiteSpace: 'nowrap', fontWeight: 600 }}>{r.fecha || '—'}</td>
+                        <td style={{ ...tdSt, fontSize: '.78rem' }}>{r.canal || '—'}</td>
                         <td style={{ ...tdSt, fontSize: '.75rem', color: T.textMid, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {prodNames || `${(r.productos || []).length} item(s)`}
                         </td>
+                        <td style={{ ...tdSt, fontSize: '.78rem' }}>{r.cliente || '—'}</td>
+                        <td style={{ ...tdSt, textAlign: 'right', fontWeight: 600, color: T.secondary }}>
+                          {(r.totalCajas || 0).toLocaleString()}
+                        </td>
                         <td style={{ ...tdSt, fontWeight: 700, color: T.primary, textAlign: 'right', whiteSpace: 'nowrap' }}>
-                          {fmtQ(r.total || r.subtotalConIva || 0)}
+                          {fmtQ(r.montoTotal || r.total || r.subtotalConIva || 0)}
                         </td>
-                        <td style={{ ...tdSt, fontWeight: 700, color: T.info, textAlign: 'right', whiteSpace: 'nowrap' }}>
-                          {fmtQ(r.totalACobrar || 0)}
-                        </td>
-                        <td style={tdSt}><EstadoBadge estado={r.estado} /></td>
-                        <td style={tdSt}>
-                          <button onClick={() => { setActiveTab('registrar'); }} title="Ver"
-                            style={{ padding: '4px 10px', background: T.primary, color: T.white, border: 'none', borderRadius: 4, fontSize: '.7rem', fontWeight: 600, cursor: 'pointer' }}>
-                            Ver
+                        <td style={{ ...tdSt, textAlign: 'center' }}>
+                          <button
+                            onClick={async () => {
+                              if (!window.confirm('Eliminar este registro?')) return;
+                              await remove(r.id);
+                              toast('Registro eliminado');
+                            }}
+                            style={{ padding: '3px 10px', background: 'none', border: `1px solid ${T.danger}`, color: T.danger, borderRadius: 4, cursor: 'pointer', fontSize: '.72rem', fontWeight: 600 }}
+                          >
+                            x
                           </button>
                         </td>
                       </tr>

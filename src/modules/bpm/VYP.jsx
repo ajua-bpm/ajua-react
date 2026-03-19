@@ -12,13 +12,8 @@ const T = {
   danger: '#C62828', warn: '#E65100', green2: '#E8F5E9',
 };
 
-// ─── Data from bpm.html (exact) ───────────────────────────────────────────────
-const MESES = [
-  'Enero','Febrero','Marzo','Abril','Mayo','Junio',
-  'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre',
-];
-
-const VP_ITEMS = [
+// ─── Default VP_ITEMS ─────────────────────────────────────────────────────────
+const DEFAULT_VP_ITEMS = [
   { nivel: 'NIVEL 1', item: 'Dispensador de jabón 1' },
   { nivel: 'NIVEL 1', item: 'Dispensador de Gel' },
   { nivel: 'NIVEL 1', item: 'Lámpara 1' },
@@ -42,29 +37,38 @@ const VP_ITEMS = [
   { nivel: 'NIVEL 2', item: 'Lámpara 3' },
 ];
 
+const NIVEL_OPTIONS = ['NIVEL 1', 'NIVEL 2', 'NIVEL 3'];
+
+const MESES = [
+  'Enero','Febrero','Marzo','Abril','Mayo','Junio',
+  'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre',
+];
+
 const VYP_AREAS = [
   'Bodega','Pre-carga','Cooler 1','Cooler 2','Parqueo','Oficina','Baños','Otro',
 ];
 
-const VYP_TIPOS   = ['Vidrio','Plástico','Ambos'];
+const VYP_TIPOS    = ['Vidrio','Plástico','Ambos'];
 const VYP_ACCIONES = ['Retirado','Reportado','Pendiente'];
 
 const today  = () => new Date().toISOString().slice(0, 10);
 const curMes = () => MESES[new Date().getMonth()];
 
 // ─── Shared UI helpers ────────────────────────────────────────────────────────
+const inputStyle = {
+  padding: '9px 12px', border: '1.5px solid #E0E0E0', borderRadius: 6,
+  fontSize: '.88rem', outline: 'none', width: '100%', fontFamily: 'inherit',
+  boxSizing: 'border-box', background: '#fff',
+};
+
 const inp = (val, onChange, type = 'text', extra = {}) => (
   <input type={type} value={val} onChange={e => onChange(e.target.value)}
-    style={{ padding: '9px 12px', border: '1.5px solid #E0E0E0', borderRadius: 6,
-      fontSize: '.88rem', outline: 'none', width: '100%', fontFamily: 'inherit',
-      boxSizing: 'border-box', ...extra }} />
+    style={{ ...inputStyle, ...extra }} />
 );
 
 const sel = (val, onChange, opts) => (
   <select value={val} onChange={e => onChange(e.target.value)}
-    style={{ padding: '9px 12px', border: '1.5px solid #E0E0E0', borderRadius: 6,
-      fontSize: '.88rem', outline: 'none', width: '100%', fontFamily: 'inherit',
-      background: '#fff', cursor: 'pointer' }}>
+    style={{ ...inputStyle, cursor: 'pointer' }}>
     {opts}
   </select>
 );
@@ -91,10 +95,13 @@ const SecTitle = ({ children }) => (
   </div>
 );
 
-const CatHeader = ({ text }) => (
-  <div style={{ fontSize: '.65rem', letterSpacing: '.1em', textTransform: 'uppercase',
-    color: T.secondary, fontWeight: 700, padding: '8px 0 4px',
-    borderBottom: `1px solid ${T.border}`, marginBottom: 4 }}>
+const NivelHeader = ({ text }) => (
+  <div style={{
+    fontSize: '.65rem', letterSpacing: '.12em', textTransform: 'uppercase',
+    color: T.white, fontWeight: 700, padding: '5px 12px', borderRadius: 4,
+    background: text === 'NIVEL 1' ? T.secondary : text === 'NIVEL 2' ? '#1565C0' : T.warn,
+    display: 'inline-block', marginTop: 12, marginBottom: 6,
+  }}>
     {text}
   </div>
 );
@@ -149,28 +156,50 @@ function TabVP({ empleados, empLoading }) {
   const { data: registros, loading: histLoading } = useCollection('vp', { orderField: 'fecha', orderDir: 'desc', limit: 200 });
   const { add, remove, saving } = useWrite('vp');
 
-  const initChecks = () => VP_ITEMS.map(() => '');
-  const [fecha, setFecha]   = useState(today());
-  const [resp, setResp]     = useState('');
-  const [mes, setMes]       = useState(curMes());
-  const [checks, setChecks] = useState(initChecks);
+  // vpItems is the editable list of inventory items for this session
+  const [vpItems, setVpItems] = useState(DEFAULT_VP_ITEMS);
+  const [checks, setChecks]   = useState(() => DEFAULT_VP_ITEMS.map(() => ''));
+
+  const [fecha, setFecha] = useState(today());
+  const [resp, setResp]   = useState('');
+  const [mes, setMes]     = useState(curMes());
+
+  // New item form
+  const [newNivel, setNewNivel] = useState('NIVEL 1');
+  const [newItem,  setNewItem]  = useState('');
 
   const setCheck = (i, v) => setChecks(prev => prev.map((c, idx) => idx === i ? v : c));
+
+  const handleAddItem = () => {
+    const name = newItem.trim();
+    if (!name) { toast('Ingrese el nombre del ítem', 'error'); return; }
+    setVpItems(prev => [...prev, { nivel: newNivel, item: name }]);
+    setChecks(prev => [...prev, '']);
+    setNewItem('');
+    toast('Ítem agregado');
+  };
+
+  const handleRemoveItem = (idx) => {
+    setVpItems(prev => prev.filter((_, i) => i !== idx));
+    setChecks(prev => prev.filter((_, i) => i !== idx));
+  };
 
   const ok  = checks.filter(c => c === 'cumple').length;
   const nok = checks.filter(c => c === 'no_cumple').length;
   const pct = (ok + nok) > 0 ? Math.round(ok / (ok + nok) * 100) : 0;
 
   const handleSave = async () => {
-    if (!fecha || !resp) { toast('⚠ Complete fecha y responsable', 'error'); return; }
+    if (!fecha || !resp) { toast('Complete fecha y responsable', 'error'); return; }
     try {
-      await add({ fecha, mes, resp, checks, ok, nok });
-      toast('✓ Revisión de vidrio y plástico guardada');
-      setChecks(initChecks());
+      await add({ fecha, mes, resp, items: vpItems, checks, ok, nok });
+      toast('Revisión de vidrio y plástico guardada');
+      setChecks(vpItems.map(() => ''));
     } catch (e) { toast('Error: ' + e.message, 'error'); }
   };
 
-  let lastNivel = '';
+  // Group items by nivel for rendering
+  const niveles = [...new Set(vpItems.map(x => x.nivel))];
+
   return (
     <>
       <Card>
@@ -183,34 +212,91 @@ function TabVP({ empleados, empLoading }) {
           </Lbl>
         </div>
 
-        <div style={{ overflowX: 'auto', marginBottom: 14 }}>
-          {VP_ITEMS.map((x, i) => {
-            const showNivel = x.nivel !== lastNivel;
-            if (showNivel) lastNivel = x.nivel;
-            return (
-              <div key={i}>
-                {showNivel && <CatHeader text={x.nivel} />}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  padding: '8px 0', borderBottom: `1px solid ${T.border}` }}>
-                  <div style={{ flex: 1, marginRight: 12 }}>
-                    <div style={{ fontSize: '.72rem', color: T.textMid }}>{x.nivel}</div>
-                    <div style={{ fontSize: '.85rem', color: T.textDark }}>{x.item}</div>
+        {/* Items grouped by nivel */}
+        <div style={{ marginBottom: 16 }}>
+          {niveles.map(nivel => (
+            <div key={nivel}>
+              <NivelHeader text={nivel} />
+              {vpItems.map((x, i) => {
+                if (x.nivel !== nivel) return null;
+                return (
+                  <div key={i} style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '8px 10px', borderBottom: `1px solid ${T.border}`,
+                    background: checks[i] === 'cumple' ? '#F1F8E9' : checks[i] === 'no_cumple' ? '#FFF8F8' : T.white,
+                    borderRadius: 4, marginBottom: 2,
+                  }}>
+                    <div style={{ flex: 1, marginRight: 10 }}>
+                      <div style={{ fontSize: '.85rem', color: T.textDark }}>{x.item}</div>
+                    </div>
+                    <Tristate3 value={checks[i]} onChange={v => setCheck(i, v)} />
+                    <button
+                      onClick={() => handleRemoveItem(i)}
+                      title="Eliminar ítem"
+                      style={{
+                        marginLeft: 10, padding: '3px 7px', borderRadius: 4, border: `1px solid ${T.border}`,
+                        background: 'none', cursor: 'pointer', fontSize: '.72rem', color: T.danger,
+                        fontFamily: 'inherit', lineHeight: 1,
+                      }}
+                    >✕</button>
                   </div>
-                  <Tristate3 value={checks[i]} onChange={v => setCheck(i, v)} />
-                </div>
-              </div>
-            );
-          })}
+                );
+              })}
+            </div>
+          ))}
         </div>
 
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          <button onClick={handleSave} disabled={saving}
-            style={{ padding: '10px 22px', background: saving ? '#BDBDBD' : T.primary,
-              color: T.white, border: 'none', borderRadius: 6, fontWeight: 700,
-              fontSize: '.88rem', cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
-            {saving ? 'Guardando...' : 'Guardar Revisión'}
-          </button>
+        {/* Add new item */}
+        <div style={{
+          padding: '14px 16px', borderRadius: 8, border: `1.5px dashed ${T.border}`,
+          background: T.bgLight, marginBottom: 16,
+        }}>
+          <div style={{ fontSize: '.72rem', fontWeight: 700, color: T.secondary, textTransform: 'uppercase', marginBottom: 10 }}>
+            + Agregar Ítem al Inventario
+          </div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+            <div style={{ minWidth: 130 }}>
+              <Lbl text="Nivel">
+                {sel(newNivel, setNewNivel, NIVEL_OPTIONS.map(n => <option key={n} value={n}>{n}</option>))}
+              </Lbl>
+            </div>
+            <div style={{ flex: 1, minWidth: 180 }}>
+              <Lbl text="Nombre del ítem">
+                <input
+                  type="text"
+                  value={newItem}
+                  onChange={e => setNewItem(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleAddItem()}
+                  placeholder="Ej: Lámpara 5"
+                  style={inputStyle}
+                />
+              </Lbl>
+            </div>
+            <button
+              onClick={handleAddItem}
+              style={{
+                padding: '9px 20px', background: T.secondary, color: T.white, border: 'none',
+                borderRadius: 6, fontWeight: 700, fontSize: '.82rem', cursor: 'pointer',
+                fontFamily: 'inherit', whiteSpace: 'nowrap',
+              }}
+            >
+              Agregar
+            </button>
+          </div>
         </div>
+
+        {(ok + nok) > 0 && (
+          <div style={{ marginBottom: 14, fontSize: '.8rem', color: T.textMid }}>
+            Cumplen: <strong style={{ color: T.accent }}>{ok}</strong> — No cumplen: <strong style={{ color: T.danger }}>{nok}</strong> — <strong style={{ color: pct >= 80 ? T.accent : T.danger }}>{pct}% OK</strong>
+          </div>
+        )}
+
+        <button onClick={handleSave} disabled={saving}
+          style={{ padding: '10px 22px', background: saving ? '#BDBDBD' : T.primary,
+            color: T.white, border: 'none', borderRadius: 6, fontWeight: 700,
+            fontSize: '.88rem', cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+          {saving ? 'Guardando...' : 'Guardar Revisión'}
+        </button>
       </Card>
 
       <Card>
@@ -282,29 +368,29 @@ function TabVYP({ empleados, empLoading }) {
   };
 
   const handleSave = async () => {
-    if (!fecha || !area || !resp) { toast('⚠ Complete fecha, área y responsable', 'error'); return; }
+    if (!fecha || !area || !resp) { toast('Complete fecha, área y responsable', 'error'); return; }
     try {
       await add({ fecha, area, tipo, desc, accion, resp, foto: foto || null });
-      toast('✓ Hallazgo registrado');
+      toast('Hallazgo registrado');
       setDesc(''); clearFoto();
     } catch (e) { toast('Error: ' + e.message, 'error'); }
   };
 
   const accionBadge = (ac) => {
     if (ac === 'Pendiente') return { bg: '#FFEBEE', c: T.danger, l: '⚠ Pendiente' };
-    if (ac === 'Retirado')  return { bg: T.green2, c: T.secondary, l: '✓ Retirado' };
+    if (ac === 'Retirado')  return { bg: T.green2,  c: T.secondary, l: '✓ Retirado' };
     return { bg: '#E3F2FD', c: '#1565C0', l: ac || '—' };
   };
 
   return (
     <>
       <Card style={{ borderLeft: `3px solid ${T.danger}` }}>
-        <SecTitle>🚨 Reporte de Hallazgo — Contaminación</SecTitle>
+        <SecTitle>Reporte de Hallazgo — Contaminación</SecTitle>
         <p style={{ fontSize: '.7rem', color: T.textMid, marginBottom: 16, marginTop: -8 }}>
           Reportar vidrio o plástico encontrado en cualquier área. Registrar inmediatamente.
         </p>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14, marginBottom: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 14, marginBottom: 14 }}>
           <Lbl text="Fecha">{inp(fecha, setFecha, 'date')}</Lbl>
           <Lbl text="Área donde se encontró">
             {sel(area, setArea,
@@ -333,17 +419,14 @@ function TabVYP({ empleados, empLoading }) {
             <textarea value={desc} onChange={e => setDesc(e.target.value)}
               placeholder="Qué se encontró, cantidad, estado, posible origen..."
               rows={2}
-              style={{ padding: '9px 12px', border: '1.5px solid #E0E0E0', borderRadius: 6,
-                fontSize: '.85rem', outline: 'none', width: '100%', fontFamily: 'inherit',
-                resize: 'vertical', boxSizing: 'border-box' }} />
+              style={{ ...inputStyle, resize: 'vertical' }} />
           </Lbl>
         </div>
 
-        {/* Photo */}
         <div style={{ marginBottom: 14 }}>
-          <div style={{ fontSize: '.72rem', color: T.textMid, marginBottom: 5 }}>📷 Foto (opcional)</div>
+          <div style={{ fontSize: '.72rem', color: T.textMid, marginBottom: 5 }}>Foto (opcional)</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <input ref={fotoRef} type="file" id="vyp-foto-input" accept="image/*"
+            <input ref={fotoRef} type="file" accept="image/*"
               onChange={handleFoto} style={{ fontSize: '.7rem' }} />
             {foto && (
               <button onClick={clearFoto}
@@ -423,7 +506,7 @@ function TabVYP({ empleados, empLoading }) {
 // ─── Main VYP component ───────────────────────────────────────────────────────
 const TABS = [
   { key: 'vp',  label: 'Inventario Mensual' },
-  { key: 'vyp', label: '🚨 Hallazgos' },
+  { key: 'vyp', label: 'Hallazgos' },
 ];
 
 export default function VYP() {
@@ -434,7 +517,7 @@ export default function VYP() {
     <div style={{ fontFamily: 'Inter, system-ui, sans-serif', color: T.textDark, maxWidth: 900, margin: '0 auto' }}>
       <div style={{ marginBottom: 20 }}>
         <h1 style={{ fontSize: '1.35rem', fontWeight: 800, color: T.primary, margin: 0 }}>
-          🔍 Vidrio y Plástico
+          Vidrio y Plástico
         </h1>
         <p style={{ fontSize: '.82rem', color: T.textMid, marginTop: 4, marginBottom: 0 }}>
           Revisión mensual de inventario · Reporte de hallazgos de contaminación

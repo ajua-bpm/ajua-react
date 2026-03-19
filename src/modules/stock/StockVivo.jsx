@@ -86,19 +86,29 @@ export default function StockVivo() {
       }
     }
 
-    // salidas: {producto, cantidad, cajasEnviadas, unidad, fecha, ...}
+    // salidas: {fecha, cliente, canal, productos: [{producto, cajasEnviadas, cantidad, unidad, ...}]}
+    // Each salida has a `productos` array — iterate over it to get per-product quantities
     for (const s of salidas) {
-      const k = s.producto; if (!k) continue;
-      if (!map[k]) map[k] = { entradas: 0, salidas: 0, lastDate: null, unidad: '', lastEntradaDate: null };
-
-      const qty = Number(s.cantidad) || Number(s.cajasEnviadas) || 0;
-      map[k].salidas += qty;
-
       const d = fmtDate(s.fecha);
-      if (d && (!map[k].lastDate || d > map[k].lastDate)) map[k].lastDate = d;
+      const prods = Array.isArray(s.productos) ? s.productos : [];
 
-      // Only set unit from salidas if we don't have one from entradas
-      if (!map[k].unidad && s.unidad) map[k].unidad = s.unidad;
+      // Also support legacy flat records that have a top-level `producto` field
+      if (prods.length === 0 && s.producto) {
+        prods.push({ producto: s.producto, cajasEnviadas: s.cajasEnviadas, cantidad: s.cantidad, unidad: s.unidad });
+      }
+
+      for (const item of prods) {
+        const k = item.producto || item.nombre; if (!k) continue;
+        if (!map[k]) map[k] = { entradas: 0, salidas: 0, lastDate: null, unidad: '', lastEntradaDate: null };
+
+        const qty = Number(item.cajasEnviadas) || Number(item.cantidad) || 0;
+        map[k].salidas += qty;
+
+        if (d && (!map[k].lastDate || d > map[k].lastDate)) map[k].lastDate = d;
+
+        // Only set unit from salidas if we don't have one from entradas
+        if (!map[k].unidad && item.unidad) map[k].unidad = item.unidad;
+      }
     }
 
     return map;
