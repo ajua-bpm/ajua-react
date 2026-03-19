@@ -114,27 +114,60 @@ const DOC_TABS = [
   { key: 'xml',     label: 'XML FEL'        },
 ];
 
-// ── XML FEL parser — Guatemala SAT DTE (handles namespace prefixes) ──
+// ── XML FEL parser — Guatemala SAT DTE ────────────────────────────
+// Real DTE structure:
+//   <dte:NumeroAutorizacion Numero="1703823744" Serie="5835D9BC">UUID</dte:NumeroAutorizacion>
+//   <dte:DatosGenerales FechaHoraEmision="2026-03-19T07:44:44-06:00" .../>
+//   <dte:Emisor NITEmisor="119397315" ...>
+//   <dte:Receptor IDReceptor="31244017" NombreReceptor="..."/>
+//   <dte:Item><dte:Cantidad>143</dte:Cantidad><dte:Descripcion>...</dte:Descripcion>...
 function parseXML(text) {
-  // Matches <Tag> or <prefix:Tag> with optional attributes
-  const get = (...tags) => {
-    for (const tag of tags) {
-      const re = new RegExp(`<(?:[^:>\\s]+:)?${tag}(?:\\s[^>]*)?>([^<]+)<\\/`, 'i');
-      const m = text.match(re);
+  // Text content of a tag (with optional namespace prefix)
+  const tagText = (...names) => {
+    for (const n of names) {
+      const m = text.match(new RegExp(`<(?:[^:>\\s]+:)?${n}(?:\\s[^>]*)?>([^<]+)<\\/`, 'i'));
       if (m) return m[1].trim();
     }
     return '';
   };
-  // Guatemala SAT DTE structure:
-  // <dte:NumeroAutorizacion> or <SAT:NumeroAutorizacion> under <dte:Autorizacion>
-  // Also handle CFDI-style UUID attribute: UUID="..."
-  const uuidAttr = (text.match(/UUID=["']([^"']+)["']/i) || [])[1] || '';
-  return {
-    authSAT:   get('NumeroAutorizacion', 'NúmeroAutorizacion') || uuidAttr || '',
-    serieFel:  get('Serie') || '',
-    numeroDTE: get('Numero', 'NumeroDTE', 'NúmeroDTE') || '',
-    nit:       get('NITEmisor', 'NITReceptor', 'NIT') || '',
+  // Attribute value from a specific tag
+  const tagAttr = (tagName, attrName) => {
+    const m = text.match(new RegExp(`<(?:[^:>\\s]+:)?${tagName}[^>]*\\s${attrName}=["']([^"']+)["']`, 'i'));
+    return m ? m[1].trim() : '';
   };
+
+  const authSAT   = tagText('NumeroAutorizacion', 'NúmeroAutorizacion');
+  const serieFel  = tagAttr('NumeroAutorizacion', 'Serie');
+  const numeroDTE = tagAttr('NumeroAutorizacion', 'Numero');
+  const nit       = tagAttr('Emisor', 'NITEmisor') || tagAttr('Receptor', 'IDReceptor');
+  const receptor  = tagAttr('Receptor', 'NombreReceptor');
+  const granTotal = tagText('GranTotal');
+  const fechaHora = tagAttr('DatosGenerales', 'FechaHoraEmision');
+  const fecha     = fechaHora ? fechaHora.slice(0, 10) : '';
+
+  // Parse each <Item> block into {descripcion, cantidad, precioUnitario, total}
+  const items = [];
+  const itemRe = /<(?:[^:>\s]+:)?Item[^>]*>([\s\S]*?)<\/(?:[^:>\s]+:)?Item>/gi;
+  let m;
+  while ((m = itemRe.exec(text)) !== null) {
+    const block = m[1];
+    const tv = (...ns) => {
+      for (const n of ns) {
+        const x = block.match(new RegExp(`<(?:[^:>\\s]+:)?${n}[^>]*>([^<]+)<\\/`, 'i'));
+        if (x) return x[1].trim();
+      }
+      return '';
+    };
+    const desc = tv('Descripcion');
+    if (desc) items.push({
+      descripcion:   desc,
+      cantidad:      tv('Cantidad'),
+      precioUnitario: tv('PrecioUnitario'),
+      total:         tv('Total'),
+    });
+  }
+
+  return { authSAT, serieFel, numeroDTE, nit, receptor, granTotal, fecha, items };
 }
 
 // ── Main component ────────────────────────────────────────────────
@@ -200,9 +233,29 @@ export default function SalidaBodega() {
       const text = e.target.result;
       const parsed = parseXML(text);
       setXmlParsed(parsed);
+      // Auto-fill header fields
       if (parsed.authSAT)   sf('authSAT',   parsed.authSAT);
       if (parsed.serieFel)  sf('serieFel',  parsed.serieFel);
       if (parsed.numeroDTE) sf('numeroDTE', parsed.numeroDTE);
+      if (parsed.fecha)     sf('fecha',     parsed.fecha);
+      // Auto-populate product lines from XML Items
+      if (parsed.items && parsed.items.length > 0) {
+        setLineas(parsed.items.map(item => {
+          const cajas        = parseFloat(item.cantidad)       || 0;
+          const precioConIva = parseFloat(item.precioUnitario) || 0;
+          const totalConIva  = cajas * precioConIva;
+          return {
+            _key:         newKey(),
+            producto:     '',               // user selects from catalog
+            descripcion:  item.descripcion,
+            cajas:        item.cantidad,
+            lbsCaja:      '',
+            totalLbs:     0,
+            precioConIva: item.precioUnitario,
+            totalConIva,
+          };
+        }));
+      }
     };
     reader.readAsText(file);
   };
@@ -239,6 +292,14 @@ export default function SalidaBodega() {
         numeroDTE:  form.numeroDTE,
         almacen:    form.almacen,
         lineas:     lineasClean,
+        // productos = same data, field name StockVivo and bpm.html use
+        productos:  lineasClean.map(l => ({
+          producto:      l.producto || l.descripcion,
+          cajasEnviadas: l.cajas,
+          lbs:           l.totalLbs,
+          precioConIva:  l.precioConIva,
+          totalConIva:   l.totalConIva,
+        })),
         totalCajas: summary.totalCajas,
         totalLbs:   summary.totalLbs,
         neto:       summary.neto,
@@ -792,8 +853,8 @@ export default function SalidaBodega() {
                 </thead>
                 <tbody>
                   {salidas.map((r, i) => {
-                    const prodList = (r.lineas || [])
-                      .map(l => l.producto)
+                    const prodList = (r.lineas || r.productos || [])
+                      .map(l => l.producto || l.nombre)
                       .filter(Boolean)
                       .join(', ');
                     return (
@@ -813,7 +874,7 @@ export default function SalidaBodega() {
                           textOverflow: 'ellipsis',
                           whiteSpace: 'nowrap',
                         }}>
-                          {prodList || `${(r.lineas || []).length} línea(s)`}
+                          {prodList || `${(r.lineas || r.productos || []).length} línea(s)`}
                         </td>
                         <td style={{ ...tdSt, textAlign: 'right', fontWeight: 600 }}>
                           {(r.totalLbs || 0).toLocaleString('es-GT', { maximumFractionDigits: 1 })}

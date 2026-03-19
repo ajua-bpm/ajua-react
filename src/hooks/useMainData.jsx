@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { db, doc, getDoc } from '../firebase';
+import { useCollection } from './useFirestore';
 
 const MainDataCtx = createContext(null);
 
@@ -36,8 +37,9 @@ export function useEmpleados() {
 }
 
 export function useClientes() {
-  const { data, loading } = useMainData();
-  return { clientes: data?.clientes || [], loading };
+  // Read from iclientes collection (migrated from DB.clientes)
+  const { data, loading } = useCollection('iclientes', { orderField: 'nombre', limit: 500 });
+  return { clientes: data, loading };
 }
 
 export function useConductores() {
@@ -46,6 +48,7 @@ export function useConductores() {
 }
 
 export function useProductosCatalogo() {
-  const { data, loading } = useMainData();
-  return { productos: data?.iProductos || [], loading };
+  // Read from iProductos collection (same source as Cotizador Productos tab)
+  const { data, loading } = useCollection('iProductos', { orderField: 'nombre', limit: 500 });
+  return { productos: data, loading };
 }
