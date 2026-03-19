@@ -114,17 +114,26 @@ const DOC_TABS = [
   { key: 'xml',     label: 'XML FEL'        },
 ];
 
-// ── XML parser (basic) ────────────────────────────────────────────
+// ── XML FEL parser — Guatemala SAT DTE (handles namespace prefixes) ──
 function parseXML(text) {
-  const get = (tag) => {
-    const m = text.match(new RegExp(`<${tag}[^>]*>([^<]*)<\/${tag}>`, 'i'));
-    return m ? m[1].trim() : '';
+  // Matches <Tag> or <prefix:Tag> with optional attributes
+  const get = (...tags) => {
+    for (const tag of tags) {
+      const re = new RegExp(`<(?:[^:>\\s]+:)?${tag}(?:\\s[^>]*)?>([^<]+)<\\/`, 'i');
+      const m = text.match(re);
+      if (m) return m[1].trim();
+    }
+    return '';
   };
+  // Guatemala SAT DTE structure:
+  // <dte:NumeroAutorizacion> or <SAT:NumeroAutorizacion> under <dte:Autorizacion>
+  // Also handle CFDI-style UUID attribute: UUID="..."
+  const uuidAttr = (text.match(/UUID=["']([^"']+)["']/i) || [])[1] || '';
   return {
-    authSAT:   get('NumeroAutorizacion') || get('UUID') || get('NúmeroAutorizacion') || '',
+    authSAT:   get('NumeroAutorizacion', 'NúmeroAutorizacion') || uuidAttr || '',
     serieFel:  get('Serie') || '',
-    numeroDTE: get('Numero') || get('NumeroDTE') || '',
-    nit:       get('NITEmisor') || get('NITReceptor') || '',
+    numeroDTE: get('Numero', 'NumeroDTE', 'NúmeroDTE') || '',
+    nit:       get('NITEmisor', 'NITReceptor', 'NIT') || '',
   };
 }
 
