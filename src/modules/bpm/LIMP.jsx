@@ -109,9 +109,9 @@ export default function LIMP() {
   const toast = useToast();
   const { empleados, loading: empLoading } = useEmpleados();
 
-  const { data: limpData,  loading: limpLoad }  = useCollection('limp', { orderField: 'creadoEn', orderDir: 'desc', limit: 200 });
-  const { data: blData,    loading: blLoad }    = useCollection('bl',   { orderField: 'creadoEn', orderDir: 'desc', limit: 200 });
-  const { data: parqData,  loading: parqLoad }  = useCollection('parq', { orderField: 'creadoEn', orderDir: 'desc', limit: 200 });
+  const { data: limpData,  loading: limpLoad }  = useCollection('limp', { orderField: 'fecha', orderDir: 'desc', limit: 200 });
+  const { data: blData,    loading: blLoad }    = useCollection('bl',   { orderField: 'fecha', orderDir: 'desc', limit: 200 });
+  const { data: parqData,  loading: parqLoad }  = useCollection('parq', { orderField: 'fecha', orderDir: 'desc', limit: 200 });
 
   const { add: addLimp, saving: savingLimp } = useWrite('limp');
   const { add: addBl,   saving: savingBl }   = useWrite('bl');

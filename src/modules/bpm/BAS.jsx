@@ -61,7 +61,7 @@ const Badge = ({ resultado }) => {
 export default function BAS() {
   const toast = useToast();
   const { empleados, loading: empLoading } = useEmpleados();
-  const { data: registros, loading: histLoading } = useCollection('bas', { orderField: 'creadoEn', orderDir: 'desc', limit: 200 });
+  const { data: registros, loading: histLoading } = useCollection('bas', { orderField: 'fecha', orderDir: 'desc', limit: 200 });
   const { data: calibraciones, loading: calLoading } = useCollection('bas_calibraciones', { orderField: 'fechaCal', orderDir: 'desc', limit: 100 });
   const { add: addBas, saving: savingBas } = useWrite('bas');
   const { add: addCal, saving: savingCal } = useWrite('bas_calibraciones');
