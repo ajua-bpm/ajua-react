@@ -263,26 +263,68 @@ function TabProductos() {
 }
 
 // ─── TAB 3: PRESENTACIONES ──────────────────────────────────────────────────
+const CANALES = [
+  'Walmart Guatemala',
+  'Local GT',
+  'Exportación',
+  'Otro',
+];
+const TIPOS_CONTENIDO = [
+  { value:'granel',   label:'A granel — producto suelto en la caja' },
+  { value:'bolsas',   label:'Bolsas' },
+  { value:'redes',    label:'Redes' },
+  { value:'unidades', label:'Unidades' },
+];
+const BLANK_PRES = () => ({
+  producto:'', canal:'Walmart Guatemala', nombre:'', codigoSAP:'',
+  tipoContenido:'granel', cantidadCaja:'', lbsUnidad:'',
+  totalLbsCaja:0, totalKgCaja:0,
+});
+
 function TabPresentaciones() {
   const toast = useToast();
   const { data, loading } = useCollection('iPresentaciones', { orderField:'nombre', limit:200 });
   const { productos }     = useProductosCatalogo();
   const { add, update, remove, saving } = useWrite('iPresentaciones');
-  const [form, setForm]   = useState({ nombre:'', producto:'', peso:'', unidad:'lb', precio:'', codigoBarras:'' });
+  const [form, setForm]   = useState(BLANK_PRES());
   const [editId, setEditId] = useState(null);
 
+  const sf = (k, v) => setForm(f => {
+    const next = { ...f, [k]: v };
+    const qty  = parseFloat(next.cantidadCaja) || 0;
+    const lbs  = parseFloat(next.lbsUnidad)    || 0;
+    next.totalLbsCaja = qty * lbs;
+    next.totalKgCaja  = next.totalLbsCaja / 2.205;
+    return next;
+  });
+
   const handleSave = async () => {
-    if (!form.nombre) { toast('Nombre es requerido','error'); return; }
-    const payload = { ...form, peso:parseFloat(form.peso)||0, precio:parseFloat(form.precio)||0 };
-    if (editId) { await update(editId,payload); toast('Presentación actualizada'); setEditId(null); }
-    else { await add(payload); toast('Presentación guardada'); }
-    setForm({ nombre:'', producto:'', peso:'', unidad:'lb', precio:'', codigoBarras:'' });
+    if (!form.nombre)   { toast('Nombre de presentación es requerido','error'); return; }
+    if (!form.producto) { toast('Selecciona un producto','error'); return; }
+    const payload = { ...form, totalLbsCaja: form.totalLbsCaja, totalKgCaja: form.totalKgCaja };
+    if (editId) { await update(editId, payload); toast('Presentación actualizada'); setEditId(null); }
+    else        { await add(payload); toast('Presentación guardada'); }
+    setForm(BLANK_PRES());
   };
 
   const startEdit = r => {
-    setForm({ nombre:r.nombre||'', producto:r.producto||'', peso:String(r.peso||''), unidad:r.unidad||'lb', precio:String(r.precio||''), codigoBarras:r.codigoBarras||'' });
+    setForm({
+      producto:      r.producto      || '',
+      canal:         r.canal         || 'Walmart Guatemala',
+      nombre:        r.nombre        || '',
+      codigoSAP:     r.codigoSAP     || '',
+      tipoContenido: r.tipoContenido || 'granel',
+      cantidadCaja:  String(r.cantidadCaja || ''),
+      lbsUnidad:     String(r.lbsUnidad    || ''),
+      totalLbsCaja:  r.totalLbsCaja  || 0,
+      totalKgCaja:   r.totalKgCaja   || 0,
+    });
     setEditId(r.id);
   };
+
+  const lbsPct = form.totalLbsCaja > 0
+    ? Math.min(100, (form.totalLbsCaja / 50) * 100)
+    : 0;
 
   if (loading) return <Skeleton rows={5}/>;
 
@@ -290,49 +332,131 @@ function TabPresentaciones() {
     <div>
       <div style={card}>
         <div style={{ fontWeight:700, fontSize:'.95rem', color:T.primary, marginBottom:18, borderBottom:`2px solid ${T.primary}`, paddingBottom:8 }}>
-          {editId ? 'Editar Presentación' : 'Nueva Presentación'}
+          {editId ? 'Editar Presentación de Venta' : 'Agregar Presentación de Venta'}
         </div>
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(155px,1fr))', gap:14, marginBottom:14 }}>
-          <label style={LS}>Nombre *<input value={form.nombre} onChange={e=>setForm(f=>({...f,nombre:e.target.value}))} style={IS}/></label>
+
+        {/* Row 1: Producto + Canal */}
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, marginBottom:14 }}>
           <label style={LS}>
             Producto
-            <select value={form.producto} onChange={e=>setForm(f=>({...f,producto:e.target.value}))} style={IS}>
-              <option value="">— Seleccionar —</option>
+            <select value={form.producto} onChange={e=>sf('producto',e.target.value)} style={IS}>
+              <option value="">— Seleccionar producto —</option>
               {productos.map(p=><option key={p.id||p.nombre} value={p.nombre}>{p.nombre}</option>)}
             </select>
           </label>
-          <label style={LS}>Peso<input type="number" min="0" step="0.01" value={form.peso} onChange={e=>setForm(f=>({...f,peso:e.target.value}))} style={IS}/></label>
           <label style={LS}>
-            Unidad
-            <select value={form.unidad} onChange={e=>setForm(f=>({...f,unidad:e.target.value}))} style={IS}>
-              {['lb','kg','caja','unidad'].map(u=><option key={u} value={u}>{u}</option>)}
+            Canal de Venta
+            <select value={form.canal} onChange={e=>sf('canal',e.target.value)} style={{ ...IS, background:'#FFFDE7' }}>
+              {CANALES.map(c=><option key={c} value={c}>{c==='Walmart Guatemala'?'🏪 '+c:c}</option>)}
             </select>
           </label>
-          <label style={LS}>Precio (Q)<input type="number" min="0" step="0.01" value={form.precio} onChange={e=>setForm(f=>({...f,precio:e.target.value}))} style={IS}/></label>
-          <label style={LS}>Código de barras<input value={form.codigoBarras} onChange={e=>setForm(f=>({...f,codigoBarras:e.target.value}))} style={IS}/></label>
         </div>
+
+        {/* Row 2: Nombre exacto + Código SAP */}
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, marginBottom:18 }}>
+          <label style={LS}>
+            Nombre Exacto de la Presentación
+            <input value={form.nombre} onChange={e=>sf('nombre',e.target.value)}
+              placeholder="Ej. CEBOLLA BLANCA UXC_30" style={IS}/>
+            <span style={{ fontSize:'.65rem', color:T.textMid, marginTop:2 }}>Nombre que aparece en el sistema del cliente (SAP Walmart)</span>
+          </label>
+          <label style={LS}>
+            Código SAP / Material (Walmart)
+            <input value={form.codigoSAP} onChange={e=>sf('codigoSAP',e.target.value)}
+              placeholder="Ej. 80000611" style={IS}/>
+          </label>
+        </div>
+
+        {/* Box content section */}
+        <div style={{ border:`1.5px solid ${T.secondary}`, borderRadius:8, padding:16, marginBottom:16 }}>
+          <div style={{ fontSize:'.68rem', fontWeight:700, textTransform:'uppercase', letterSpacing:'.08em', color:T.secondary, marginBottom:14 }}>
+            🟢 Contenido de la Caja <span style={{ fontWeight:400, color:T.textMid }}>(empaque exterior siempre = Caja de cartón)</span>
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))', gap:14, marginBottom:14 }}>
+            <label style={LS}>
+              Tipo de Contenido
+              <select value={form.tipoContenido} onChange={e=>sf('tipoContenido',e.target.value)} style={IS}>
+                {TIPOS_CONTENIDO.map(t=><option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+            </label>
+            <label style={LS}>
+              Cantidad dentro de la Caja
+              <input value={form.cantidadCaja} onChange={e=>sf('cantidadCaja',e.target.value)}
+                placeholder="Ej. 8 redes, 4 unidades" style={IS}/>
+            </label>
+            <label style={LS}>
+              LBS por Red / Bolsa / Unidad
+              <input type="number" min="0" step="0.01" value={form.lbsUnidad} onChange={e=>sf('lbsUnidad',e.target.value)}
+                placeholder="Ej. 3 lbs" style={IS}/>
+            </label>
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, marginBottom:12 }}>
+            <label style={LS}>
+              ⇒ Total LBS por Caja
+              <input readOnly value={form.totalLbsCaja > 0 ? form.totalLbsCaja.toFixed(2) : 'Auto'}
+                style={{ ...IS, background:'#F5F5F5', color:form.totalLbsCaja>0?T.secondary:T.textMid, fontWeight:700 }}/>
+            </label>
+            <label style={LS}>
+              ⇒ Total KG por Caja
+              <input readOnly value={form.totalKgCaja > 0 ? form.totalKgCaja.toFixed(2) : 'Auto'}
+                style={{ ...IS, background:'#F5F5F5', color:form.totalKgCaja>0?T.secondary:T.textMid, fontWeight:700 }}/>
+            </label>
+          </div>
+          {/* Progress bar */}
+          <div style={{ height:6, background:T.border, borderRadius:3, overflow:'hidden' }}>
+            <div style={{ height:'100%', width:`${lbsPct}%`, background:T.secondary, borderRadius:3, transition:'width .3s' }}/>
+          </div>
+        </div>
+
         <div style={{ display:'flex', gap:10 }}>
-          <button onClick={handleSave} disabled={saving} style={{ padding:'11px 28px', background:saving?'#6B6B60':T.primary, color:T.white, border:'none', borderRadius:6, fontWeight:700, cursor:saving?'not-allowed':'pointer' }}>
-            {saving?'Guardando...':editId?'Actualizar':'Guardar'}
+          <button onClick={handleSave} disabled={saving}
+            style={{ padding:'11px 28px', background:saving?T.textMid:T.primary, color:T.white, border:'none', borderRadius:6, fontWeight:700, cursor:saving?'not-allowed':'pointer' }}>
+            {saving?'Guardando...':editId?'Actualizar Presentación':'+ Agregar Presentación'}
           </button>
-          {editId && <button onClick={()=>{setEditId(null);setForm({nombre:'',producto:'',peso:'',unidad:'lb',precio:'',codigoBarras:''});}} style={{ padding:'11px 20px', background:T.bgLight, border:`1px solid ${T.border}`, borderRadius:6, fontWeight:600, cursor:'pointer', color:T.textMid }}>Cancelar</button>}
+          {editId && (
+            <button onClick={()=>{setEditId(null);setForm(BLANK_PRES());}}
+              style={{ padding:'11px 20px', background:T.bgLight, border:`1px solid ${T.border}`, borderRadius:6, fontWeight:600, cursor:'pointer', color:T.textMid }}>
+              Cancelar
+            </button>
+          )}
         </div>
       </div>
+
+      {/* Table */}
       <div style={card}>
         <div style={{ fontWeight:700, fontSize:'.9rem', color:T.primary, marginBottom:16 }}>Presentaciones ({data.length})</div>
-        {data.length===0 ? <div style={{ textAlign:'center', padding:'40px 0', color:T.textMid }}>Sin presentaciones registradas</div> : (
+        {data.length===0 ? (
+          <div style={{ textAlign:'center', padding:'40px 0', color:T.textMid }}>Sin presentaciones registradas</div>
+        ) : (
           <div style={{ overflowX:'auto' }}>
             <table style={{ width:'100%', borderCollapse:'collapse' }}>
-              <thead><tr>{['Nombre','Producto','Peso','Unidad','Precio','Código','Acciones'].map(h=><th key={h} style={TH_S}>{h}</th>)}</tr></thead>
+              <thead>
+                <tr>{['Nombre','Producto','Canal','Tipo','LBS/Caja','KG/Caja','Cód. SAP','Acciones'].map(h=>(
+                  <th key={h} style={TH_S}>{h}</th>
+                ))}</tr>
+              </thead>
               <tbody>
                 {data.map((r,i)=>(
                   <tr key={r.id}>
-                    <td style={{ ...TD_S(i%2===1), fontWeight:600 }}>{r.nombre}</td>
+                    <td style={{ ...TD_S(i%2===1), fontWeight:600 }}>{r.nombre||'—'}</td>
                     <td style={TD_S(i%2===1)}>{r.producto||'—'}</td>
-                    <td style={TD_S(i%2===1)}>{r.peso||'—'}</td>
-                    <td style={TD_S(i%2===1)}>{r.unidad||'lb'}</td>
-                    <td style={{ ...TD_S(i%2===1), fontWeight:700, color:T.secondary }}>Q {(r.precio||0).toFixed(2)}</td>
-                    <td style={{ ...TD_S(i%2===1), fontSize:'.78rem', color:T.textMid }}>{r.codigoBarras||'—'}</td>
+                    <td style={TD_S(i%2===1)}>
+                      <span style={{ padding:'2px 8px', borderRadius:10, fontSize:'.68rem', fontWeight:700,
+                        background: (r.canal||'').includes('Walmart')?'#FFEBEE':'#E8F5E9',
+                        color:      (r.canal||'').includes('Walmart')?'#C62828':'#1B5E20' }}>
+                        {r.canal||'—'}
+                      </span>
+                    </td>
+                    <td style={{ ...TD_S(i%2===1), fontSize:'.78rem', color:T.textMid }}>
+                      {TIPOS_CONTENIDO.find(t=>t.value===r.tipoContenido)?.label || r.tipoContenido || '—'}
+                    </td>
+                    <td style={{ ...TD_S(i%2===1), fontWeight:700, color:T.secondary, textAlign:'right' }}>
+                      {r.totalLbsCaja > 0 ? r.totalLbsCaja.toFixed(2) : '—'}
+                    </td>
+                    <td style={{ ...TD_S(i%2===1), textAlign:'right', color:T.textMid }}>
+                      {r.totalKgCaja > 0 ? r.totalKgCaja.toFixed(2) : '—'}
+                    </td>
+                    <td style={{ ...TD_S(i%2===1), fontSize:'.78rem', color:T.textMid }}>{r.codigoSAP||'—'}</td>
                     <td style={TD_S(i%2===1)}>
                       <div style={{ display:'flex', gap:6 }}>
                         <button onClick={()=>startEdit(r)} style={{ padding:'3px 9px', background:T.primary, color:T.white, border:'none', borderRadius:4, fontSize:'.72rem', fontWeight:600, cursor:'pointer' }}>Editar</button>
