@@ -291,10 +291,20 @@ function TabPresentaciones() {
 
   const sf = (k, v) => setForm(f => {
     const next = { ...f, [k]: v };
-    const qty  = parseFloat(next.cantidadCaja) || 0;
-    const lbs  = parseFloat(next.lbsUnidad)    || 0;
-    next.totalLbsCaja = qty * lbs;
-    next.totalKgCaja  = next.totalLbsCaja / 2.205;
+    // Auto-lock Repollo to unidades
+    if (k === 'producto' && (v || '').toLowerCase().includes('repollo')) {
+      next.tipoContenido = 'unidades';
+    }
+    const qty = parseFloat(next.cantidadCaja) || 0;
+    const lbs = parseFloat(next.lbsUnidad)    || 0;
+    if (next.tipoContenido === 'redes' || next.tipoContenido === 'bolsas') {
+      next.totalLbsCaja = qty * lbs;              // auto: cantidad × lbs/unidad
+    } else if (next.tipoContenido === 'granel') {
+      next.totalLbsCaja = lbs;                    // direct: lbs = what user typed
+    } else {
+      next.totalLbsCaja = 0;                      // unidades: no lbs calc
+    }
+    next.totalKgCaja = next.totalLbsCaja / 2.205;
     return next;
   });
 
@@ -321,10 +331,6 @@ function TabPresentaciones() {
     });
     setEditId(r.id);
   };
-
-  const lbsPct = form.totalLbsCaja > 0
-    ? Math.min(100, (form.totalLbsCaja / 50) * 100)
-    : 0;
 
   if (loading) return <Skeleton rows={5}/>;
 
@@ -375,37 +381,52 @@ function TabPresentaciones() {
           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))', gap:14, marginBottom:14 }}>
             <label style={LS}>
               Tipo de Contenido
-              <select value={form.tipoContenido} onChange={e=>sf('tipoContenido',e.target.value)} style={IS}>
+              <select
+                value={form.tipoContenido}
+                onChange={e=>sf('tipoContenido',e.target.value)}
+                disabled={(form.producto||'').toLowerCase().includes('repollo')}
+                style={{ ...IS, opacity:(form.producto||'').toLowerCase().includes('repollo')?0.6:1 }}>
                 {TIPOS_CONTENIDO.map(t=><option key={t.value} value={t.value}>{t.label}</option>)}
               </select>
+              {(form.producto||'').toLowerCase().includes('repollo') && (
+                <span style={{ fontSize:'.65rem', color:T.secondary, marginTop:2 }}>Repollo siempre = Unidades</span>
+              )}
             </label>
-            <label style={LS}>
-              Cantidad dentro de la Caja
-              <input value={form.cantidadCaja} onChange={e=>sf('cantidadCaja',e.target.value)}
-                placeholder="Ej. 8 redes, 4 unidades" style={IS}/>
-            </label>
-            <label style={LS}>
-              LBS por Red / Bolsa / Unidad
-              <input type="number" min="0" step="0.01" value={form.lbsUnidad} onChange={e=>sf('lbsUnidad',e.target.value)}
-                placeholder="Ej. 3 lbs" style={IS}/>
-            </label>
+            {/* Cantidad: show for redes/bolsas/unidades */}
+            {form.tipoContenido !== 'granel' && (
+              <label style={LS}>
+                {form.tipoContenido === 'unidades' ? 'Unidades por caja' : 'Cantidad dentro de la caja'}
+                <input value={form.cantidadCaja} onChange={e=>sf('cantidadCaja',e.target.value)}
+                  placeholder={form.tipoContenido === 'unidades' ? 'Ej. 30 unidades' : 'Ej. 8 redes'} style={IS}/>
+              </label>
+            )}
+            {/* LBS field: different meaning per tipo */}
+            {form.tipoContenido !== 'unidades' && (
+              <label style={LS}>
+                {form.tipoContenido === 'granel' ? 'LBS totales por caja' : 'LBS por red / bolsa'}
+                <input type="number" min="0" step="0.01" value={form.lbsUnidad} onChange={e=>sf('lbsUnidad',e.target.value)}
+                  placeholder="Ej. 30" style={IS}/>
+                {form.tipoContenido === 'granel' && (
+                  <span style={{ fontSize:'.65rem', color:T.textMid, marginTop:2 }}>Entrada directa — no se multiplica</span>
+                )}
+              </label>
+            )}
           </div>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, marginBottom:12 }}>
-            <label style={LS}>
-              ⇒ Total LBS por Caja
-              <input readOnly value={form.totalLbsCaja > 0 ? form.totalLbsCaja.toFixed(2) : 'Auto'}
-                style={{ ...IS, background:'#F5F5F5', color:form.totalLbsCaja>0?T.secondary:T.textMid, fontWeight:700 }}/>
-            </label>
-            <label style={LS}>
-              ⇒ Total KG por Caja
-              <input readOnly value={form.totalKgCaja > 0 ? form.totalKgCaja.toFixed(2) : 'Auto'}
-                style={{ ...IS, background:'#F5F5F5', color:form.totalKgCaja>0?T.secondary:T.textMid, fontWeight:700 }}/>
-            </label>
-          </div>
-          {/* Progress bar */}
-          <div style={{ height:6, background:T.border, borderRadius:3, overflow:'hidden' }}>
-            <div style={{ height:'100%', width:`${lbsPct}%`, background:T.secondary, borderRadius:3, transition:'width .3s' }}/>
-          </div>
+          {/* Totals row — only show if there's a lbs value */}
+          {form.totalLbsCaja > 0 && (
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, marginBottom:12 }}>
+              <label style={LS}>
+                ⇒ Total LBS por Caja
+                <input readOnly value={form.totalLbsCaja.toFixed(2)}
+                  style={{ ...IS, background:'#F5F5F5', color:T.secondary, fontWeight:700 }}/>
+              </label>
+              <label style={LS}>
+                ⇒ Total KG por Caja
+                <input readOnly value={form.totalKgCaja.toFixed(2)}
+                  style={{ ...IS, background:'#F5F5F5', color:T.secondary, fontWeight:700 }}/>
+              </label>
+            </div>
+          )}
         </div>
 
         <div style={{ display:'flex', gap:10 }}>

@@ -30,8 +30,7 @@ const IS = {
 };
 
 const BLANK = {
-  nombre: '', pais: 'Guatemala', contacto: '', telefono: '',
-  email: '', banco: '', credito: '', productos: '', obs: '',
+  nombre: '', contacto: '', telefono: '', productos: '', obs: '',
 };
 
 // ── Field helper ─────────────────────────────────────────────────
@@ -108,8 +107,8 @@ export default function Proveedores() {
     const q = search.toLowerCase();
     return (
       r.nombre?.toLowerCase().includes(q) ||
-      r.pais?.toLowerCase().includes(q) ||
       r.contacto?.toLowerCase().includes(q) ||
+      r.telefono?.toLowerCase().includes(q) ||
       r.productos?.toLowerCase().includes(q)
     );
   });
@@ -132,13 +131,9 @@ export default function Proveedores() {
           {editId ? 'Editar proveedor' : 'Nuevo proveedor'}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))', gap: 14, marginBottom: 14 }}>
-          <Field id="nombre"    label="Nombre *"         form={form} setForm={setForm} />
-          <Field id="pais"      label="País"             form={form} setForm={setForm} />
-          <Field id="contacto"  label="Contacto"         form={form} setForm={setForm} />
-          <Field id="telefono"  label="Teléfono"         form={form} setForm={setForm} />
-          <Field id="email"     label="Email"            form={form} setForm={setForm} />
-          <Field id="banco"     label="Banco / Cuenta"   form={form} setForm={setForm} />
-          <Field id="credito"   label="Crédito (días)"   form={form} setForm={setForm} />
+          <Field id="nombre"    label="Nombre *"             form={form} setForm={setForm} />
+          <Field id="contacto"  label="Contacto"             form={form} setForm={setForm} />
+          <Field id="telefono"  label="Teléfono"             form={form} setForm={setForm} />
           <Field id="productos" label="Productos que provee" form={form} setForm={setForm} />
         </div>
         <label style={{ ...LS, marginBottom: 16 }}>
@@ -198,7 +193,7 @@ export default function Proveedores() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: T.primary }}>
-                  {['Nombre', 'País', 'Contacto', 'Teléfono', 'Banco', 'Crédito', 'Acciones'].map(h => (
+                  {['Nombre', 'Contacto', 'Teléfono', 'Productos que provee', 'Acciones'].map(h => (
                     <th key={h} style={thSt}>{h}</th>
                   ))}
                 </tr>
@@ -206,23 +201,11 @@ export default function Proveedores() {
               <tbody>
                 {filtered.map((r, i) => (
                   <tr key={r.id} style={{ background: i % 2 === 1 ? '#F9FBF9' : '#fff' }}>
-                    <td style={{ ...tdSt, fontWeight: 600 }}>
-                      {r.nombre}
-                      {r.productos && (
-                        <div style={{ fontSize: '.72rem', color: T.textMid, marginTop: 2 }}>
-                          {r.productos.length > 50 ? r.productos.slice(0, 50) + '…' : r.productos}
-                        </div>
-                      )}
-                    </td>
-                    <td style={{ ...tdSt, color: T.textMid }}>{r.pais || 'Guatemala'}</td>
+                    <td style={{ ...tdSt, fontWeight: 600 }}>{r.nombre}</td>
                     <td style={tdSt}>{r.contacto || '—'}</td>
                     <td style={tdSt}>{r.telefono || '—'}</td>
-                    <td style={{ ...tdSt, color: T.textMid }}>{r.banco || '—'}</td>
-                    <td style={tdSt}>
-                      {r.credito
-                        ? <span style={{ padding: '2px 8px', borderRadius: 4, background: '#E8F5E9', color: T.secondary, fontWeight: 600, fontSize: '.78rem' }}>{r.credito}d</span>
-                        : <span style={{ color: T.textMid }}>—</span>
-                      }
+                    <td style={{ ...tdSt, color: T.textMid, fontSize: '.78rem' }}>
+                      {r.productos ? (r.productos.length > 50 ? r.productos.slice(0, 50) + '…' : r.productos) : '—'}
                     </td>
                     <td style={tdSt}>
                       <div style={{ display: 'flex', gap: 6 }}>

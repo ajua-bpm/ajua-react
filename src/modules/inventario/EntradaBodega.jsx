@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useCollection, useWrite } from '../../hooks/useFirestore';
-import { useProductosCatalogo, useClientes } from '../../hooks/useMainData';
+import { useProductosCatalogo } from '../../hooks/useMainData';
 import { useToast } from '../../components/Toast';
 import Skeleton from '../../components/Skeleton';
 
@@ -37,7 +37,6 @@ const LBS_FACTOR = 2.20462;
 const BLANK = {
   fecha: today(),
   producto: '',
-  origen: '',
   productor: '',
   proveedor: '',
   bultos: '',
@@ -66,10 +65,10 @@ function MetricCard({ label, value, accent }) {
 export default function EntradaBodega() {
   const toast = useToast();
 
-  const { data, loading }            = useCollection('ientradas', { orderField: 'fecha', orderDir: 'desc', limit: 300 });
-  const { productos, loading: lp }   = useProductosCatalogo();
-  const { clientes, loading: lc }    = useClientes();
-  const { add, remove, saving }      = useWrite('ientradas');
+  const { data, loading }              = useCollection('ientradas', { orderField: 'fecha', orderDir: 'desc', limit: 300 });
+  const { productos, loading: lp }     = useProductosCatalogo();
+  const { data: proveedores, loading: lc } = useCollection('proveedores', { orderField: 'nombre', limit: 300 });
+  const { add, remove, saving }        = useWrite('ientradas');
 
   const [form, setForm] = useState({ ...BLANK });
   const s = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -88,7 +87,6 @@ export default function EntradaBodega() {
     await add({
       fecha:      form.fecha,
       producto:   form.producto,
-      origen:     form.origen,
       productor:  form.productor,
       proveedor:  form.proveedor,
       bultos:     parseFloat(form.bultos) || 0,
@@ -113,7 +111,7 @@ export default function EntradaBodega() {
   const entradasHoy = data.filter(r => r.fecha === todayStr).length;
   const totalLbs    = useMemo(() => data.reduce((s, r) => s + (parseFloat(r.lbsBrutas) || 0), 0), [data]);
 
-  const loadingAll = loading || lp || lc;
+  const loadingAll = loading || lp;
 
   return (
     <div style={{ padding: '24px 28px', fontFamily: 'inherit', maxWidth: 1100 }}>
@@ -148,27 +146,39 @@ export default function EntradaBodega() {
           </label>
           <label style={LS}>
             Producto *
-            <select value={form.producto} onChange={e => s('producto', e.target.value)} style={IS}>
-              <option value="">— Seleccionar —</option>
-              {productos.map(p => <option key={p.id || p.nombre} value={p.nombre}>{p.nombre}</option>)}
-            </select>
-          </label>
-          <label style={LS}>
-            Origen / Pais
-            <input value={form.origen} onChange={e => s('origen', e.target.value)}
-              placeholder="Guatemala, Mexico..." style={IS} />
+            <input
+              list="prod-list"
+              value={form.producto}
+              onChange={e => s('producto', e.target.value)}
+              placeholder="Nombre del producto"
+              style={IS}
+            />
+            <datalist id="prod-list">
+              {productos.map(p => <option key={p.id || p.nombre} value={p.nombre} />)}
+            </datalist>
           </label>
           <label style={LS}>
             Productor (campo/finca)
-            <input value={form.productor} onChange={e => s('productor', e.target.value)}
-              placeholder="Nombre del productor" style={IS} />
+            <input
+              list="prov-list"
+              value={form.productor}
+              onChange={e => s('productor', e.target.value)}
+              placeholder="Nombre del productor"
+              style={IS}
+            />
           </label>
           <label style={LS}>
             Proveedor / Intermediario
-            <select value={form.proveedor} onChange={e => s('proveedor', e.target.value)} style={IS}>
-              <option value="">— Seleccionar —</option>
-              {clientes.map(c => <option key={c.id || c.nombre} value={c.nombre}>{c.nombre}</option>)}
-            </select>
+            <input
+              list="prov-list"
+              value={form.proveedor}
+              onChange={e => s('proveedor', e.target.value)}
+              placeholder="Nombre del proveedor"
+              style={IS}
+            />
+            <datalist id="prov-list">
+              {proveedores.map(p => <option key={p.id || p.nombre} value={p.nombre} />)}
+            </datalist>
           </label>
 
           {/* Row 2 — quantities */}
