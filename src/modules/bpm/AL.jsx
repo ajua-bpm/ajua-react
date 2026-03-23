@@ -60,7 +60,6 @@ export default function AL() {
   const [turno,       setTurno]       = useState('AM');
   const [hi,          setHi]          = useState('07:00');
   const [hs,          setHs]          = useState('17:00');
-  const [horasOn,     setHorasOn]     = useState(Object.fromEntries(HORAS.map(h => [h, true])));
   const [checks,      setChecks]      = useState([]);
   const [obs,         setObs]         = useState('');
   const [initialized, setInitialized] = useState(false);
@@ -73,7 +72,8 @@ export default function AL() {
 
   useEffect(() => {
     if (!empLoading && empleados.length > 0 && !initialized) {
-      setChecks(initChecks(empleados));
+      const sorted = [...empleados].sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
+      setChecks(initChecks(sorted));
       setInitialized(true);
     }
   }, [empLoading, empleados, initialized]);
@@ -93,7 +93,7 @@ export default function AL() {
 
   const selectedChecks  = checks.filter(r => r.selected);
   const numSelected     = selectedChecks.length;
-  const horasVisible    = HORAS.filter(h => horasOn[h]);
+  const horasVisible    = HORAS;
   const totalPosible    = numSelected * horasVisible.length;
   const totalOk         = selectedChecks.reduce((s, r) => s + horasVisible.filter(h => r.horas[h]).length, 0);
   const pct             = totalPosible > 0 ? Math.round(totalOk / totalPosible * 100) : 0;
@@ -105,7 +105,7 @@ export default function AL() {
     if (numSelected < 1) { toast('Seleccioná al menos un empleado', 'error'); return; }
     try {
       await add({
-        fecha, turno, hi, hs, horasOn,
+        fecha, turno, hi, hs,
         checks: selectedChecks.map(r => ({
           empleadoId: r.empleadoId,
           nombre: r.nombre,
@@ -180,24 +180,6 @@ export default function AL() {
           <Lbl text="Hora Salida (Turno)">
             <input type="time" value={hs} onChange={e => setHs(e.target.value)} style={iStyle} />
           </Lbl>
-        </div>
-
-        {/* Fixed hours */}
-        <div style={{ background: T.bgLight, border: `1px solid ${T.border}`, borderRadius: 6, padding: '12px 16px', marginBottom: 20 }}>
-          <div style={{ fontSize: '.62rem', color: T.textMid, letterSpacing: '.1em', textTransform: 'uppercase', marginBottom: 10, fontWeight: 700 }}>
-            Horarios Fijos de Lavado de Manos
-          </div>
-          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-            {HORAS.map(h => (
-              <label key={h} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.8rem', cursor: 'pointer' }}>
-                <input type="checkbox" checked={horasOn[h]}
-                  onChange={() => setHorasOn(prev => ({ ...prev, [h]: !prev[h] }))}
-                  style={{ accentColor: T.secondary, width: 15, height: 15 }} />
-                {HORA_LABELS[h]}
-              </label>
-            ))}
-            <span style={{ fontSize: '.7rem', color: T.textMid, marginLeft: 4 }}>Desmarca los que no apliquen al turno</span>
-          </div>
         </div>
 
         {/* Employee selection header */}

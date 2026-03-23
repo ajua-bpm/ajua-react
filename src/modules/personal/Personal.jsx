@@ -63,7 +63,7 @@ function TabEmpleados() {
 
   const BLANK_EMP = {
     nombre: '', cargo: '', dpi: '', telefono: '', salarioDia: '',
-    fechaIngreso: '', activo: true, roles: [],
+    fechaIngreso: '', activo: true, roles: [], sexo: 'M',
     numLicencia: '', tipoLicencia: '', vencLicencia: '',
   };
   const [form, setForm]     = useState({ ...BLANK_EMP });
@@ -92,7 +92,7 @@ function TabEmpleados() {
       nombre: r.nombre || '', cargo: r.cargo || '', dpi: r.dpi || '',
       telefono: r.telefono || '', salarioDia: String(r.salarioDia || ''),
       fechaIngreso: r.fechaIngreso || '', activo: r.activo !== false,
-      roles: Array.isArray(r.roles) ? r.roles : [],
+      roles: Array.isArray(r.roles) ? r.roles : [], sexo: r.sexo || 'M',
       numLicencia: r.numLicencia || '', tipoLicencia: r.tipoLicencia || '',
       vencLicencia: r.vencLicencia || '',
     });
@@ -133,6 +133,12 @@ function TabEmpleados() {
           <label style={LS}>Teléfono<input value={form.telefono} onChange={e => setForm(f => ({ ...f, telefono: e.target.value }))} style={IS} /></label>
           <label style={LS}>Salario/día (Q)<input type="number" min="0" step="0.01" value={form.salarioDia} onChange={e => setForm(f => ({ ...f, salarioDia: e.target.value }))} style={IS} /></label>
           <label style={LS}>Fecha ingreso<input type="date" value={form.fechaIngreso} onChange={e => setForm(f => ({ ...f, fechaIngreso: e.target.value }))} style={IS} /></label>
+          <label style={LS}>Sexo
+            <select value={form.sexo} onChange={e => setForm(f => ({ ...f, sexo: e.target.value }))} style={{ ...IS, cursor: 'pointer' }}>
+              <option value="M">Masculino</option>
+              <option value="F">Femenino</option>
+            </select>
+          </label>
         </div>
 
         {/* Roles */}

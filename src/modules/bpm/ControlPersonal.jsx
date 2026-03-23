@@ -1,6 +1,26 @@
 import { useState, useMemo } from 'react';
 import { useEmpleados } from '../../hooks/useMainData';
 import { useCollection, useWrite } from '../../hooks/useFirestore';
+
+// Merge empleados from collection + main doc, filter active women, sort alpha
+function useMujeres() {
+  const { data: empCol, loading: lCol } = useCollection('empleados', { orderField: 'nombre', limit: 200 });
+  const { empleados: empMain, loading: lMain } = useEmpleados();
+  const mujeres = useMemo(() => {
+    const seen = new Set();
+    const list = [];
+    [...(empCol || []), ...(empMain || [])].forEach(e => {
+      const key = (e.nombre || '').toLowerCase().trim();
+      if (!seen.has(key) && e.nombre && e.activo !== false) {
+        seen.add(key); list.push(e);
+      }
+    });
+    return list
+      .filter(e => (e.sexo || '').toUpperCase() === 'F')
+      .sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
+  }, [empCol, empMain]);
+  return { mujeres, loading: lCol || lMain };
+}
 import { useToast } from '../../components/Toast';
 import Skeleton from '../../components/Skeleton';
 
@@ -75,7 +95,7 @@ function resultBadge(aprobado) {
 // ── Main ──────────────────────────────────────────────────────────
 export default function ControlPersonal() {
   const toast = useToast();
-  const { empleados, loading: empLoading } = useEmpleados();
+  const { mujeres: empleados, loading: empLoading } = useMujeres();
   const { data: historial, loading: histLoading } = useCollection('controlPersonal', {
     orderField: 'fecha', orderDir: 'desc', limit: 200,
   });

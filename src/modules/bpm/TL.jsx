@@ -117,7 +117,6 @@ export default function TL() {
   const [placaOtra,   setPlacaOtra]   = useState('');
   const [conductor,   setConductor]   = useState('');
   const [tipo,        setTipo]        = useState('Rutina diaria');
-  const [responsable, setResponsable] = useState('');
   const [checks,      setChecks]      = useState(initChecks);
   const [obs,         setObs]         = useState('');
   const [fotoUrl,     setFotoUrl]     = useState('');
@@ -133,14 +132,14 @@ export default function TL() {
   };
 
   const { pct, resultado } = calcScore(checks);
-  const canSave = fecha && responsable;
+  const canSave = fecha && conductor;
 
   const handleSave = async () => {
-    if (!canSave) { toast('Complete fecha y responsable', 'error'); return; }
+    if (!canSave) { toast('Complete fecha y piloto', 'error'); return; }
     const placaFinal = placa === 'Otro' ? (placaOtra || 'Otro') : placa;
     try {
       await add({
-        fecha, hora, placa: placaFinal, conductor, tipo, responsable,
+        fecha, hora, placa: placaFinal, conductor, tipo,
         checks, pct, resultado, obs, fotoUrl,
         creadoEn: new Date().toISOString(),
       });
@@ -149,7 +148,6 @@ export default function TL() {
       setObs('');
       setFotoUrl('');
       setConductor('');
-      setResponsable('');
       setHora(nowHM());
     } catch (e) {
       toast('Error al guardar: ' + e.message, 'error');
@@ -186,7 +184,7 @@ export default function TL() {
           </Lbl>
         </div>
 
-        {/* Row 2: placa / conductor / responsable */}
+        {/* Row 2: placa / conductor */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 14, marginBottom: 20 }}>
           <Lbl text="Placa del Vehículo">
             <select value={placa} onChange={e => setPlaca(e.target.value)} style={{ ...iStyle, background: '#fff', cursor: 'pointer' }}>
@@ -200,20 +198,11 @@ export default function TL() {
             )}
           </Lbl>
 
-          <Lbl text="Conductor">
+          <Lbl text="Piloto">
             {condLoading ? <Skeleton height={38} /> : (
               <select value={conductor} onChange={e => setConductor(e.target.value)} style={{ ...iStyle, background: '#fff', cursor: 'pointer' }}>
-                <option value="">— Seleccionar conductor —</option>
+                <option value="">— Seleccionar piloto —</option>
                 {conductores.map(c => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
-              </select>
-            )}
-          </Lbl>
-
-          <Lbl text="Responsable">
-            {empLoading ? <Skeleton height={38} /> : (
-              <select value={responsable} onChange={e => setResponsable(e.target.value)} style={{ ...iStyle, background: '#fff', cursor: 'pointer' }}>
-                <option value="">— Seleccionar responsable —</option>
-                {empleados.map(e => <option key={e.id} value={e.nombre}>{e.nombre}{e.cargo ? ' · ' + e.cargo : ''}</option>)}
               </select>
             )}
           </Lbl>

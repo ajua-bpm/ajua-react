@@ -17,19 +17,7 @@ const GRUPOS = [
     items: [
       { id: 'c01', text: 'El interior del vehículo está limpio y libre de residuos' },
       { id: 'c02', text: 'El exterior del vehículo está limpio' },
-      { id: 'c03', text: 'Las superficies en contacto con producto están desinfectadas' },
-      { id: 'c04', text: 'Se realizó desinfección periódica del vehículo' },
       { id: 'c05', text: 'No hay olores fuertes o inusuales en el área de carga' },
-    ],
-  },
-  {
-    label: 'EQUIPOS TRANSPORTE',
-    items: [
-      { id: 'c06', text: 'El sistema de refrigeración funciona adecuadamente' },
-      { id: 'c07', text: 'Las puertas del compartimento cierran herméticamente' },
-      { id: 'c08', text: 'Las paredes del compartimento están en buen estado' },
-      { id: 'c09', text: 'El piso está limpio, seco y sin roturas' },
-      { id: 'c10', text: 'El vehículo cuenta con ventilación adecuada' },
     ],
   },
 ];
@@ -120,16 +108,13 @@ export default function DT() {
   const { data, loading } = useCollection('dt', { orderField: 'fecha', orderDir: 'desc', limit: 50 });
   const { add, saving } = useWrite('dt');
 
-  const [fecha,       setFecha]       = useState(today());
-  const [hora,        setHora]        = useState(nowHM());
-  const [placa,       setPlaca]       = useState('008');
-  const [placaOtra,   setPlacaOtra]   = useState('');
-  const [conductor,   setConductor]   = useState('');
-  const [cliente,     setCliente]     = useState('');
-  const [tipo,        setTipo]        = useState('Refrigerado');
-  const [responsable, setResponsable] = useState('');
-  const [numFel,      setNumFel]      = useState('');
-  const [checks,      setChecks]      = useState(initChecks);
+  const [fecha,     setFecha]     = useState(today());
+  const [hora,      setHora]      = useState(nowHM());
+  const [placa,     setPlaca]     = useState('008');
+  const [placaOtra, setPlacaOtra] = useState('');
+  const [conductor, setConductor] = useState('');
+  const [cliente,   setCliente]   = useState('');
+  const [checks,    setChecks]    = useState(initChecks);
   const [obs,         setObs]         = useState('');
   const [fotoUrl,     setFotoUrl]     = useState('');
 
@@ -154,8 +139,8 @@ export default function DT() {
     const placaFinal = placa === 'Otro' ? (placaOtra || 'Otro') : placa;
     try {
       await add({
-        fecha, hora, placa: placaFinal, conductor, cliente, tipo, responsable,
-        numFel, checks, pct, resultado, obs, fotoUrl,
+        fecha, hora, placa: placaFinal, conductor, cliente,
+        checks, pct, resultado, obs, fotoUrl,
         creadoEn: new Date().toISOString(),
       });
       toast(`✓ Inspección DT guardada — ${pct}% cumplimiento`);
@@ -164,8 +149,6 @@ export default function DT() {
       setFotoUrl('');
       setConductor('');
       setCliente('');
-      setResponsable('');
-      setNumFel('');
       setHora(nowHM());
     } catch (e) {
       toast('Error al guardar: ' + e.message, 'error');
@@ -223,28 +206,6 @@ export default function DT() {
                 {(clientes || []).map(c => <option key={c.id || c.nombre} value={c.nombre}>{c.nombre}{c.muni ? ' · ' + c.muni : ''}</option>)}
               </select>
             )}
-          </Lbl>
-        </div>
-
-        {/* Row 3: tipo / responsable / numFel */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 14, marginBottom: 20 }}>
-          <Lbl text="Tipo de Carga">
-            <select value={tipo} onChange={e => setTipo(e.target.value)} style={{ ...iStyle, background: '#fff', cursor: 'pointer' }}>
-              <option>Refrigerado</option>
-              <option>Seco</option>
-              <option>Mixto</option>
-            </select>
-          </Lbl>
-          <Lbl text="Responsable">
-            {empLoading ? <Skeleton height={38} /> : (
-              <select value={responsable} onChange={e => setResponsable(e.target.value)} style={{ ...iStyle, background: '#fff', cursor: 'pointer' }}>
-                <option value="">— Seleccionar —</option>
-                {empleados.map(e => <option key={e.id} value={e.nombre}>{e.nombre}{e.cargo ? ' · ' + e.cargo : ''}</option>)}
-              </select>
-            )}
-          </Lbl>
-          <Lbl text="No. FEL (opcional)">
-            <input type="text" value={numFel} onChange={e => setNumFel(e.target.value)} placeholder="Ej. 1234-5678" style={iStyle} />
           </Lbl>
         </div>
 

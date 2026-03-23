@@ -53,8 +53,8 @@ export default function StockVivo() {
     for (const e of entradas) {
       const k = e.producto; if (!k) continue;
       ensure(k);
-      // Migrated data has `lbs` (total pounds). Fallback to unidades/bultos/cantidad
-      const lbs = Number(e.lbs) || Number(e.unidades) || Number(e.bultos) || Number(e.cantidad) || 0;
+      // EntradaBodega saves lbsBrutas; legacy may use lbs/unidades/bultos/cantidad
+      const lbs = Number(e.lbs) || Number(e.lbsBrutas) || Number(e.unidades) || Number(e.bultos) || Number(e.cantidad) || 0;
       m[k].entLbs += lbs;
       if (e.unidad) m[k].unidad = e.unidad;
       if (e.duca)   { m[k].lastDuca = e.duca; m[k].lastDucaLbs = Number(e.lbs) || 0; }
@@ -89,7 +89,7 @@ export default function StockVivo() {
 
     for (const e of entradas) {
       if (!e.producto) continue;
-      const lbs = Number(e.lbs) || Number(e.unidades) || Number(e.bultos) || Number(e.cantidad) || 0;
+      const lbs = Number(e.lbs) || Number(e.lbsBrutas) || Number(e.unidades) || Number(e.bultos) || Number(e.cantidad) || 0;
       mvs.push({
         fecha:   fmtDate(e.fecha),
         tipo:    'entrada',
