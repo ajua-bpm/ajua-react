@@ -63,9 +63,17 @@ export default function Capacitacion() {
   const { add, saving } = useWrite('cap');
 
   // Merge Firestore collection + legacy data from ajua_bpm/main
+  // bpm.html field mapping: prof→instructor, temas→tema, dur→duracion, asistentes→participantes
   const data = useMemo(() => {
     const mainCap = (mainData?.cap || []).map(r => ({
-      ...r, id: r.id || r._id || ('main_' + (r.fecha || '') + '_' + (r.instructor || '')),
+      ...r,
+      id:            r.id || r._id || ('main_' + (r.fecha || '') + '_' + (r.prof || r.instructor || '')),
+      instructor:    r.instructor || r.prof || '',
+      tema:          r.tema || r.temas || r.tipo || '',
+      duracion:      r.duracion || r.dur || '',
+      participantes: Array.isArray(r.participantes) ? r.participantes
+                   : Array.isArray(r.asistentes)    ? r.asistentes : [],
+      resultado:     r.resultado || 'Aprobado',
     }));
     const seen = new Set(colData.map(r => r.id));
     const merged = [...colData, ...mainCap.filter(r => !seen.has(r.id))];

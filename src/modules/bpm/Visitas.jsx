@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useCollection, useWrite } from '../../hooks/useFirestore';
+import { useMainData } from '../../hooks/useMainData';
 import { useToast } from '../../components/Toast';
 import Skeleton from '../../components/Skeleton';
 
@@ -47,8 +48,22 @@ const INIT = () => ({
 
 export default function Visitas() {
   const toast = useToast();
-  const { data, loading } = useCollection('vis', { orderField: 'fecha', orderDir: 'desc', limit: 300 });
+  const { data: colData, loading: colLoading } = useCollection('vis', { orderField: 'fecha', orderDir: 'desc', limit: 300 });
+  const { data: mainData, loading: mainLoading } = useMainData();
   const { add, update, remove, saving } = useWrite('vis');
+
+  // Merge Firestore collection + legacy data from ajua_bpm/main → data.vis
+  const data = useMemo(() => {
+    const mainVis = (mainData?.vis || []).map(r => ({
+      ...r,
+      id: r.id || r._id || ('main_vis_' + (r.fecha || '') + '_' + (r.nombre || '')),
+    }));
+    const seen = new Set(colData.map(r => r.id));
+    const merged = [...colData, ...mainVis.filter(r => !seen.has(r.id))];
+    return merged.sort((a, b) => ((b.fecha || b.ts || '') > (a.fecha || a.ts || '') ? 1 : -1));
+  }, [colData, mainData]);
+
+  const loading = colLoading || mainLoading;
 
   const [form, setForm] = useState(INIT());
 
