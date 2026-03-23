@@ -265,9 +265,9 @@ export default function SalidaBodega() {
     if (!form.fecha) {
       toast('La fecha es requerida', 'error'); return;
     }
-    const validLines = lineas.filter(l => l.producto && (parseFloat(l.cajas) || 0) > 0);
+    const validLines = lineas.filter(l => (l.producto || l.descripcion) && (parseFloat(l.cajas) || 0) > 0);
     if (validLines.length === 0) {
-      toast('Agrega al menos una línea con producto y cajas > 0', 'error'); return;
+      toast('Agrega al menos una línea con producto o descripción y cajas > 0', 'error'); return;
     }
 
     const lineasClean = validLines.map(({ _key, ...l }) => ({

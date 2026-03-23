@@ -222,7 +222,9 @@ function TabPedidos({ data, loading, add, update, remove, saving }) {
   const [search,    setSearch]    = useState('');
 
   // Row state
-  const [felOpenId, setFelOpenId] = useState(null);
+  const [felOpenId,       setFelOpenId]       = useState(null);
+  const [entregadoOpenId, setEntregadoOpenId] = useState(null);
+  const [entregadoForm,   setEntregadoForm]   = useState({ cajasEntregadas: '', tipoEntrega: 'aceptado_total', motivoRechazo: '' });
 
   const handleEmailParsed = (parsed) => {
     setForm(f => ({
@@ -270,8 +272,27 @@ function TabPedidos({ data, loading, add, update, remove, saving }) {
     try {
       await update(id, { estado });
       toast(`Estado: ${ESTADO_CFG[estado]?.label || estado}`);
-      if (estado === 'entregado') setFelOpenId(id);
     } catch { toast('Error al actualizar', 'error'); }
+  };
+
+  const openEntregado = (r) => {
+    setEntregadoForm({ cajasEntregadas: r.totalCajas || '', tipoEntrega: 'aceptado_total', motivoRechazo: '' });
+    setEntregadoOpenId(r.id);
+  };
+
+  const handleEntregadoSave = async (id) => {
+    try {
+      await update(id, {
+        estado: 'entregado',
+        cajasEntregadas: parseFloat(entregadoForm.cajasEntregadas) || 0,
+        tipoEntrega:     entregadoForm.tipoEntrega,
+        motivoRechazo:   entregadoForm.motivoRechazo,
+        fechaEntregaReal: today(),
+      });
+      toast('Entrega registrada');
+      setEntregadoOpenId(null);
+      setFelOpenId(id);
+    } catch { toast('Error al guardar', 'error'); }
   };
 
   const handleFelSave = async (id, data) => {
@@ -442,7 +463,7 @@ function TabPedidos({ data, loading, add, update, remove, saving }) {
                             </button>
                           )}
                           {r.estado === 'preparando' && (
-                            <button onClick={() => handleEstado(r.id, 'entregado')}
+                            <button onClick={() => openEntregado(r)}
                               style={{ padding: '4px 9px', background: T.secondary, color: WHITE, border: 'none', borderRadius: 4, fontSize: '.7rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
                               Entregado ✓
                             </button>
@@ -460,6 +481,50 @@ function TabPedidos({ data, loading, add, update, remove, saving }) {
                         </div>
                       </td>
                     </tr>
+                    {entregadoOpenId === r.id && (
+                      <tr key={r.id + '_ent'} style={{ background: '#F1F8E9' }}>
+                        <td colSpan={8} style={{ padding: '12px 14px' }}>
+                          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '.72rem', fontWeight: 600, color: T.textMid, textTransform: 'uppercase' }}>
+                              Cajas entregadas
+                              <input type="number" min="0" value={entregadoForm.cajasEntregadas}
+                                onChange={e => setEntregadoForm(f => ({ ...f, cajasEntregadas: e.target.value }))}
+                                style={{ ...IS, width: 110 }} />
+                            </label>
+                            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '.72rem', fontWeight: 600, color: T.textMid, textTransform: 'uppercase' }}>
+                              Tipo de entrega
+                              <select value={entregadoForm.tipoEntrega}
+                                onChange={e => setEntregadoForm(f => ({ ...f, tipoEntrega: e.target.value }))}
+                                style={{ ...IS, width: 190 }}>
+                                <option value="aceptado_total">Aceptado total</option>
+                                <option value="aceptado_parcial">Aceptado parcial</option>
+                                <option value="rechazo">Rechazo</option>
+                                <option value="no_entregado">No entregado (sin capacidad)</option>
+                              </select>
+                            </label>
+                            {(entregadoForm.tipoEntrega === 'rechazo' || entregadoForm.tipoEntrega === 'aceptado_parcial') && (
+                              <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '.72rem', fontWeight: 600, color: T.textMid, textTransform: 'uppercase', flex: 1 }}>
+                                Motivo
+                                <input value={entregadoForm.motivoRechazo}
+                                  onChange={e => setEntregadoForm(f => ({ ...f, motivoRechazo: e.target.value }))}
+                                  placeholder="Detalle motivo..."
+                                  style={{ ...IS, minWidth: 180 }} />
+                              </label>
+                            )}
+                            <div style={{ display: 'flex', gap: 8 }}>
+                              <button onClick={() => handleEntregadoSave(r.id)}
+                                style={{ padding: '9px 18px', background: T.primary, color: WHITE, border: 'none', borderRadius: 6, fontWeight: 700, fontSize: '.82rem', cursor: 'pointer' }}>
+                                Confirmar entrega
+                              </button>
+                              <button onClick={() => setEntregadoOpenId(null)}
+                                style={{ padding: '9px 14px', background: '#F5F5F5', color: T.textMid, border: `1px solid ${T.border}`, borderRadius: 6, fontWeight: 600, fontSize: '.82rem', cursor: 'pointer' }}>
+                                Cancelar
+                              </button>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
                     {felOpenId === r.id && (
                       <tr key={r.id + '_fel'} style={{ background: i % 2 === 1 ? '#F9FBF9' : WHITE }}>
                         <td colSpan={8} style={{ padding: '0 14px 12px' }}>

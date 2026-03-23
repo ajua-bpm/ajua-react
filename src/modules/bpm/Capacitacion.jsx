@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useCollection, useWrite } from '../../hooks/useFirestore';
-import { useEmpleados } from '../../hooks/useMainData';
+import { useEmpleados, useMainData } from '../../hooks/useMainData';
 import { useToast } from '../../components/Toast';
 import Skeleton from '../../components/Skeleton';
 
@@ -57,9 +57,20 @@ const resultColor = (r) => {
 
 export default function Capacitacion() {
   const toast = useToast();
-  const { data, loading } = useCollection('cap', { orderField: 'fecha', orderDir: 'desc', limit: 200 });
+  const { data: colData, loading } = useCollection('cap', { orderField: 'fecha', orderDir: 'desc', limit: 200 });
   const { empleados, loading: empLoading } = useEmpleados();
+  const { data: mainData, loading: mainLoading } = useMainData();
   const { add, saving } = useWrite('cap');
+
+  // Merge Firestore collection + legacy data from ajua_bpm/main
+  const data = useMemo(() => {
+    const mainCap = (mainData?.cap || []).map(r => ({
+      ...r, id: r.id || r._id || ('main_' + (r.fecha || '') + '_' + (r.instructor || '')),
+    }));
+    const seen = new Set(colData.map(r => r.id));
+    const merged = [...colData, ...mainCap.filter(r => !seen.has(r.id))];
+    return merged.sort((a, b) => (b.fecha || '') > (a.fecha || '') ? 1 : -1);
+  }, [colData, mainData]);
 
   const [form, setForm] = useState(INIT());
   const [manualNombre, setManualNombre] = useState('');
@@ -92,7 +103,7 @@ export default function Capacitacion() {
     setManualNombre('');
   };
 
-  if (loading || empLoading) {
+  if (loading || empLoading || mainLoading) {
     return (
       <div>
         <div style={{ height: 28, background: '#E8F5E9', borderRadius: 6, width: 240, marginBottom: 8 }} />
