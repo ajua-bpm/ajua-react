@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import { useCollection } from '../../hooks/useFirestore';
-import { useMainData } from '../../hooks/useMainData';
+import { useMainData, useProductosCatalogo } from '../../hooks/useMainData';
 import Skeleton from '../../components/Skeleton';
 
 // ── Design tokens ─────────────────────────────────────────────────
@@ -30,10 +30,21 @@ const lbsToKg = n => ((n || 0) / 2.205).toFixed(1);
 
 function canalBadge(canal) {
   const c = (canal || '').toLowerCase();
-  if (c.includes('walmart'))          return { label: 'Walmart',  bg: '#FFEBEE', color: '#C62828' };
-  if (c.includes('gt') || c.includes('local')) return { label: 'Local GT', bg: '#E8F5E9', color: '#1B5E20' };
-  if (c.includes('int') || c.includes('export')) return { label: 'Export', bg: '#E3F2FD', color: '#1565C0' };
+  if (c.includes('walmart'))                       return { label: 'Walmart',  bg: '#FFEBEE', color: '#C62828' };
+  if (c.includes('gt') || c.includes('local'))     return { label: 'Local GT', bg: '#E8F5E9', color: '#1B5E20' };
+  if (c.includes('int') || c.includes('export'))   return { label: 'Export',   bg: '#E3F2FD', color: '#1565C0' };
   return { label: 'Entrada', bg: '#E8F5E9', color: '#2E7D32' };
+}
+
+// Resolve productoId / nombre to canonical catalog key (mirrors bpm.html resolveId logic)
+function resolveProductId(productoId, nombre, prodById, prodByName, prodByFirstWord) {
+  if (productoId && prodById[productoId]) return productoId;
+  const up = (nombre || '').toUpperCase().trim();
+  if (up && prodByName[up]) return prodByName[up];
+  const fw = up.split(/\s+/)[0];
+  if (fw && prodByFirstWord[fw]) return prodByFirstWord[fw];
+  // Fallback: use uppercase name or original id so unknown products still appear
+  return up || productoId || null;
 }
 
 // ── Main ──────────────────────────────────────────────────────────
@@ -41,18 +52,39 @@ export default function StockVivo() {
   const { data: colEntradas, loading: loadE } = useCollection('ientradas', { orderField: 'fecha', orderDir: 'desc', limit: 2000 });
   const { data: colSalidas,  loading: loadS } = useCollection('isalidas',  { orderField: 'fecha', orderDir: 'desc', limit: 2000 });
   const { data: mainData,    loading: loadM } = useMainData();
+  const { productos: catalogItems, loading: loadC } = useProductosCatalogo();
   const [filtProd, setFiltProd] = useState('');
 
-  const loading = loadE || loadS || loadM;
+  const loading = loadE || loadS || loadM || loadC;
 
-  // Merge Firestore collections with legacy data from ajua_bpm/main
-  // bpm.html field mapping: productoNombre→producto, lbsBruto→lbs
+  // Build catalog lookup maps from iProductos
+  const { prodById, prodByName, prodByFirstWord } = useMemo(() => {
+    const byId        = {};
+    const byName      = {};
+    const byFirstWord = {};
+    for (const p of catalogItems) {
+      const id   = p.id;
+      const name = (p.nombre || '').toUpperCase().trim();
+      byId[id] = p;
+      if (name) byName[name] = id;
+      const fw = name.split(/\s+/)[0];
+      if (fw && !byFirstWord[fw]) byFirstWord[fw] = id;
+    }
+    return { prodById: byId, prodByName: byName, prodByFirstWord: byFirstWord };
+  }, [catalogItems]);
+
+  const resolve = useCallback(
+    (id, nombre) => resolveProductId(id, nombre, prodById, prodByName, prodByFirstWord),
+    [prodById, prodByName, prodByFirstWord]
+  );
+
+  // Merge Firestore ientradas + legacy ajua_bpm/main ientradas
   const entradas = useMemo(() => {
     const mainEnt = (mainData?.ientradas || []).map(r => ({
       ...r,
       producto: r.producto || r.productoNombre || '',
-      // bpm.html cotizador uses lbsTotal; manual saveIne uses lbsBruto; React uses lbsBrutas
-      lbs: Number(r.lbs) || Number(r.lbsBrutas) || Number(r.lbsTotal) || Number(r.lbsBruto) || 0,
+      // lbsNeto→lbsBrutas→lbsTotal(cotizador)→lbsBruto(manual saveIne)
+      lbs: Number(r.lbs) || Number(r.lbsBrutas) || Number(r.lbsNeto) || Number(r.lbsTotal) || Number(r.lbsBruto) || (Number(r.kgTotal) * 2.20462) || 0,
     }));
     const seen = new Set(colEntradas.map(r => r.id));
     return [...colEntradas, ...mainEnt.filter(r => r.id && !seen.has(r.id))];
@@ -64,108 +96,163 @@ export default function StockVivo() {
     return [...colSalidas, ...mainSal.filter(r => r.id && !seen.has(r.id))];
   }, [colSalidas, mainData]);
 
-  // ── Per-product summary ────────────────────────────────────────
+  // ── Per-product summary keyed by canonical productoId ─────────
+  // Mirrors bpm.html invGetStock() logic: resolves by id→exactName→firstWord
+  // Products with unidadCompra='unidad'/'pza' (repollo) track bultos, not lbs
   const stockMap = useMemo(() => {
     const m = {};
-    const ensure = k => {
-      if (!m[k]) m[k] = { entLbs: 0, salLbs: 0, unidad: 'lb', lastDuca: '', lastDucaLbs: 0 };
+    const ensure = (canonId, fallbackNombre) => {
+      if (!m[canonId]) {
+        const cat        = prodById[canonId];
+        const esPorUnidad = cat?.unidadCompra === 'unidad' || cat?.unidadCompra === 'pza';
+        m[canonId] = {
+          nombre: cat?.nombre || fallbackNombre || canonId,
+          esPorUnidad,
+          entLbs: 0, salLbs: 0,
+          entUnid: 0, salUnid: 0,
+          lastDuca: '', lastDucaLbs: 0,
+        };
+      }
     };
 
     for (const e of entradas) {
-      const k = e.producto; if (!k) continue;
-      ensure(k);
-      // EntradaBodega saves lbsBrutas; legacy may use lbs/unidades/bultos/cantidad
-      const lbs = Number(e.lbs) || Number(e.lbsBrutas) || Number(e.unidades) || Number(e.bultos) || Number(e.cantidad) || 0;
-      m[k].entLbs += lbs;
-      if (e.unidad) m[k].unidad = e.unidad;
-      if (e.duca)   { m[k].lastDuca = e.duca; m[k].lastDucaLbs = Number(e.lbs) || 0; }
+      const nombre   = e.producto || e.productoNombre || '';
+      const canonId  = resolve(e.productoId, nombre);
+      if (!canonId) continue;
+      ensure(canonId, nombre);
+      const slot = m[canonId];
+      if (slot.esPorUnidad) {
+        slot.entUnid += Number(e.bultos) || Number(e.unidades) || Number(e.cantidad) || 0;
+      } else {
+        const lbs = Number(e.lbs) || Number(e.lbsBrutas) || Number(e.lbsNeto) || Number(e.lbsTotal) || Number(e.lbsBruto) || (Number(e.kgTotal) * 2.20462) || 0;
+        slot.entLbs += lbs;
+      }
+      if (e.duca) { slot.lastDuca = e.duca; slot.lastDucaLbs = Number(e.lbsBrutas) || Number(e.lbs) || 0; }
     }
 
     for (const s of salidas) {
-      // Normalize: bpm.html uses lineas[], React uses productos[], or single producto field
-      const prods = Array.isArray(s.lineas)
-        ? s.lineas.map(l => ({ producto: l.productoNombre || l.producto || '', lbs: l.totalLbs || l.lbsBulto * (l.bultos || 0) || 0 }))
+      // bpm.html isalidas use lineas[]; React isalidas use productos[]; single-product fallback
+      const lineas = Array.isArray(s.lineas)
+        ? s.lineas
         : Array.isArray(s.productos)
           ? s.productos
-          : s.producto ? [{ producto: s.producto, lbs: s.lbs, cajasEnviadas: s.cajasEnviadas }] : [];
-      for (const item of prods) {
-        const k = item.producto || item.nombre; if (!k) continue;
-        ensure(k);
-        const lbs = Number(item.lbs) || Number(item.totalLbs) || Number(item.cajasEnviadas) || Number(item.cantidad) || 0;
-        m[k].salLbs += lbs;
+          : s.producto
+            ? [{ productoId: s.productoId, productoNombre: s.producto, totalLbs: s.lbs, bultos: s.cajasEnviadas }]
+            : [];
+
+      for (const l of lineas) {
+        const nombre  = l.productoNombre || l.producto || l.nombre || '';
+        const canonId = resolve(l.productoId, nombre);
+        if (!canonId) continue;
+        ensure(canonId, nombre);
+        const slot = m[canonId];
+        if (slot.esPorUnidad) {
+          slot.salUnid += Number(l.bultos) || Number(l.cajasEnviadas) || Number(l.cantidad) || 0;
+        } else {
+          const lbs = Number(l.totalLbs) || Number(l.lbs) || (Number(l.lbsBulto) * (Number(l.bultos) || 0)) || 0;
+          slot.salLbs += lbs;
+        }
       }
     }
 
     return m;
-  }, [entradas, salidas]);
+  }, [entradas, salidas, prodById, resolve]);
 
   const productos = useMemo(() =>
     Object.entries(stockMap)
-      .map(([nombre, v]) => ({ nombre, ...v, stock: v.entLbs - v.salLbs }))
-      .filter(p => p.entLbs > 0 || p.salLbs > 0)
+      .map(([canonId, v]) => ({
+        canonId,
+        nombre: v.nombre,
+        esPorUnidad: v.esPorUnidad,
+        entQ: v.esPorUnidad ? v.entUnid : v.entLbs,
+        salQ: v.esPorUnidad ? v.salUnid : v.salLbs,
+        stock: v.esPorUnidad ? (v.entUnid - v.salUnid) : (v.entLbs - v.salLbs),
+        lastDuca: v.lastDuca,
+        lastDucaLbs: v.lastDucaLbs,
+      }))
+      .filter(p => p.entQ > 0 || p.salQ > 0)
       .sort((a, b) => a.nombre.localeCompare(b.nombre)),
     [stockMap]
   );
 
-  // ── Movement history (expanded per product line) ───────────────
+  // ── Movement history (per-line, resolved to canonical product) ─
   const movements = useMemo(() => {
     const mvs = [];
 
     for (const e of entradas) {
-      if (!e.producto) continue;
-      const lbs = Number(e.lbs) || Number(e.lbsBrutas) || Number(e.unidades) || Number(e.bultos) || Number(e.cantidad) || 0;
+      const nombre  = e.producto || e.productoNombre || '';
+      const canonId = resolve(e.productoId, nombre);
+      if (!canonId) continue;
+      const cat     = prodById[canonId];
+      const esPorUnidad = cat?.unidadCompra === 'unidad' || cat?.unidadCompra === 'pza';
+      const lbs  = esPorUnidad ? 0 : (Number(e.lbs) || Number(e.lbsBrutas) || Number(e.lbsNeto) || Number(e.lbsTotal) || Number(e.lbsBruto) || 0);
+      const unid = esPorUnidad ? (Number(e.bultos) || Number(e.unidades) || Number(e.cantidad) || 0) : 0;
       mvs.push({
-        fecha:   fmtDate(e.fecha),
-        tipo:    'entrada',
-        canal:   'Entrada',
-        producto: e.producto,
-        entidad:  e.proveedor || '—',
-        bultos:   Number(e.bultos) || 0,
+        fecha: fmtDate(e.fecha),
+        tipo:  'entrada',
+        canal: 'Entrada',
+        canonId,
+        producto:    cat?.nombre || nombre,
+        entidad:     e.proveedor || '—',
+        bultos:      Number(e.bultos) || 0,
         lbs,
+        unid,
+        esPorUnidad,
         docId:   e.id,
         felAuth: e.duca || '',
       });
     }
 
     for (const s of salidas) {
-      const prods = Array.isArray(s.lineas)
-        ? s.lineas.map(l => ({ producto: l.productoNombre || l.producto || '', lbs: l.totalLbs || 0, cajasEnviadas: l.bultos || 0 }))
+      const lineas = Array.isArray(s.lineas)
+        ? s.lineas
         : Array.isArray(s.productos)
           ? s.productos
-          : s.producto ? [{ producto: s.producto, lbs: s.lbs, cajasEnviadas: s.cajasEnviadas }] : [];
+          : s.producto
+            ? [{ productoId: s.productoId, productoNombre: s.producto, totalLbs: s.lbs, bultos: s.cajasEnviadas }]
+            : [];
       const canal   = s.canal || (s.tipo === 'walmart' ? 'Walmart' : 'Salida');
       const entidad = s.cliente || s.clienteNombre || s.almacen || 'Walmart Guatemala';
-      for (const item of prods) {
-        const k = item.producto || item.nombre; if (!k) continue;
-        const lbs = Number(item.lbs) || Number(item.totalLbs) || Number(item.cajasEnviadas) || Number(item.cantidad) || 0;
+      for (const l of lineas) {
+        const nombre  = l.productoNombre || l.producto || l.nombre || '';
+        const canonId = resolve(l.productoId, nombre);
+        if (!canonId) continue;
+        const cat     = prodById[canonId];
+        const esPorUnidad = cat?.unidadCompra === 'unidad' || cat?.unidadCompra === 'pza';
+        const lbs  = esPorUnidad ? 0 : (Number(l.totalLbs) || Number(l.lbs) || (Number(l.lbsBulto) * (Number(l.bultos) || 0)) || 0);
+        const unid = esPorUnidad ? (Number(l.bultos) || Number(l.cajasEnviadas) || 0) : 0;
         mvs.push({
-          fecha:    fmtDate(s.fecha),
-          tipo:     'salida',
+          fecha: fmtDate(s.fecha),
+          tipo:  'salida',
           canal,
-          producto: k,
+          canonId,
+          producto:    cat?.nombre || nombre,
           entidad,
-          bultos:   Number(item.cajasEnviadas) || 0,
+          bultos:      Number(l.bultos) || Number(l.cajasEnviadas) || 0,
           lbs,
-          docId:    s.id,
-          felAuth:  s.authSAT || s.numFel || s.numeroDTE || '',
+          unid,
+          esPorUnidad,
+          docId:   s.id,
+          felAuth: s.authSAT || s.numFel || s.numeroDTE || '',
         });
       }
     }
 
-    // Sort oldest-first to compute running stock, then reverse for display
+    // Sort oldest-first to compute running stock balance
     mvs.sort((a, b) => a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : 0);
     const run = {};
     for (const mv of mvs) {
-      if (!run[mv.producto]) run[mv.producto] = 0;
-      run[mv.producto] += mv.tipo === 'entrada' ? mv.lbs : -mv.lbs;
-      mv.stockBodega = run[mv.producto];
+      if (!run[mv.canonId]) run[mv.canonId] = 0;
+      const qty = mv.esPorUnidad ? mv.unid : mv.lbs;
+      run[mv.canonId] += mv.tipo === 'entrada' ? qty : -qty;
+      mv.stockBodega = run[mv.canonId];
     }
 
     return mvs.reverse();
-  }, [entradas, salidas]);
+  }, [entradas, salidas, prodById, resolve]);
 
   const filtMvs = useMemo(() =>
-    filtProd ? movements.filter(m => m.producto === filtProd) : movements,
+    filtProd ? movements.filter(m => m.canonId === filtProd) : movements,
     [movements, filtProd]
   );
 
@@ -195,16 +282,22 @@ export default function StockVivo() {
         ) : (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
             {productos.map(p => {
-              const pct = p.entLbs > 0 ? Math.max(0, Math.min(100, (p.stock / p.entLbs) * 100)) : 0;
+              const pct    = p.entQ > 0 ? Math.max(0, Math.min(100, (p.stock / p.entQ) * 100)) : 0;
               const sColor = p.stock > 0 ? T.secondary : T.danger;
-              const unit = p.unidad === 'lb' ? 'lbs' : (p.unidad || 'lbs');
+              const unit   = p.esPorUnidad ? 'unid' : 'lbs';
               return (
-                <div key={p.nombre} style={{ flex: '1 1 220px', minWidth: 200, background: T.bgLight, borderRadius: 8, padding: 16, border: `1px solid ${T.border}` }}>
+                <div
+                  key={p.canonId}
+                  style={{ flex: '1 1 220px', minWidth: 200, background: T.bgLight, borderRadius: 8, padding: 16, border: `1px solid ${T.border}` }}
+                >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                     <div style={{ fontWeight: 700, fontSize: '.82rem', color: T.textDark, textTransform: 'uppercase', letterSpacing: '.04em' }}>
                       {p.nombre}
                     </div>
-                    <button style={{ padding: '2px 8px', background: 'rgba(46,125,50,.10)', color: T.secondary, border: '1px solid rgba(46,125,50,.25)', borderRadius: 10, fontSize: '.62rem', fontWeight: 700, cursor: 'pointer' }}>
+                    <button
+                      onClick={() => setFiltProd(filtProd === p.canonId ? '' : p.canonId)}
+                      style={{ padding: '2px 8px', background: filtProd === p.canonId ? T.secondary : 'rgba(46,125,50,.10)', color: filtProd === p.canonId ? T.white : T.secondary, border: '1px solid rgba(46,125,50,.25)', borderRadius: 10, fontSize: '.62rem', fontWeight: 700, cursor: 'pointer' }}
+                    >
                       Trazabilidad
                     </button>
                   </div>
@@ -213,15 +306,15 @@ export default function StockVivo() {
                     {fmtN(p.stock, 0)}
                   </div>
                   <div style={{ fontSize: '.72rem', color: T.textMid, marginTop: 2, marginBottom: 10 }}>
-                    {unit} en bodega{p.unidad === 'lb' ? ` · ${lbsToKg(p.stock)} kg` : ''}
+                    {unit} en bodega{!p.esPorUnidad ? ` · ${lbsToKg(p.stock)} kg` : ''}
                   </div>
 
                   <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 10 }}>
                     <span style={{ padding: '2px 7px', background: '#E8F5E9', color: T.secondary, borderRadius: 10, fontSize: '.68rem', fontWeight: 700 }}>
-                      ENTRADA {fmtN(p.entLbs, 0)} {unit}
+                      ENTRADA {fmtN(p.entQ, 0)} {unit}
                     </span>
                     <span style={{ padding: '2px 7px', background: '#FFEBEE', color: T.danger, borderRadius: 10, fontSize: '.68rem', fontWeight: 700 }}>
-                      SALIDA {fmtN(p.salLbs, 0)} {unit}
+                      SALIDA {fmtN(p.salQ, 0)} {unit}
                     </span>
                   </div>
 
@@ -253,7 +346,7 @@ export default function StockVivo() {
             style={{ padding: '6px 12px', border: `1.5px solid ${T.border}`, borderRadius: 6, fontSize: '.82rem', outline: 'none', fontFamily: 'inherit', color: T.textDark, background: T.white }}
           >
             <option value=''>Todos los productos</option>
-            {productos.map(p => <option key={p.nombre} value={p.nombre}>{p.nombre}</option>)}
+            {productos.map(p => <option key={p.canonId} value={p.canonId}>{p.nombre}</option>)}
           </select>
         </div>
 
@@ -266,7 +359,7 @@ export default function StockVivo() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: T.primary }}>
-                  {['Fecha', 'Canal', 'Producto', 'Entidad / Cliente', 'Bultos / Cajas', 'Total LBS', 'Stock Bodega', 'Documento'].map(h => (
+                  {['Fecha', 'Canal', 'Producto', 'Entidad / Cliente', 'Bultos / Cajas', 'Cantidad', 'Stock Bodega', 'Documento'].map(h => (
                     <th key={h} style={{ color: T.white, padding: '9px 12px', fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', textAlign: 'left', whiteSpace: 'nowrap' }}>
                       {h}
                     </th>
@@ -275,10 +368,12 @@ export default function StockVivo() {
               </thead>
               <tbody>
                 {filtMvs.slice(0, 400).map((mv, i) => {
-                  const badge = canalBadge(mv.canal);
+                  const badge  = canalBadge(mv.canal);
                   const sColor = mv.stockBodega >= 0 ? T.secondary : T.danger;
+                  const qty    = mv.esPorUnidad ? mv.unid : mv.lbs;
+                  const unit   = mv.esPorUnidad ? 'unid' : 'lbs';
                   return (
-                    <tr key={`${mv.docId}-${mv.producto}-${i}`} style={{ background: i % 2 === 1 ? '#F9FBF9' : '#fff' }}>
+                    <tr key={`${mv.docId}-${mv.canonId}-${i}`} style={{ background: i % 2 === 1 ? '#F9FBF9' : '#fff' }}>
                       <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0', color: T.textMid, fontWeight: 600, whiteSpace: 'nowrap' }}>{mv.fecha}</td>
                       <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0' }}>
                         <span style={{ padding: '2px 8px', borderRadius: 10, fontSize: '.68rem', fontWeight: 700, background: badge.bg, color: badge.color, whiteSpace: 'nowrap' }}>
@@ -291,10 +386,10 @@ export default function StockVivo() {
                         {mv.bultos > 0 ? mv.bultos.toLocaleString() : '—'}
                       </td>
                       <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0', fontWeight: 700, color: mv.tipo === 'entrada' ? T.secondary : T.danger, textAlign: 'right', whiteSpace: 'nowrap' }}>
-                        {mv.tipo === 'entrada' ? '+' : '-'}{fmtN(mv.lbs)} lbs
+                        {mv.tipo === 'entrada' ? '+' : '-'}{fmtN(qty)} {unit}
                       </td>
                       <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0', fontWeight: 700, color: sColor, textAlign: 'right', whiteSpace: 'nowrap' }}>
-                        {fmtN(mv.stockBodega)} lbs
+                        {fmtN(mv.stockBodega)} {unit}
                       </td>
                       <td style={{ padding: '8px 12px', fontSize: '.75rem', borderBottom: '1px solid #F0F0F0', color: T.info, maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {mv.felAuth
