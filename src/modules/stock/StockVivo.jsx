@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useCollection } from '../../hooks/useFirestore';
+import { useMainData } from '../../hooks/useMainData';
 import Skeleton from '../../components/Skeleton';
 
 // ── Design tokens ─────────────────────────────────────────────────
@@ -37,11 +38,30 @@ function canalBadge(canal) {
 
 // ── Main ──────────────────────────────────────────────────────────
 export default function StockVivo() {
-  const { data: entradas, loading: loadE } = useCollection('ientradas', { orderField: 'fecha', orderDir: 'desc', limit: 2000 });
-  const { data: salidas,  loading: loadS } = useCollection('isalidas',  { orderField: 'fecha', orderDir: 'desc', limit: 2000 });
+  const { data: colEntradas, loading: loadE } = useCollection('ientradas', { orderField: 'fecha', orderDir: 'desc', limit: 2000 });
+  const { data: colSalidas,  loading: loadS } = useCollection('isalidas',  { orderField: 'fecha', orderDir: 'desc', limit: 2000 });
+  const { data: mainData,    loading: loadM } = useMainData();
   const [filtProd, setFiltProd] = useState('');
 
-  const loading = loadE || loadS;
+  const loading = loadE || loadS || loadM;
+
+  // Merge Firestore collections with legacy data from ajua_bpm/main
+  // bpm.html field mapping: productoNombre→producto, lbsBruto→lbs
+  const entradas = useMemo(() => {
+    const mainEnt = (mainData?.ientradas || []).map(r => ({
+      ...r,
+      producto: r.producto || r.productoNombre || '',
+      lbs:      Number(r.lbs) || Number(r.lbsBruto) || 0,
+    }));
+    const seen = new Set(colEntradas.map(r => r.id));
+    return [...colEntradas, ...mainEnt.filter(r => r.id && !seen.has(r.id))];
+  }, [colEntradas, mainData]);
+
+  const salidas = useMemo(() => {
+    const mainSal = (mainData?.isalidas || []);
+    const seen = new Set(colSalidas.map(r => r.id));
+    return [...colSalidas, ...mainSal.filter(r => r.id && !seen.has(r.id))];
+  }, [colSalidas, mainData]);
 
   // ── Per-product summary ────────────────────────────────────────
   const stockMap = useMemo(() => {
@@ -61,9 +81,12 @@ export default function StockVivo() {
     }
 
     for (const s of salidas) {
-      const prods = Array.isArray(s.productos)
-        ? s.productos
-        : s.producto ? [{ producto: s.producto, lbs: s.lbs, cajasEnviadas: s.cajasEnviadas }] : [];
+      // Normalize: bpm.html uses lineas[], React uses productos[], or single producto field
+      const prods = Array.isArray(s.lineas)
+        ? s.lineas.map(l => ({ producto: l.productoNombre || l.producto || '', lbs: l.totalLbs || l.lbsBulto * (l.bultos || 0) || 0 }))
+        : Array.isArray(s.productos)
+          ? s.productos
+          : s.producto ? [{ producto: s.producto, lbs: s.lbs, cajasEnviadas: s.cajasEnviadas }] : [];
       for (const item of prods) {
         const k = item.producto || item.nombre; if (!k) continue;
         ensure(k);
@@ -104,11 +127,13 @@ export default function StockVivo() {
     }
 
     for (const s of salidas) {
-      const prods = Array.isArray(s.productos)
-        ? s.productos
-        : s.producto ? [{ producto: s.producto, lbs: s.lbs, cajasEnviadas: s.cajasEnviadas }] : [];
-      const canal   = s.canal || 'Walmart';
-      const entidad = s.cliente || s.almacen || 'Walmart Guatemala';
+      const prods = Array.isArray(s.lineas)
+        ? s.lineas.map(l => ({ producto: l.productoNombre || l.producto || '', lbs: l.totalLbs || 0, cajasEnviadas: l.bultos || 0 }))
+        : Array.isArray(s.productos)
+          ? s.productos
+          : s.producto ? [{ producto: s.producto, lbs: s.lbs, cajasEnviadas: s.cajasEnviadas }] : [];
+      const canal   = s.canal || (s.tipo === 'walmart' ? 'Walmart' : 'Salida');
+      const entidad = s.cliente || s.clienteNombre || s.almacen || 'Walmart Guatemala';
       for (const item of prods) {
         const k = item.producto || item.nombre; if (!k) continue;
         const lbs = Number(item.lbs) || Number(item.totalLbs) || Number(item.cajasEnviadas) || Number(item.cantidad) || 0;
