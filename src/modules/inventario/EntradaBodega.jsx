@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useCollection, useWrite } from '../../hooks/useFirestore';
-import { useProductosCatalogo } from '../../hooks/useMainData';
+import { useProductosCatalogo, useMainData } from '../../hooks/useMainData';
 import { useToast } from '../../components/Toast';
 import Skeleton from '../../components/Skeleton';
 
@@ -65,10 +65,24 @@ function MetricCard({ label, value, accent }) {
 export default function EntradaBodega() {
   const toast = useToast();
 
-  const { data, loading }              = useCollection('ientradas', { orderField: 'fecha', orderDir: 'desc', limit: 300 });
+  const { data: colData, loading }     = useCollection('ientradas', { orderField: 'fecha', orderDir: 'desc', limit: 300 });
+  const { data: mainData, loading: lm } = useMainData();
   const { productos, loading: lp }     = useProductosCatalogo();
   const { data: proveedores, loading: lc } = useCollection('proveedores', { orderField: 'nombre', limit: 300 });
   const { add, remove, saving }        = useWrite('ientradas');
+
+  // Merge Firestore + ajua_bpm/main ientradas
+  // bpm.html fields: productoNombre→producto, lbsBruto/lbsTotal→lbsBrutas
+  const data = useMemo(() => {
+    const mainEnt = (mainData?.ientradas || []).map(r => ({
+      ...r,
+      producto:  r.producto || r.productoNombre || '',
+      lbsBrutas: Number(r.lbsBrutas) || Number(r.lbsTotal) || Number(r.lbsBruto) || 0,
+    }));
+    const seen = new Set(colData.map(r => r.id));
+    return [...colData, ...mainEnt.filter(r => r.id && !seen.has(r.id))]
+      .sort((a, b) => (b.fecha || '') > (a.fecha || '') ? 1 : -1);
+  }, [colData, mainData]);
 
   const [form, setForm] = useState({ ...BLANK });
   const s = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -111,7 +125,7 @@ export default function EntradaBodega() {
   const entradasHoy = data.filter(r => r.fecha === todayStr).length;
   const totalLbs    = useMemo(() => data.reduce((s, r) => s + (parseFloat(r.lbsBrutas) || 0), 0), [data]);
 
-  const loadingAll = loading || lp;
+  const loadingAll = loading || lp || lm;
 
   return (
     <div style={{ padding: '24px 28px', fontFamily: 'inherit', maxWidth: 1100 }}>
@@ -265,8 +279,8 @@ export default function EntradaBodega() {
                 {data.slice(0, 200).map((r, i) => (
                   <tr key={r.id} style={{ background: i % 2 === 1 ? '#F9FBF9' : '#fff' }}>
                     <td style={{ ...tdSt, fontWeight: 600, whiteSpace: 'nowrap' }}>{r.fecha || '—'}</td>
-                    <td style={tdSt}>{r.producto || '—'}</td>
-                    <td style={{ ...tdSt, color: T.textMid }}>{r.origen || '—'}</td>
+                    <td style={tdSt}>{r.producto || r.productoNombre || '—'}</td>
+                    <td style={{ ...tdSt, color: T.textMid }}>{r.origen || r.productorNombre || r.productor || '—'}</td>
                     <td style={{ ...tdSt, fontWeight: 600, color: T.secondary, textAlign: 'right' }}>
                       {(r.bultos || 0).toLocaleString()}
                     </td>

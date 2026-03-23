@@ -51,7 +51,8 @@ export default function StockVivo() {
     const mainEnt = (mainData?.ientradas || []).map(r => ({
       ...r,
       producto: r.producto || r.productoNombre || '',
-      lbs:      Number(r.lbs) || Number(r.lbsBruto) || 0,
+      // bpm.html cotizador uses lbsTotal; manual saveIne uses lbsBruto; React uses lbsBrutas
+      lbs: Number(r.lbs) || Number(r.lbsBrutas) || Number(r.lbsTotal) || Number(r.lbsBruto) || 0,
     }));
     const seen = new Set(colEntradas.map(r => r.id));
     return [...colEntradas, ...mainEnt.filter(r => r.id && !seen.has(r.id))];
