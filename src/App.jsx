@@ -19,6 +19,7 @@ import Capacitacion from './modules/bpm/Capacitacion';
 import EmpleadosEnfermos from './modules/bpm/EmpleadosEnfermos';
 import Visitas from './modules/bpm/Visitas';
 import LavadoProducto from './modules/bpm/LavadoProducto';
+import ControlPersonal from './modules/bpm/ControlPersonal';
 
 // Inventario
 import StockVivo from './modules/stock/StockVivo';
@@ -79,11 +80,12 @@ export default function App() {
           <Route path="bpm/fumigacion"         element={<Fumigacion />} />
           <Route path="bpm/croquis"            element={<Croquis />} />
 
-          {/* BPM Personal */}
+          {/* BPM Higiene */}
           <Route path="bpm/lavado-prod"        element={<LavadoProducto />} />
           <Route path="bpm/capacitacion"       element={<Capacitacion />} />
           <Route path="bpm/enfermos"           element={<EmpleadosEnfermos />} />
           <Route path="bpm/visitas"            element={<Visitas />} />
+          <Route path="bpm/control-personal"   element={<ControlPersonal />} />
 
           {/* Inventario */}
           <Route path="stock"                  element={<StockVivo />} />

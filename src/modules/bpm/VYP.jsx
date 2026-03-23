@@ -4,543 +4,405 @@ import { useCollection, useWrite } from '../../hooks/useFirestore';
 import { useToast } from '../../components/Toast';
 import Skeleton from '../../components/Skeleton';
 
-// ─── Design tokens ────────────────────────────────────────────────────────────
+// ── Design tokens ─────────────────────────────────────────────────
 const T = {
-  primary: '#1B5E20', secondary: '#2E7D32', accent: '#43A047',
-  white: '#FFFFFF', bgLight: '#F5F5F5', bgCard: '#FFFFFF',
-  border: '#E0E0E0', textDark: '#1A1A18', textMid: '#6B6B60',
-  danger: '#C62828', warn: '#E65100', green2: '#E8F5E9',
+  primary:   '#1B5E20',
+  secondary: '#2E7D32',
+  white:     '#FFFFFF',
+  bgLight:   '#F5F5F5',
+  border:    '#E0E0E0',
+  textDark:  '#1A1A18',
+  textMid:   '#6B6B60',
+  danger:    '#C62828',
+  warn:      '#E65100',
+  info:      '#1565C0',
+  green2:    '#E8F5E9',
 };
 
-// ─── Default VP_ITEMS ─────────────────────────────────────────────────────────
-const DEFAULT_VP_ITEMS = [
-  { nivel: 'NIVEL 1', item: 'Dispensador de jabón 1' },
-  { nivel: 'NIVEL 1', item: 'Dispensador de Gel' },
-  { nivel: 'NIVEL 1', item: 'Lámpara 1' },
-  { nivel: 'NIVEL 1', item: 'Lámpara 2' },
-  { nivel: 'NIVEL 1', item: 'Lámpara 3' },
-  { nivel: 'NIVEL 1', item: 'Lámpara 4' },
-  { nivel: 'NIVEL 1', item: 'Ventilador 1' },
-  { nivel: 'NIVEL 1', item: 'Ventilador 2' },
-  { nivel: 'NIVEL 1', item: 'Ventilador 3' },
-  { nivel: 'NIVEL 1', item: 'Ventilador 4' },
-  { nivel: 'NIVEL 1', item: 'Trampa para roedores 1' },
-  { nivel: 'NIVEL 1', item: 'Trampa para roedores 2' },
-  { nivel: 'NIVEL 2', item: 'Dispensador de jabón 1' },
-  { nivel: 'NIVEL 2', item: 'Trampa para roedores 3' },
-  { nivel: 'NIVEL 2', item: 'Trampa para roedores 4' },
-  { nivel: 'NIVEL 2', item: 'Ventilador 1' },
-  { nivel: 'NIVEL 2', item: 'Ventilador 2' },
-  { nivel: 'NIVEL 2', item: 'Ventilador 3' },
-  { nivel: 'NIVEL 2', item: 'Lámpara 1' },
-  { nivel: 'NIVEL 2', item: 'Lámpara 2' },
-  { nivel: 'NIVEL 2', item: 'Lámpara 3' },
-];
+const AREAS = ['Cooler 1', 'Cooler 2', 'Pre-carga', 'Maquila', 'Parqueo'];
+const TIPOS    = ['Vidrio', 'Plástico', 'Ambos'];
+const ACCIONES = ['Retirado', 'Reportado', 'Pendiente'];
 
-const NIVEL_OPTIONS = ['NIVEL 1', 'NIVEL 2', 'NIVEL 3'];
+const today = () => new Date().toISOString().slice(0, 10);
 
-const MESES = [
-  'Enero','Febrero','Marzo','Abril','Mayo','Junio',
-  'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre',
-];
+const blankArea = () => ({
+  inspeccionada: false,
+  hallazgo: false,
+  tipo: 'Vidrio',
+  desc: '',
+  cantidad: '',
+  accion: 'Retirado',
+  foto: null,
+});
 
-const VYP_AREAS = [
-  'Bodega','Pre-carga','Cooler 1','Cooler 2','Parqueo','Oficina','Baños','Otro',
-];
-
-const VYP_TIPOS    = ['Vidrio','Plástico','Ambos'];
-const VYP_ACCIONES = ['Retirado','Reportado','Pendiente'];
-
-const today  = () => new Date().toISOString().slice(0, 10);
-const curMes = () => MESES[new Date().getMonth()];
-
-// ─── Shared UI helpers ────────────────────────────────────────────────────────
+// ── UI helpers ────────────────────────────────────────────────────
 const inputStyle = {
-  padding: '9px 12px', border: '1.5px solid #E0E0E0', borderRadius: 6,
-  fontSize: '.88rem', outline: 'none', width: '100%', fontFamily: 'inherit',
+  padding: '8px 11px', border: '1.5px solid #E0E0E0', borderRadius: 6,
+  fontSize: '.85rem', outline: 'none', width: '100%', fontFamily: 'inherit',
   boxSizing: 'border-box', background: '#fff',
 };
 
-const inp = (val, onChange, type = 'text', extra = {}) => (
-  <input type={type} value={val} onChange={e => onChange(e.target.value)}
-    style={{ ...inputStyle, ...extra }} />
-);
-
-const sel = (val, onChange, opts) => (
-  <select value={val} onChange={e => onChange(e.target.value)}
-    style={{ ...inputStyle, cursor: 'pointer' }}>
-    {opts}
-  </select>
-);
-
 const Lbl = ({ text, children }) => (
-  <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-    <span style={{ fontSize: '.7rem', fontWeight: 700, textTransform: 'uppercase',
+  <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+    <span style={{ fontSize: '.68rem', fontWeight: 700, textTransform: 'uppercase',
       letterSpacing: '.07em', color: T.secondary }}>{text}</span>
     {children}
   </label>
 );
 
-const Card = ({ children, style = {} }) => (
-  <div style={{ background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 10,
-    padding: 24, marginBottom: 20, ...style }}>
-    {children}
-  </div>
-);
-
-const SecTitle = ({ children }) => (
-  <div style={{ fontSize: '.8rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em',
-    color: T.secondary, marginBottom: 16, paddingBottom: 10, borderBottom: `1px solid ${T.border}` }}>
-    {children}
-  </div>
-);
-
-const NivelHeader = ({ text }) => (
-  <div style={{
-    fontSize: '.65rem', letterSpacing: '.12em', textTransform: 'uppercase',
-    color: T.white, fontWeight: 700, padding: '5px 12px', borderRadius: 4,
-    background: text === 'NIVEL 1' ? T.secondary : text === 'NIVEL 2' ? '#1565C0' : T.warn,
-    display: 'inline-block', marginTop: 12, marginBottom: 6,
-  }}>
-    {text}
-  </div>
-);
-
-const ThCell = ({ children }) => (
-  <th style={{ padding: '9px 12px', textAlign: 'left', color: T.white,
-    fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em' }}>
-    {children}
-  </th>
-);
-const TdCell = ({ children, style = {} }) => (
-  <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0', ...style }}>
-    {children}
-  </td>
-);
-
-const EmpSel = ({ value, onChange, empleados, empLoading }) => empLoading
-  ? <Skeleton height={38} />
-  : sel(value, onChange,
-      <>
-        <option value="">— Seleccionar responsable —</option>
-        {empleados.map(e => <option key={e.id} value={e.nombre}>{e.nombre}{e.cargo ? ' · ' + e.cargo : ''}</option>)}
-      </>
-    );
-
-// SI/NO/NA tristate for VP inventory
-function Tristate3({ value, onChange }) {
-  const opts = [
-    { v: 'cumple',    l: 'SI',  ac: T.accent },
-    { v: 'no_cumple', l: 'NO',  ac: T.danger },
-    { v: 'na',        l: 'N/A', ac: T.textMid },
-  ];
+function Toggle({ checked, onChange, label }) {
   return (
-    <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-      {opts.map(o => (
-        <button key={o.v} onClick={() => onChange(o.v === value ? '' : o.v)}
-          style={{ padding: '4px 9px', borderRadius: 5, border: '1.5px solid',
-            cursor: 'pointer', fontWeight: 700, fontSize: '.75rem', fontFamily: 'inherit',
-            background: value === o.v ? o.ac : T.white,
-            borderColor: value === o.v ? o.ac : T.border,
-            color: value === o.v ? T.white : T.textMid }}>
-          {o.l}
-        </button>
-      ))}
-    </div>
+    <button onClick={() => onChange(!checked)}
+      style={{ padding: '5px 14px', borderRadius: 20, border: '1.5px solid',
+        cursor: 'pointer', fontWeight: 700, fontSize: '.75rem', fontFamily: 'inherit',
+        background: checked ? T.secondary : T.white,
+        borderColor: checked ? T.secondary : T.border,
+        color: checked ? T.white : T.textMid }}>
+      {label}
+    </button>
   );
 }
 
-// ─── Tab 1: Inventario Mensual (collection: vp) ───────────────────────────────
-function TabVP({ empleados, empLoading }) {
-  const toast = useToast();
-  const { data: registros, loading: histLoading } = useCollection('vp', { orderField: 'fecha', orderDir: 'desc', limit: 200 });
-  const { add, remove, saving } = useWrite('vp');
+// ── Area inspection row ───────────────────────────────────────────
+function AreaRow({ nombre, data, onChange }) {
+  const fotoRef = useRef(null);
 
-  // vpItems is the editable list of inventory items for this session
-  const [vpItems, setVpItems] = useState(DEFAULT_VP_ITEMS);
-  const [checks, setChecks]   = useState(() => DEFAULT_VP_ITEMS.map(() => ''));
-
-  const [fecha, setFecha] = useState(today());
-  const [resp, setResp]   = useState('');
-  const [mes, setMes]     = useState(curMes());
-
-  // New item form
-  const [newNivel, setNewNivel] = useState('NIVEL 1');
-  const [newItem,  setNewItem]  = useState('');
-
-  const setCheck = (i, v) => setChecks(prev => prev.map((c, idx) => idx === i ? v : c));
-
-  const handleAddItem = () => {
-    const name = newItem.trim();
-    if (!name) { toast('Ingrese el nombre del ítem', 'error'); return; }
-    setVpItems(prev => [...prev, { nivel: newNivel, item: name }]);
-    setChecks(prev => [...prev, '']);
-    setNewItem('');
-    toast('Ítem agregado');
-  };
-
-  const handleRemoveItem = (idx) => {
-    setVpItems(prev => prev.filter((_, i) => i !== idx));
-    setChecks(prev => prev.filter((_, i) => i !== idx));
-  };
-
-  const ok  = checks.filter(c => c === 'cumple').length;
-  const nok = checks.filter(c => c === 'no_cumple').length;
-  const pct = (ok + nok) > 0 ? Math.round(ok / (ok + nok) * 100) : 0;
-
-  const handleSave = async () => {
-    if (!fecha || !resp) { toast('Complete fecha y responsable', 'error'); return; }
-    try {
-      await add({ fecha, mes, resp, items: vpItems, checks, ok, nok });
-      toast('Revisión de vidrio y plástico guardada');
-      setChecks(vpItems.map(() => ''));
-    } catch (e) { toast('Error: ' + e.message, 'error'); }
-  };
-
-  // Group items by nivel for rendering
-  const niveles = [...new Set(vpItems.map(x => x.nivel))];
-
-  return (
-    <>
-      <Card>
-        <SecTitle>Nueva Revisión Mensual</SecTitle>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14, marginBottom: 16 }}>
-          <Lbl text="Fecha de Revisión">{inp(fecha, setFecha, 'date')}</Lbl>
-          <Lbl text="Responsable"><EmpSel value={resp} onChange={setResp} empleados={empleados} empLoading={empLoading} /></Lbl>
-          <Lbl text="Mes de Revisión">
-            {sel(mes, setMes, MESES.map(m => <option key={m} value={m}>{m}</option>))}
-          </Lbl>
-        </div>
-
-        {/* Items grouped by nivel */}
-        <div style={{ marginBottom: 16 }}>
-          {niveles.map(nivel => (
-            <div key={nivel}>
-              <NivelHeader text={nivel} />
-              {vpItems.map((x, i) => {
-                if (x.nivel !== nivel) return null;
-                return (
-                  <div key={i} style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '8px 10px', borderBottom: `1px solid ${T.border}`,
-                    background: checks[i] === 'cumple' ? '#F1F8E9' : checks[i] === 'no_cumple' ? '#FFF8F8' : T.white,
-                    borderRadius: 4, marginBottom: 2,
-                  }}>
-                    <div style={{ flex: 1, marginRight: 10 }}>
-                      <div style={{ fontSize: '.85rem', color: T.textDark }}>{x.item}</div>
-                    </div>
-                    <Tristate3 value={checks[i]} onChange={v => setCheck(i, v)} />
-                    <button
-                      onClick={() => handleRemoveItem(i)}
-                      title="Eliminar ítem"
-                      style={{
-                        marginLeft: 10, padding: '3px 7px', borderRadius: 4, border: `1px solid ${T.border}`,
-                        background: 'none', cursor: 'pointer', fontSize: '.72rem', color: T.danger,
-                        fontFamily: 'inherit', lineHeight: 1,
-                      }}
-                    >✕</button>
-                  </div>
-                );
-              })}
-            </div>
-          ))}
-        </div>
-
-        {/* Add new item */}
-        <div style={{
-          padding: '14px 16px', borderRadius: 8, border: `1.5px dashed ${T.border}`,
-          background: T.bgLight, marginBottom: 16,
-        }}>
-          <div style={{ fontSize: '.72rem', fontWeight: 700, color: T.secondary, textTransform: 'uppercase', marginBottom: 10 }}>
-            + Agregar Ítem al Inventario
-          </div>
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-            <div style={{ minWidth: 130 }}>
-              <Lbl text="Nivel">
-                {sel(newNivel, setNewNivel, NIVEL_OPTIONS.map(n => <option key={n} value={n}>{n}</option>))}
-              </Lbl>
-            </div>
-            <div style={{ flex: 1, minWidth: 180 }}>
-              <Lbl text="Nombre del ítem">
-                <input
-                  type="text"
-                  value={newItem}
-                  onChange={e => setNewItem(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && handleAddItem()}
-                  placeholder="Ej: Lámpara 5"
-                  style={inputStyle}
-                />
-              </Lbl>
-            </div>
-            <button
-              onClick={handleAddItem}
-              style={{
-                padding: '9px 20px', background: T.secondary, color: T.white, border: 'none',
-                borderRadius: 6, fontWeight: 700, fontSize: '.82rem', cursor: 'pointer',
-                fontFamily: 'inherit', whiteSpace: 'nowrap',
-              }}
-            >
-              Agregar
-            </button>
-          </div>
-        </div>
-
-        {(ok + nok) > 0 && (
-          <div style={{ marginBottom: 14, fontSize: '.8rem', color: T.textMid }}>
-            Cumplen: <strong style={{ color: T.accent }}>{ok}</strong> — No cumplen: <strong style={{ color: T.danger }}>{nok}</strong> — <strong style={{ color: pct >= 80 ? T.accent : T.danger }}>{pct}% OK</strong>
-          </div>
-        )}
-
-        <button onClick={handleSave} disabled={saving}
-          style={{ padding: '10px 22px', background: saving ? '#BDBDBD' : T.primary,
-            color: T.white, border: 'none', borderRadius: 6, fontWeight: 700,
-            fontSize: '.88rem', cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
-          {saving ? 'Guardando...' : 'Guardar Revisión'}
-        </button>
-      </Card>
-
-      <Card>
-        <SecTitle>Historial de Revisiones</SecTitle>
-        {histLoading ? <Skeleton height={100} /> : (registros || []).length === 0
-          ? <p style={{ textAlign: 'center', padding: 32, color: T.textMid, fontSize: '.85rem' }}>Sin registros</p>
-          : (
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ background: T.primary }}>
-                    {['Fecha','Mes','Responsable','Cumplen','No Cumplen','% OK',''].map(h => <ThCell key={h}>{h}</ThCell>)}
-                  </tr>
-                </thead>
-                <tbody>
-                  {(registros || []).slice(0, 100).map((r, i) => {
-                    const p = (r.ok + r.nok) > 0 ? Math.round(r.ok / (r.ok + r.nok) * 100) : 0;
-                    return (
-                      <tr key={r.id} style={{ background: i % 2 === 0 ? T.white : '#F9FBF9' }}>
-                        <TdCell style={{ fontWeight: 600 }}>{r.fecha}</TdCell>
-                        <TdCell>{r.mes || '—'}</TdCell>
-                        <TdCell>{r.resp || '—'}</TdCell>
-                        <TdCell style={{ color: T.accent, fontWeight: 600 }}>{r.ok ?? '—'}</TdCell>
-                        <TdCell style={{ color: T.danger, fontWeight: 600 }}>{r.nok ?? '—'}</TdCell>
-                        <TdCell style={{ fontWeight: 700, color: p >= 80 ? T.accent : T.danger }}>{p}%</TdCell>
-                        <TdCell>
-                          <button onClick={() => remove(r.id)}
-                            style={{ background: 'none', border: `1px solid ${T.border}`,
-                              borderRadius: 4, padding: '3px 8px', cursor: 'pointer',
-                              fontSize: '.75rem', color: T.textMid }}>✕</button>
-                        </TdCell>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-      </Card>
-    </>
-  );
-}
-
-// ─── Tab 2: Hallazgos (collection: vyp) ──────────────────────────────────────
-function TabVYP({ empleados, empLoading }) {
-  const toast = useToast();
-  const { data: registros, loading: histLoading } = useCollection('vyp', { orderField: 'fecha', orderDir: 'desc', limit: 200 });
-  const { add, remove, saving } = useWrite('vyp');
-
-  const [fecha, setFecha]   = useState(today());
-  const [area, setArea]     = useState('');
-  const [resp, setResp]     = useState('');
-  const [tipo, setTipo]     = useState('Vidrio');
-  const [accion, setAccion] = useState('Retirado');
-  const [desc, setDesc]     = useState('');
-  const [foto, setFoto]     = useState(null);
-  const fotoRef             = useRef(null);
+  const set = (patch) => onChange({ ...data, ...patch });
 
   const handleFoto = (e) => {
     const file = e.target.files[0]; if (!file) return;
     const reader = new FileReader();
-    reader.onload = ev => setFoto(ev.target.result);
+    reader.onload = ev => set({ foto: ev.target.result });
     reader.readAsDataURL(file);
   };
 
-  const clearFoto = () => {
-    setFoto(null);
-    if (fotoRef.current) fotoRef.current.value = '';
+  const areaResult = () => {
+    if (!data.inspeccionada) return null;
+    if (!data.hallazgo) return 'LIMPIO';
+    if (data.accion === 'Pendiente') return 'PENDIENTE';
+    return 'CON HALLAZGO';
+  };
+
+  const res = areaResult();
+  const resBadge = {
+    LIMPIO:       { label: '✅ LIMPIO',        bg: T.green2,   color: T.secondary },
+    'CON HALLAZGO': { label: '⚠️ CON HALLAZGO', bg: '#FFF9C4',  color: '#F57F17' },
+    PENDIENTE:    { label: '🔴 PENDIENTE',     bg: '#FFEBEE',  color: T.danger },
+  };
+
+  const badge = res ? resBadge[res] : null;
+
+  return (
+    <div style={{
+      background: data.inspeccionada
+        ? (res === 'LIMPIO' ? '#F1F8E9' : res === 'PENDIENTE' ? '#FFF8F8' : '#FFFDE7')
+        : T.bgLight,
+      border: `1.5px solid ${data.inspeccionada ? (res === 'LIMPIO' ? '#A5D6A7' : res === 'PENDIENTE' ? '#EF9A9A' : '#FDD835') : T.border}`,
+      borderRadius: 8, padding: '14px 16px', marginBottom: 10,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+        {/* Area name */}
+        <div style={{ fontWeight: 700, fontSize: '.88rem', color: T.textDark, minWidth: 100 }}>
+          {nombre}
+        </div>
+
+        {/* Inspected toggle */}
+        <Toggle
+          checked={data.inspeccionada}
+          onChange={v => set({ inspeccionada: v, hallazgo: v ? data.hallazgo : false })}
+          label={data.inspeccionada ? '✓ Inspeccionada' : 'Marcar inspeccionada'}
+        />
+
+        {/* Finding toggle — only if inspected */}
+        {data.inspeccionada && (
+          <Toggle
+            checked={data.hallazgo}
+            onChange={v => set({ hallazgo: v })}
+            label={data.hallazgo ? '⚠ Con hallazgo' : 'Sin hallazgo'}
+          />
+        )}
+
+        {/* Result badge */}
+        {badge && (
+          <span style={{ padding: '4px 12px', borderRadius: 20, fontSize: '.72rem',
+            fontWeight: 800, background: badge.bg, color: badge.color }}>
+            {badge.label}
+          </span>
+        )}
+      </div>
+
+      {/* Hallazgo detail — only if hallazgo = true */}
+      {data.inspeccionada && data.hallazgo && (
+        <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${T.border}` }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(130px,1fr))', gap: 10, marginBottom: 10 }}>
+            <Lbl text="Tipo">
+              <select value={data.tipo} onChange={e => set({ tipo: e.target.value })}
+                style={{ ...inputStyle, cursor: 'pointer', fontSize: '.82rem', padding: '7px 10px' }}>
+                {TIPOS.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </Lbl>
+            <Lbl text="Cantidad / tamaño">
+              <input type="text" value={data.cantidad} onChange={e => set({ cantidad: e.target.value })}
+                placeholder="Ej: 3 fragmentos pequeños"
+                style={{ ...inputStyle, fontSize: '.82rem', padding: '7px 10px' }} />
+            </Lbl>
+            <Lbl text="Acción tomada">
+              <select value={data.accion} onChange={e => set({ accion: e.target.value })}
+                style={{ ...inputStyle, cursor: 'pointer', fontSize: '.82rem', padding: '7px 10px' }}>
+                {ACCIONES.map(a => <option key={a} value={a}>{a}</option>)}
+              </select>
+            </Lbl>
+          </div>
+
+          <div style={{ marginBottom: 10 }}>
+            <Lbl text="Descripción del hallazgo">
+              <textarea value={data.desc} onChange={e => set({ desc: e.target.value })}
+                placeholder="Qué se encontró, posible origen, estado..."
+                rows={2}
+                style={{ ...inputStyle, resize: 'vertical', fontSize: '.82rem' }} />
+            </Lbl>
+          </div>
+
+          {/* Foto */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '.68rem', fontWeight: 700, textTransform: 'uppercase',
+              letterSpacing: '.07em', color: T.secondary }}>Foto (opcional)</span>
+            <input ref={fotoRef} type="file" accept="image/*"
+              onChange={handleFoto} style={{ fontSize: '.7rem' }} />
+            {data.foto && (
+              <>
+                <img src={data.foto} alt="preview"
+                  style={{ height: 56, borderRadius: 4, border: `1px solid ${T.border}`, objectFit: 'cover' }} />
+                <button onClick={() => { set({ foto: null }); if (fotoRef.current) fotoRef.current.value = ''; }}
+                  style={{ padding: '3px 10px', background: 'none', border: `1px solid ${T.danger}`,
+                    borderRadius: 4, cursor: 'pointer', fontSize: '.72rem', color: T.danger, fontFamily: 'inherit' }}>
+                  ✕ Quitar
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Compute overall result ────────────────────────────────────────
+function overallResult(areas) {
+  const inspected = AREAS.filter(a => areas[a]?.inspeccionada);
+  if (inspected.length === 0) return null;
+  const hallazgos = inspected.filter(a => areas[a]?.hallazgo);
+  if (hallazgos.length === 0) return 'LIMPIO';
+  if (hallazgos.some(a => areas[a]?.accion === 'Pendiente')) return 'PENDIENTE';
+  return 'CON HALLAZGO';
+}
+
+// ── Main ──────────────────────────────────────────────────────────
+export default function VYP() {
+  const toast = useToast();
+  const { empleados, loading: empLoading } = useEmpleados();
+  const { data: historial, loading: histLoading } = useCollection('vyp', {
+    orderField: 'fecha', orderDir: 'desc', limit: 200,
+  });
+  const { add, remove, saving } = useWrite('vyp');
+
+  const [fecha, setFecha] = useState(today());
+  const [resp, setResp]   = useState('');
+  const [obs, setObs]     = useState('');
+
+  const initAreas = () => Object.fromEntries(AREAS.map(a => [a, blankArea()]));
+  const [areas, setAreas] = useState(initAreas);
+
+  const setArea = (nombre, data) => setAreas(prev => ({ ...prev, [nombre]: data }));
+
+  const result = overallResult(areas);
+  const resultBadges = {
+    LIMPIO:         { label: '✅ LIMPIO — Sin hallazgos',          bg: T.green2,  color: T.secondary },
+    'CON HALLAZGO': { label: '⚠️ CON HALLAZGO — Retirados',       bg: '#FFF9C4', color: '#F57F17' },
+    PENDIENTE:      { label: '🔴 PENDIENTE — Requiere atención',   bg: '#FFEBEE', color: T.danger },
   };
 
   const handleSave = async () => {
-    if (!fecha || !area || !resp) { toast('Complete fecha, área y responsable', 'error'); return; }
+    if (!fecha || !resp) { toast('Complete fecha y responsable', 'error'); return; }
+    const inspCount = AREAS.filter(a => areas[a].inspeccionada).length;
+    if (inspCount === 0) { toast('Marque al menos un área inspeccionada', 'error'); return; }
+
+    // Build hallazgos array for history display
+    const hallazgos = AREAS
+      .filter(a => areas[a].inspeccionada && areas[a].hallazgo)
+      .map(a => ({ area: a, ...areas[a] }));
+
     try {
-      await add({ fecha, area, tipo, desc, accion, resp, foto: foto || null });
-      toast('Hallazgo registrado');
-      setDesc(''); clearFoto();
+      await add({ fecha, resp, obs, areas, hallazgos, resultado: result });
+      toast('Inspección guardada');
+      setAreas(initAreas());
+      setObs('');
     } catch (e) { toast('Error: ' + e.message, 'error'); }
   };
 
-  const accionBadge = (ac) => {
-    if (ac === 'Pendiente') return { bg: '#FFEBEE', c: T.danger, l: '⚠ Pendiente' };
-    if (ac === 'Retirado')  return { bg: T.green2,  c: T.secondary, l: '✓ Retirado' };
-    return { bg: '#E3F2FD', c: '#1565C0', l: ac || '—' };
-  };
+  // Historial filter
+  const [filtRes, setFiltRes] = useState('');
+  const filtHist = (historial || []).filter(r => !filtRes || r.resultado === filtRes);
 
   return (
-    <>
-      <Card style={{ borderLeft: `3px solid ${T.danger}` }}>
-        <SecTitle>Reporte de Hallazgo — Contaminación</SecTitle>
-        <p style={{ fontSize: '.7rem', color: T.textMid, marginBottom: 16, marginTop: -8 }}>
-          Reportar vidrio o plástico encontrado en cualquier área. Registrar inmediatamente.
+    <div style={{ fontFamily: 'inherit', maxWidth: 900 }}>
+      {/* Header */}
+      <div style={{ marginBottom: 22 }}>
+        <h1 style={{ fontSize: '1.45rem', fontWeight: 800, color: T.primary, margin: 0 }}>
+          Vidrio y Plástico
+        </h1>
+        <p style={{ fontSize: '.83rem', color: T.textMid, marginTop: 4 }}>
+          Inspección diaria por área · Hallazgos de contaminación · Cooler, Pre-carga, Maquila, Parqueo
         </p>
+      </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 14, marginBottom: 14 }}>
-          <Lbl text="Fecha">{inp(fecha, setFecha, 'date')}</Lbl>
-          <Lbl text="Área donde se encontró">
-            {sel(area, setArea,
-              <>
-                <option value="">— Seleccionar área —</option>
-                {VYP_AREAS.map(a => <option key={a} value={a}>{a}</option>)}
-              </>
+      {/* Form card */}
+      <div style={{ background: '#fff', borderRadius: 8, boxShadow: '0 1px 3px rgba(0,0,0,.10)', padding: 22, marginBottom: 20 }}>
+        {/* Top row */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 14, marginBottom: 18 }}>
+          <Lbl text="Fecha">
+            <input type="date" value={fecha} onChange={e => setFecha(e.target.value)} style={inputStyle} />
+          </Lbl>
+          <Lbl text="Responsable">
+            {empLoading ? <Skeleton height={36} /> : (
+              <select value={resp} onChange={e => setResp(e.target.value)}
+                style={{ ...inputStyle, cursor: 'pointer' }}>
+                <option value="">— Seleccionar —</option>
+                {empleados.map(e => (
+                  <option key={e.id || e.nombre} value={e.nombre}>
+                    {e.nombre}{e.cargo ? ' · ' + e.cargo : ''}
+                  </option>
+                ))}
+              </select>
             )}
           </Lbl>
-          <Lbl text="Responsable que reporta">
-            <EmpSel value={resp} onChange={setResp} empleados={empleados} empLoading={empLoading} />
-          </Lbl>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
-          <Lbl text="Tipo de hallazgo">
-            {sel(tipo, setTipo, VYP_TIPOS.map(t => <option key={t} value={t}>{t}</option>))}
-          </Lbl>
-          <Lbl text="Acción tomada">
-            {sel(accion, setAccion, VYP_ACCIONES.map(a => <option key={a} value={a}>{a}</option>))}
-          </Lbl>
+        {/* Overall result banner */}
+        {result && (
+          <div style={{ marginBottom: 16, padding: '10px 16px', borderRadius: 8,
+            background: resultBadges[result].bg, color: resultBadges[result].color,
+            fontWeight: 800, fontSize: '.88rem' }}>
+            {resultBadges[result].label}
+          </div>
+        )}
+
+        {/* Area rows */}
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase',
+            letterSpacing: '.07em', color: T.secondary, marginBottom: 10 }}>
+            Inspección por Área
+          </div>
+          {AREAS.map(a => (
+            <AreaRow key={a} nombre={a} data={areas[a]} onChange={d => setArea(a, d)} />
+          ))}
         </div>
 
-        <div style={{ marginBottom: 14 }}>
-          <Lbl text="Descripción del hallazgo">
-            <textarea value={desc} onChange={e => setDesc(e.target.value)}
-              placeholder="Qué se encontró, cantidad, estado, posible origen..."
+        {/* Observaciones generales */}
+        <div style={{ marginBottom: 16 }}>
+          <Lbl text="Observaciones generales (opcional)">
+            <textarea value={obs} onChange={e => setObs(e.target.value)}
+              placeholder="Notas adicionales sobre la inspección..."
               rows={2}
               style={{ ...inputStyle, resize: 'vertical' }} />
           </Lbl>
         </div>
 
-        <div style={{ marginBottom: 14 }}>
-          <div style={{ fontSize: '.72rem', color: T.textMid, marginBottom: 5 }}>Foto (opcional)</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <input ref={fotoRef} type="file" accept="image/*"
-              onChange={handleFoto} style={{ fontSize: '.7rem' }} />
-            {foto && (
-              <button onClick={clearFoto}
-                style={{ padding: '4px 10px', background: 'none', border: `1px solid ${T.danger}`,
-                  borderRadius: 4, cursor: 'pointer', fontSize: '.72rem', color: T.danger, fontFamily: 'inherit' }}>
-                ✕ Quitar foto
-              </button>
-            )}
-          </div>
-          {foto && (
-            <div style={{ marginTop: 6 }}>
-              <img src={foto} alt="preview" style={{ maxHeight: 80, borderRadius: 4, border: `1px solid ${T.border}` }} />
-            </div>
-          )}
-        </div>
-
         <button onClick={handleSave} disabled={saving}
           style={{ padding: '10px 22px', background: saving ? '#BDBDBD' : T.primary,
             color: T.white, border: 'none', borderRadius: 6, fontWeight: 700,
             fontSize: '.88rem', cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
-          {saving ? 'Guardando...' : 'Registrar Hallazgo'}
+          {saving ? 'Guardando...' : 'Guardar Inspección'}
         </button>
-      </Card>
-
-      <Card>
-        <SecTitle>Historial de Hallazgos</SecTitle>
-        {histLoading ? <Skeleton height={100} /> : (registros || []).length === 0
-          ? <p style={{ textAlign: 'center', padding: 32, color: T.textMid, fontSize: '.85rem' }}>Sin reportes de hallazgos</p>
-          : (
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ background: T.primary }}>
-                    {['Fecha','Área','Tipo','Descripción','Acción','Responsable','Foto',''].map(h => <ThCell key={h}>{h}</ThCell>)}
-                  </tr>
-                </thead>
-                <tbody>
-                  {(registros || []).slice(0, 100).map((r, i) => {
-                    const badge = accionBadge(r.accion);
-                    return (
-                      <tr key={r.id} style={{ background: i % 2 === 0 ? T.white : '#F9FBF9' }}>
-                        <TdCell style={{ fontWeight: 600 }}>{r.fecha}</TdCell>
-                        <TdCell style={{ fontSize: '.78rem' }}>{r.area || '—'}</TdCell>
-                        <TdCell>
-                          <span style={{ padding: '3px 8px', borderRadius: 100, fontSize: '.65rem', fontWeight: 600,
-                            background: '#E3F2FD', color: '#1565C0' }}>{r.tipo || '—'}</span>
-                        </TdCell>
-                        <TdCell style={{ fontSize: '.75rem', maxWidth: 140 }}>{r.desc || '—'}</TdCell>
-                        <TdCell>
-                          <span style={{ padding: '3px 8px', borderRadius: 100, fontSize: '.65rem', fontWeight: 600,
-                            background: badge.bg, color: badge.c }}>{badge.l}</span>
-                        </TdCell>
-                        <TdCell style={{ fontSize: '.78rem' }}>{r.resp || '—'}</TdCell>
-                        <TdCell>
-                          {r.foto
-                            ? <img src={r.foto} alt="" style={{ height: 28, borderRadius: 3, cursor: 'pointer' }} title="Ver foto" />
-                            : '—'}
-                        </TdCell>
-                        <TdCell>
-                          <button onClick={() => remove(r.id)}
-                            style={{ background: 'none', border: `1px solid ${T.border}`,
-                              borderRadius: 4, padding: '3px 8px', cursor: 'pointer',
-                              fontSize: '.75rem', color: T.textMid }}>✕</button>
-                        </TdCell>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-      </Card>
-    </>
-  );
-}
-
-// ─── Main VYP component ───────────────────────────────────────────────────────
-const TABS = [
-  { key: 'vp',  label: 'Inventario Mensual' },
-  { key: 'vyp', label: 'Hallazgos' },
-];
-
-export default function VYP() {
-  const [activeTab, setActiveTab] = useState('vp');
-  const { empleados, loading: empLoading } = useEmpleados();
-
-  return (
-    <div style={{ fontFamily: 'Inter, system-ui, sans-serif', color: T.textDark, maxWidth: 900, margin: '0 auto' }}>
-      <div style={{ marginBottom: 20 }}>
-        <h1 style={{ fontSize: '1.35rem', fontWeight: 800, color: T.primary, margin: 0 }}>
-          Vidrio y Plástico
-        </h1>
-        <p style={{ fontSize: '.82rem', color: T.textMid, marginTop: 4, marginBottom: 0 }}>
-          Revisión mensual de inventario · Reporte de hallazgos de contaminación
-        </p>
       </div>
 
-      {/* Tab bar */}
-      <div style={{ display: 'flex', gap: 2, marginBottom: 20, borderBottom: `2px solid ${T.border}` }}>
-        {TABS.map(t => (
-          <button key={t.key} onClick={() => setActiveTab(t.key)}
-            style={{ padding: '10px 18px', background: 'none', border: 'none',
-              borderBottom: activeTab === t.key ? `3px solid ${T.primary}` : '3px solid transparent',
-              cursor: 'pointer', fontWeight: activeTab === t.key ? 700 : 500,
-              color: activeTab === t.key ? T.primary : T.textMid,
-              fontSize: '.82rem', fontFamily: 'inherit', transition: 'all .15s',
-              marginBottom: -2 }}>
-            {t.label}
-          </button>
-        ))}
-      </div>
+      {/* Historial */}
+      <div style={{ background: '#fff', borderRadius: 8, boxShadow: '0 1px 3px rgba(0,0,0,.10)', padding: 22 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+          <div style={{ fontWeight: 700, fontSize: '.9rem', color: T.primary }}>
+            Historial de Inspecciones ({filtHist.length})
+          </div>
+          <select value={filtRes} onChange={e => setFiltRes(e.target.value)}
+            style={{ padding: '6px 12px', border: `1.5px solid ${T.border}`, borderRadius: 6,
+              fontSize: '.82rem', outline: 'none', fontFamily: 'inherit', color: T.textDark, background: T.white }}>
+            <option value="">Todos los resultados</option>
+            <option value="LIMPIO">✅ LIMPIO</option>
+            <option value="CON HALLAZGO">⚠️ CON HALLAZGO</option>
+            <option value="PENDIENTE">🔴 PENDIENTE</option>
+          </select>
+        </div>
 
-      {activeTab === 'vp'  && <TabVP  empleados={empleados} empLoading={empLoading} />}
-      {activeTab === 'vyp' && <TabVYP empleados={empleados} empLoading={empLoading} />}
+        {histLoading ? <Skeleton rows={5} /> : filtHist.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '32px 0', color: T.textMid, fontSize: '.85rem' }}>
+            Sin inspecciones registradas
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: T.primary }}>
+                  {['Fecha', 'Responsable', 'Áreas', 'Hallazgos', 'Resultado', 'Foto', ''].map(h => (
+                    <th key={h} style={{ padding: '9px 12px', color: T.white, fontSize: '.7rem',
+                      fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em',
+                      textAlign: 'left', whiteSpace: 'nowrap' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filtHist.slice(0, 100).map((r, i) => {
+                  const rb = resultBadges[r.resultado] || { label: r.resultado || '—', bg: T.bgLight, color: T.textMid };
+                  const hallazgos = r.hallazgos || [];
+                  const fotos = hallazgos.filter(h => h.foto);
+                  const inspAreas = r.areas
+                    ? AREAS.filter(a => r.areas[a]?.inspeccionada).join(', ')
+                    : '—';
+                  return (
+                    <tr key={r.id} style={{ background: i % 2 === 0 ? '#fff' : '#F9FBF9' }}>
+                      <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0',
+                        fontWeight: 600, color: T.textMid, whiteSpace: 'nowrap' }}>{r.fecha}</td>
+                      <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0' }}>{r.resp || '—'}</td>
+                      <td style={{ padding: '8px 12px', fontSize: '.75rem', borderBottom: '1px solid #F0F0F0',
+                        color: T.textMid }}>{inspAreas}</td>
+                      <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }}>
+                        {hallazgos.length === 0 ? (
+                          <span style={{ color: T.border, fontSize: '.72rem' }}>—</span>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            {hallazgos.map((h, j) => (
+                              <span key={j} style={{ fontSize: '.68rem', padding: '2px 7px', borderRadius: 10,
+                                background: '#E3F2FD', color: T.info, fontWeight: 600, whiteSpace: 'nowrap' }}>
+                                {h.area} · {h.tipo}
+                                {h.accion === 'Pendiente' && <span style={{ color: T.danger }}> ⚠</span>}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0', whiteSpace: 'nowrap' }}>
+                        <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: '.68rem',
+                          fontWeight: 800, background: rb.bg, color: rb.color }}>
+                          {rb.label}
+                        </span>
+                      </td>
+                      <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }}>
+                        {fotos.length > 0
+                          ? <img src={fotos[0].foto} alt="" style={{ height: 28, borderRadius: 3, cursor: 'pointer' }} title="Ver foto" />
+                          : <span style={{ color: T.border, fontSize: '.72rem' }}>—</span>}
+                      </td>
+                      <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }}>
+                        <button onClick={() => remove(r.id)}
+                          style={{ background: 'none', border: `1px solid ${T.border}`, borderRadius: 4,
+                            padding: '3px 8px', cursor: 'pointer', fontSize: '.72rem', color: T.textMid }}>✕</button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -21,6 +21,7 @@ const NAV = [
   { to: '/bpm/capacitacion',       icon: '🎓', label: 'Capacitación' },
   { to: '/bpm/enfermos',           icon: '🏥', label: 'Empleados Enfermos' },
   { to: '/bpm/visitas',            icon: '👤', label: 'Control Visitas' },
+  { to: '/bpm/control-personal',   icon: '🧴', label: 'Control Personal' },
   { section: 'Inventario' },
   { to: '/stock',                  icon: '📦', label: 'Stock en Vivo' },
   { to: '/inventario/entrada',     icon: '📥', label: 'Ingresos Bodega' },
