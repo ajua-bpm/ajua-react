@@ -94,6 +94,7 @@ export default function AL() {
   const selectedChecks  = checks.filter(r => r.selected);
   const numSelected     = selectedChecks.length;
   const horasVisible    = HORAS;
+  const horasOn         = Object.fromEntries(HORAS.map(h => [h, true]));
   const totalPosible    = numSelected * horasVisible.length;
   const totalOk         = selectedChecks.reduce((s, r) => s + horasVisible.filter(h => r.horas[h]).length, 0);
   const pct             = totalPosible > 0 ? Math.round(totalOk / totalPosible * 100) : 0;

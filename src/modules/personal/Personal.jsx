@@ -66,9 +66,10 @@ function TabEmpleados() {
     fechaIngreso: '', activo: true, roles: [], sexo: 'M',
     numLicencia: '', tipoLicencia: '', vencLicencia: '',
   };
-  const [form, setForm]     = useState({ ...BLANK_EMP });
-  const [editId, setEditId] = useState(null);
-  const [search, setSearch] = useState('');
+  const [form, setForm]       = useState({ ...BLANK_EMP });
+  const [editId, setEditId]   = useState(null);
+  const [search, setSearch]   = useState('');
+  const [soloActivos, setSoloActivos] = useState(false);
 
   const esPiloto = form.roles.includes('piloto');
 
@@ -100,8 +101,10 @@ function TabEmpleados() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const filtered = data.filter(r => !search || r.nombre?.toLowerCase().includes(search.toLowerCase()));
   const activos  = data.filter(r => r.activo !== false);
+  const filtered = data
+    .filter(r => !soloActivos || r.activo !== false)
+    .filter(r => !search || r.nombre?.toLowerCase().includes(search.toLowerCase()));
 
   if (loading) return <Skeleton rows={6} />;
 
@@ -211,7 +214,17 @@ function TabEmpleados() {
       {/* Table */}
       <div style={card}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
-          <div style={{ fontWeight: 700, fontSize: '.9rem', color: T.primary }}>Lista ({filtered.length})</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ fontWeight: 700, fontSize: '.9rem', color: T.primary }}>Lista ({filtered.length})</div>
+            <button onClick={() => setSoloActivos(v => !v)} style={{
+              padding: '4px 14px', borderRadius: 100, fontSize: '.75rem', fontWeight: 700, cursor: 'pointer',
+              border: `1.5px solid ${soloActivos ? T.secondary : T.border}`,
+              background: soloActivos ? T.secondary : T.white,
+              color: soloActivos ? T.white : T.textMid,
+            }}>
+              {soloActivos ? '✓ Solo activos' : 'Solo activos'}
+            </button>
+          </div>
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar por nombre..."
             style={{ ...IS, width: 200, marginTop: 0 }} />
         </div>

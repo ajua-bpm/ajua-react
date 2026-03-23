@@ -412,8 +412,8 @@ function TabPresentaciones() {
               </label>
             )}
           </div>
-          {/* Totals row — only show if there's a lbs value */}
-          {form.totalLbsCaja > 0 && (
+          {/* Totals row — only show for redes/bolsas (granel uses the lbs input directly) */}
+          {form.totalLbsCaja > 0 && form.tipoContenido !== 'granel' && (
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, marginBottom:12 }}>
               <label style={LS}>
                 ⇒ Total LBS por Caja
@@ -472,10 +472,16 @@ function TabPresentaciones() {
                       {TIPOS_CONTENIDO.find(t=>t.value===r.tipoContenido)?.label || r.tipoContenido || '—'}
                     </td>
                     <td style={{ ...TD_S(i%2===1), fontWeight:700, color:T.secondary, textAlign:'right' }}>
-                      {r.totalLbsCaja > 0 ? r.totalLbsCaja.toFixed(2) : '—'}
+                      {(() => {
+                        const lbs = r.totalLbsCaja > 0 ? r.totalLbsCaja : (r.tipoContenido === 'granel' ? Number(r.lbsUnidad) : 0);
+                        return lbs > 0 ? lbs.toFixed(2) : '—';
+                      })()}
                     </td>
                     <td style={{ ...TD_S(i%2===1), textAlign:'right', color:T.textMid }}>
-                      {r.totalKgCaja > 0 ? r.totalKgCaja.toFixed(2) : '—'}
+                      {(() => {
+                        const kg = r.totalKgCaja > 0 ? r.totalKgCaja : (r.tipoContenido === 'granel' ? Number(r.lbsUnidad) / 2.205 : 0);
+                        return kg > 0 ? kg.toFixed(2) : '—';
+                      })()}
                     </td>
                     <td style={{ ...TD_S(i%2===1), fontSize:'.78rem', color:T.textMid }}>{r.codigoSAP||'—'}</td>
                     <td style={TD_S(i%2===1)}>
