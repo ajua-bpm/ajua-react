@@ -38,6 +38,8 @@ const NAV = [
   { to: '/anticipos',              icon: '💵', label: 'Anticipos MX' },
   { to: '/cotizador/rapido',       icon: '💼', label: 'Cotizador Rápido' },
   { to: '/cotizador',              icon: '📋', label: 'Cotizador' },
+  { section: 'Precios' },
+  { to: '/precios',                icon: '💲', label: 'Lista de Precios' },
   { section: 'Personal' },
   { to: '/personal',               icon: '👥', label: 'Personal' },
   { section: 'Sistema' },

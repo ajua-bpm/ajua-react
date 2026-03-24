@@ -39,6 +39,9 @@ import AnticiposMX from './modules/finanzas/AnticiposMX';
 import CotizadorRapido from './modules/cotizador/CotizadorRapido';
 import Cotizador from './modules/cotizador/Cotizador';
 
+// Precios
+import Precios from './modules/precios/Precios';
+
 // Personal
 import Personal from './modules/personal/Personal';
 
@@ -104,6 +107,7 @@ export default function App() {
           <Route path="anticipos"              element={<AnticiposMX />} />
           <Route path="cotizador/rapido"       element={<CotizadorRapido />} />
           <Route path="cotizador"              element={<Cotizador />} />
+          <Route path="precios"                element={<Precios />} />
 
           {/* Personal */}
           <Route path="personal"               element={<Personal />} />
