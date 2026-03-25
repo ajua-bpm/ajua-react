@@ -4,22 +4,20 @@ import { useCollection, useWrite } from '../../hooks/useFirestore';
 import { useToast } from '../../components/Toast';
 import Skeleton from '../../components/Skeleton';
 
-// Merge empleados from collection + main doc, filter active women, sort alpha
-function useMujeres() {
+// Merge empleados from collection + main doc, filter active, sort alpha
+function usePersonal() {
   const { data: empCol, loading: lCol } = useCollection('empleados', { orderField: 'nombre', limit: 200 });
   const { empleados: empMain, loading: lMain } = useEmpleados();
-  const mujeres = useMemo(() => {
+  const personal = useMemo(() => {
     const seen = new Set();
     const list = [];
     [...(empCol || []), ...(empMain || [])].forEach(e => {
       const key = (e.nombre || '').toLowerCase().trim();
       if (!seen.has(key) && e.nombre && e.activo !== false) { seen.add(key); list.push(e); }
     });
-    return list
-      .filter(e => (e.sexo || '').toUpperCase() === 'F')
-      .sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
+    return list.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
   }, [empCol, empMain]);
-  return { mujeres, loading: lCol || lMain };
+  return { personal, loading: lCol || lMain };
 }
 
 // ── Design tokens ─────────────────────────────────────────────────
@@ -47,7 +45,7 @@ const IS = {
 };
 
 const today = () => new Date().toISOString().slice(0, 10);
-const mkRows = (mujeres) => mujeres.map(e => ({
+const mkRows = (personal) => personal.map(e => ({
   id:         e.id || e.nombre,
   nombre:     e.nombre,
   area:       e.area || e.cargo || '',
@@ -59,7 +57,7 @@ const mkRows = (mujeres) => mujeres.map(e => ({
 // ── Main ──────────────────────────────────────────────────────────
 export default function ControlPersonal() {
   const toast = useToast();
-  const { mujeres, loading: empLoading } = useMujeres();
+  const { personal, loading: empLoading } = usePersonal();
   const { data: historial, loading: histLoading } = useCollection('controlPersonal', {
     orderField: 'fecha', orderDir: 'desc', limit: 200,
   });
@@ -71,10 +69,10 @@ export default function ControlPersonal() {
   const [accion, setAccion] = useState('');
   const [rows,   setRows]   = useState([]);
 
-  // Init rows whenever mujeres list loads
+  // Init rows whenever personal list loads
   useEffect(() => {
-    if (!empLoading && mujeres.length > 0) setRows(mkRows(mujeres));
-  }, [mujeres, empLoading]);
+    if (!empLoading && personal.length > 0) setRows(mkRows(personal));
+  }, [personal, empLoading]);
 
   const setRow = (idx, patch) =>
     setRows(prev => prev.map((r, i) => i === idx ? { ...r, ...patch } : r));
@@ -86,9 +84,9 @@ export default function ControlPersonal() {
 
   const handleSave = async () => {
     if (!fecha || !resp) { toast('Complete fecha y responsable', 'error'); return; }
-    if (trabajaron.length === 0) { toast('Seleccione al menos una empleada que trabajó hoy', 'error'); return; }
+    if (trabajaron.length === 0) { toast('Seleccione al menos un empleado que trabajó hoy', 'error'); return; }
     const pendientes = trabajaron.filter(r => r.cumplio === null).length;
-    if (pendientes > 0) { toast('Marque CUMPLIÓ o NO CUMPLIÓ para todas las que trabajaron', 'error'); return; }
+    if (pendientes > 0) { toast('Marque CUMPLIÓ o NO CUMPLIÓ para todos los que trabajaron', 'error'); return; }
     await add({
       fecha, turno, resp, accion,
       empleados: rows.map(r => ({
@@ -100,7 +98,7 @@ export default function ControlPersonal() {
       resultado: turnoOK ? 'APROBADO' : 'RECHAZADO',
     });
     toast('Control de personal guardado');
-    setRows(mkRows(mujeres));
+    setRows(mkRows(personal));
     setAccion('');
   };
 
@@ -136,7 +134,7 @@ export default function ControlPersonal() {
             {empLoading ? <Skeleton height={36} /> : (
               <select value={resp} onChange={e => setResp(e.target.value)} style={{ ...IS, cursor: 'pointer' }}>
                 <option value="">— Seleccionar —</option>
-                {mujeres.map(e => (
+                {personal.map(e => (
                   <option key={e.id || e.nombre} value={e.nombre}>
                     {e.nombre}{e.cargo ? ' · ' + e.cargo : ''}
                   </option>
@@ -157,15 +155,15 @@ export default function ControlPersonal() {
               {turnoOK ? '✅ TURNO APROBADO' : rechazadas > 0 ? '❌ TURNO RECHAZADO' : '⏳ Pendiente'}
             </div>
             <span style={{ fontSize: '.8rem', color: T.textMid }}>
-              <b style={{ color: T.secondary }}>{aprobadas}</b> / {trabajaron.length} aprobadas
-              {rechazadas > 0 && <> · <b style={{ color: T.danger }}>{rechazadas} rechazadas</b></>}
+              <b style={{ color: T.secondary }}>{aprobadas}</b> / {trabajaron.length} aprobados
+              {rechazadas > 0 && <> · <b style={{ color: T.danger }}>{rechazadas} rechazados</b></>}
             </span>
           </div>
         )}
 
         {/* Section label */}
         <div style={{ fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: T.secondary, marginBottom: 8 }}>
-          👥 Empleadas ({rows.length}) — marcar quién trabajó hoy
+          👥 Personal ({rows.length}) — marcar quién trabajó hoy
         </div>
 
         {/* Employee rows */}
@@ -174,8 +172,8 @@ export default function ControlPersonal() {
             <div style={{ padding: 16 }}><Skeleton rows={4} /></div>
           ) : rows.length === 0 ? (
             <div style={{ padding: 20, textAlign: 'center', color: T.textMid, fontSize: '.83rem' }}>
-              No hay empleadas activas con sexo F registradas.<br />
-              <span style={{ fontSize: '.75rem' }}>Agregar empleadas en Personal → campo Sexo = F</span>
+              No hay empleados activos registrados.<br />
+              <span style={{ fontSize: '.75rem' }}>Agregar empleados en Personal.</span>
             </div>
           ) : rows.map((row, idx) => (
             <div key={row.id} style={{

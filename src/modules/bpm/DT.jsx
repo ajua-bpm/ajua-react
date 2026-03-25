@@ -17,7 +17,19 @@ const GRUPOS = [
     items: [
       { id: 'c01', text: 'El interior del vehículo está limpio y libre de residuos' },
       { id: 'c02', text: 'El exterior del vehículo está limpio' },
+      { id: 'c03', text: 'Las superficies en contacto con producto están desinfectadas' },
+      { id: 'c04', text: 'Se realizó desinfección periódica del vehículo' },
       { id: 'c05', text: 'No hay olores fuertes o inusuales en el área de carga' },
+    ],
+  },
+  {
+    label: 'EQUIPOS DE TRANSPORTE',
+    items: [
+      { id: 'c06', text: 'El sistema de refrigeración funciona adecuadamente' },
+      { id: 'c07', text: 'Las puertas del compartimento cierran herméticamente' },
+      { id: 'c08', text: 'Las paredes del compartimento están en buen estado' },
+      { id: 'c09', text: 'El piso está limpio, seco y sin roturas' },
+      { id: 'c10', text: 'El vehículo cuenta con ventilación adecuada' },
     ],
   },
 ];
