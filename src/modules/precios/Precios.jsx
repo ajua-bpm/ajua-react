@@ -155,10 +155,10 @@ function exportListaCliente(cliente, rows) {
 
 function TabListaGeneral() {
   const toast = useToast();
-  const { data: productos, loading: loadProd } = useCollection('iproductos', { orderField: 'nombre' });
-  const { data: presentaciones, loading: loadPres } = useCollection('ipresentaciones', { orderField: 'codigo' });
-  const { add: addProd, update: updateProd } = useWrite('iproductos');
-  const { add: addPres, update: updatePres } = useWrite('ipresentaciones');
+  const { data: productos, loading: loadProd } = useCollection('iProductos', { orderField: 'nombre' });
+  const { data: presentaciones, loading: loadPres } = useCollection('iPresentaciones', { orderField: 'codigo' });
+  const { add: addProd, update: updateProd } = useWrite('iProductos');
+  const { add: addPres, update: updatePres } = useWrite('iPresentaciones');
 
   const [editPrecioId, setEditPrecioId] = useState(null);
   const [editPrecioVal, setEditPrecioVal] = useState('');
@@ -337,8 +337,8 @@ function TabListaGeneral() {
 function TabPreciosCliente() {
   const toast = useToast();
   const { data: clientes, loading: loadCli } = useCollection('iclientes', { orderField: 'nombre' });
-  const { data: productos, loading: loadProd } = useCollection('iproductos', { orderField: 'nombre' });
-  const { data: presentaciones, loading: loadPres } = useCollection('ipresentaciones', { orderField: 'codigo' });
+  const { data: productos, loading: loadProd } = useCollection('iProductos', { orderField: 'nombre' });
+  const { data: presentaciones, loading: loadPres } = useCollection('iPresentaciones', { orderField: 'codigo' });
 
   const [selectedClienteId, setSelectedClienteId] = useState('');
   const [search, setSearch] = useState('');
@@ -551,9 +551,9 @@ function TabPreciosCliente() {
 
 function TabVolumen() {
   const toast = useToast();
-  const { data: presentaciones, loading: loadPres } = useCollection('ipresentaciones', { orderField: 'codigo' });
+  const { data: presentaciones, loading: loadPres } = useCollection('iPresentaciones', { orderField: 'codigo' });
   const { data: clientes, loading: loadCli } = useCollection('iclientes', { orderField: 'nombre' });
-  const { data: productos } = useCollection('iproductos', { orderField: 'nombre' });
+  const { data: productos } = useCollection('iProductos', { orderField: 'nombre' });
 
   const [selectedPresentId, setSelectedPresentId] = useState('');
   const [selectedClienteId, setSelectedClienteId] = useState('');

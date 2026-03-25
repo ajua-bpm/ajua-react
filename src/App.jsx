@@ -20,6 +20,8 @@ import EmpleadosEnfermos from './modules/bpm/EmpleadosEnfermos';
 import Visitas from './modules/bpm/Visitas';
 import LavadoProducto from './modules/bpm/LavadoProducto';
 import ControlPersonal from './modules/bpm/ControlPersonal';
+import ControlCloro from './modules/bpm/ControlCloro';
+import ControlTemperatura from './modules/bpm/ControlTemperatura';
 
 // Inventario
 import StockVivo from './modules/stock/StockVivo';
@@ -31,6 +33,7 @@ import Proveedores from './modules/inventario/Proveedores';
 import VentasGT from './modules/ventas/VentasGT';
 import VentasInt from './modules/ventas/VentasInt';
 import GastosSemanales from './modules/ventas/GastosSemanales';
+import Maquila from './modules/ventas/Maquila';
 import Walmart from './modules/walmart/Walmart';
 
 // Finanzas
@@ -89,6 +92,8 @@ export default function App() {
           <Route path="bpm/enfermos"           element={<EmpleadosEnfermos />} />
           <Route path="bpm/visitas"            element={<Visitas />} />
           <Route path="bpm/control-personal"   element={<ControlPersonal />} />
+          <Route path="bpm/cloro"             element={<ControlCloro />} />
+          <Route path="bpm/temperatura"       element={<ControlTemperatura />} />
 
           {/* Inventario */}
           <Route path="stock"                  element={<StockVivo />} />
@@ -100,6 +105,7 @@ export default function App() {
           <Route path="ventas/gt"              element={<VentasGT />} />
           <Route path="ventas/int"             element={<VentasInt />} />
           <Route path="gastos/semanales"          element={<GastosSemanales />} />
+          <Route path="maquila"                  element={<Maquila />} />
           <Route path="walmart"                element={<Walmart />} />
 
           {/* Finanzas */}
