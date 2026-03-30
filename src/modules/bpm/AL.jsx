@@ -78,9 +78,20 @@ export default function AL() {
     }
   }, [empLoading, empleados, initialized]);
 
-  // ── Employee selection ────────────────────────────────────────────
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, []);
+
+  // ── Employee selection — auto-marca las 4 horas al seleccionar ───
   const toggleSelect = (id) =>
-    setChecks(prev => prev.map(r => r.empleadoId === id ? { ...r, selected: !r.selected } : r));
+    setChecks(prev => prev.map(r => r.empleadoId !== id ? r : {
+      ...r,
+      selected: !r.selected,
+      horas: Object.fromEntries(HORAS.map(h => [h, !r.selected])),
+    }));
 
   const selectAll  = () => setChecks(prev => prev.map(r => ({ ...r, selected: true })));
   const selectNone = () => setChecks(prev => prev.map(r => ({ ...r, selected: false })));
@@ -320,7 +331,7 @@ export default function AL() {
         </Lbl>
 
         <button onClick={handleSave} disabled={saving}
-          style={{ marginTop: 16, padding: '11px 28px', background: saving ? '#BDBDBD' : T.primary, color: '#fff', border: 'none', borderRadius: 6, fontWeight: 700, fontSize: '.88rem', cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+          style={{ marginTop: 16, padding: '11px 28px', minHeight: 44, background: saving ? '#BDBDBD' : T.primary, color: '#fff', border: 'none', borderRadius: 6, fontWeight: 700, fontSize: '.88rem', cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit', width: isMobile ? '100%' : 'auto' }}>
           {saving ? 'Guardando...' : '💾 Guardar Turno'}
         </button>
       </Card>
@@ -375,6 +386,41 @@ export default function AL() {
         <SecTitle>Historial de Turnos ({histLoading ? '…' : (registros || []).length} registros)</SecTitle>
         {histLoading ? <Skeleton rows={6} /> : (registros || []).length === 0 ? (
           <p style={{ textAlign: 'center', padding: 32, color: T.textMid, fontSize: '.85rem' }}>Sin registros aún.</p>
+        ) : isMobile ? (
+          <div>
+            {(registros || []).slice(0, 100).map(r => {
+              const totalEmp   = (r.checks || []).length;
+              const totalCompl = (r.checks || []).filter(row => row.horas && Object.values(row.horas).every(v => v)).length;
+              const pctComp    = totalEmp > 0 ? Math.round(totalCompl / totalEmp * 100) : 0;
+              const compColor  = pctComp >= 100 ? T.accent : pctComp >= 75 ? T.warn : T.danger;
+              const compBg     = pctComp >= 100 ? '#E8F5E9' : pctComp >= 75 ? '#FFF3E0' : '#FFEBEE';
+              return (
+                <div key={r.id} style={{ background: '#fff', border: `1px solid ${T.border}`, borderRadius: 8, padding: '12px 14px', marginBottom: 8, boxShadow: '0 1px 2px rgba(0,0,0,.08)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontWeight: 700, fontSize: 14, color: T.textDark }}>{r.fecha || '—'}</span>
+                      <span style={{ padding: '2px 9px', borderRadius: 100, fontSize: 12, fontWeight: 700, background: r.turno === 'AM' ? '#E3F2FD' : r.turno === 'PM' ? '#EDE7F6' : '#E8F5E9', color: r.turno === 'AM' ? '#1565C0' : r.turno === 'PM' ? '#4527A0' : T.secondary }}>
+                        {r.turno || '—'}
+                      </span>
+                    </div>
+                    <button onClick={() => { if (window.confirm('¿Eliminar este registro?')) remove(r.id); }}
+                      style={{ padding: '3px 10px', borderRadius: 5, border: `1.5px solid ${T.danger}`, background: '#fff', color: T.danger, cursor: 'pointer', fontSize: '.75rem', fontWeight: 700, fontFamily: 'inherit' }}>
+                      ✕
+                    </button>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <span style={{ fontSize: 12, color: T.textMid }}>{r.hi || r.hora || '—'} – {r.hs || '—'}</span>
+                    <span style={{ padding: '2px 9px', borderRadius: 100, fontSize: 12, fontWeight: 700, background: '#E8F5E9', color: T.secondary }}>
+                      {totalEmp} personas
+                    </span>
+                    <span style={{ padding: '2px 9px', borderRadius: 100, fontSize: 12, fontWeight: 700, background: compBg, color: compColor }}>
+                      {totalCompl}/{totalEmp} · {pctComp}%
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>

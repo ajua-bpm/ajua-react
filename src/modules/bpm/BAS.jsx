@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useCollection, useWrite } from '../../hooks/useFirestore';
 import { useEmpleados } from '../../hooks/useMainData';
 import { useToast } from '../../components/Toast';
@@ -67,6 +67,13 @@ export default function BAS() {
   const { add: addCal, saving: savingCal } = useWrite('bas_calibraciones');
 
   const [tab, setTab] = useState('revision');
+
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, []);
 
   // ── Tab 1: Revisión Diaria ─────────────────────────────────────────────────
   const [fecha, setFecha]         = useState(today());
@@ -259,7 +266,7 @@ export default function BAS() {
             <button
               onClick={handleSave}
               disabled={savingBas}
-              style={{ padding: '11px 28px', background: savingBas ? '#BDBDBD' : T.primary, color: T.white, border: 'none', borderRadius: 6, fontWeight: 700, fontSize: '.88rem', cursor: savingBas ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}
+              style={{ padding: '11px 28px', minHeight: 44, background: savingBas ? '#BDBDBD' : T.primary, color: T.white, border: 'none', borderRadius: 6, fontWeight: 700, fontSize: '.88rem', cursor: savingBas ? 'not-allowed' : 'pointer', fontFamily: 'inherit', width: isMobile ? '100%' : 'auto' }}
             >
               {savingBas ? 'Guardando...' : 'Guardar Revisión'}
             </button>
@@ -270,6 +277,38 @@ export default function BAS() {
             <SectionTitle>Historial de Revisiones</SectionTitle>
             {histLoading ? <Skeleton height={160} /> : (registros || []).length === 0 ? (
               <p style={{ textAlign: 'center', padding: 32, color: T.textMid }}>Sin revisiones registradas.</p>
+            ) : isMobile ? (
+              <div>
+                {(registros || []).slice(0, 100).map(r => {
+                  const bas = r.basculas || [];
+                  const okCount   = bas.filter(b => b.estado === 'ok').length;
+                  const failCount = bas.filter(b => b.estado === 'variacion').length;
+                  return (
+                    <div key={r.id} style={{ background: T.white, border: `1px solid ${T.border}`, borderRadius: 8, padding: '12px 14px', marginBottom: 8, boxShadow: '0 1px 2px rgba(0,0,0,.08)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                        <span style={{ fontWeight: 700, fontSize: 14, color: T.textDark }}>{r.responsable || '—'}</span>
+                        <span style={{ fontSize: 12, color: T.textMid }}>{r.fecha || '—'} {r.hora || ''}</span>
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 4 }}>
+                        <span style={{ padding: '2px 9px', borderRadius: 100, fontSize: 12, fontWeight: 700, background: T.bgGreen, color: T.secondary }}>✓ {okCount} OK</span>
+                        {failCount > 0 && (
+                          <span style={{ padding: '2px 9px', borderRadius: 100, fontSize: 12, fontWeight: 700, background: '#FFEBEE', color: T.danger }}>
+                            ⚠ {failCount}{bas.filter(b => b.estado === 'variacion' && b.variacionGramos).map(b => ` ±${b.variacionGramos} lbs`).join('')}
+                          </span>
+                        )}
+                        <Badge resultado={r.resultado} />
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        {r.obs && <span style={{ fontSize: 12, color: T.textMid }}>{r.obs}</span>}
+                        <button
+                          onClick={() => { if (window.confirm('¿Eliminar esta revisión?')) removeBas(r.id); }}
+                          style={{ padding: '4px 10px', borderRadius: 5, border: `1.5px solid ${T.danger}`, background: T.white, color: T.danger, cursor: 'pointer', fontSize: '.75rem', fontWeight: 700, fontFamily: 'inherit', marginLeft: 'auto' }}
+                        >✕</button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             ) : (
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -375,7 +414,7 @@ export default function BAS() {
             <button
               onClick={handleSaveCal}
               disabled={savingCal}
-              style={{ padding: '11px 28px', background: savingCal ? '#BDBDBD' : T.primary, color: T.white, border: 'none', borderRadius: 6, fontWeight: 700, fontSize: '.88rem', cursor: savingCal ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}
+              style={{ padding: '11px 28px', minHeight: 44, background: savingCal ? '#BDBDBD' : T.primary, color: T.white, border: 'none', borderRadius: 6, fontWeight: 700, fontSize: '.88rem', cursor: savingCal ? 'not-allowed' : 'pointer', fontFamily: 'inherit', width: isMobile ? '100%' : 'auto' }}
             >
               {savingCal ? 'Guardando...' : 'Registrar Calibración'}
             </button>
@@ -386,6 +425,25 @@ export default function BAS() {
             <SectionTitle>Historial de Calibraciones</SectionTitle>
             {calLoading ? <Skeleton height={120} /> : (calibraciones || []).length === 0 ? (
               <p style={{ textAlign: 'center', padding: 32, color: T.textMid }}>Sin calibraciones registradas.</p>
+            ) : isMobile ? (
+              <div>
+                {(calibraciones || []).slice(0, 100).map(r => (
+                  <div key={r.id} style={{ background: T.white, border: `1px solid ${T.border}`, borderRadius: 8, padding: '12px 14px', marginBottom: 8, boxShadow: '0 1px 2px rgba(0,0,0,.08)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                      <div>
+                        <span style={{ fontWeight: 700, fontSize: 14, color: T.textDark }}>{r.empresa || '—'}</span>
+                        {r.tecnico && <span style={{ fontSize: 12, color: T.textMid, marginLeft: 6 }}>{r.tecnico}</span>}
+                      </div>
+                      <span style={{ fontSize: 12, color: T.textMid }}>{r.fechaCal || '—'}</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 4 }}>
+                      <span style={{ padding: '2px 9px', borderRadius: 100, fontSize: 12, fontWeight: 700, background: T.bgGreen, color: T.secondary }}>{r.basculaId || '—'}</span>
+                      {r.proximaCalibracion && <span style={{ fontSize: 12, color: T.textMid }}>Próxima: {r.proximaCalibracion}</span>}
+                    </div>
+                    {r.obs && <div style={{ fontSize: 12, color: T.textMid }}>{r.obs}</div>}
+                  </div>
+                ))}
+              </div>
             ) : (
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>

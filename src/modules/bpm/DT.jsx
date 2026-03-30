@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useCollection, useWrite } from '../../hooks/useFirestore';
 import { useEmpleados, useConductores, useClientes } from '../../hooks/useMainData';
 import { useToast } from '../../components/Toast';
@@ -129,6 +129,13 @@ export default function DT() {
   const [checks,    setChecks]    = useState(initChecks);
   const [obs,         setObs]         = useState('');
   const [fotoUrl,     setFotoUrl]     = useState('');
+
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, []);
 
   const setCheck = (id, val) => setChecks(c => ({ ...c, [id]: val }));
 
@@ -286,7 +293,7 @@ export default function DT() {
 
         <button
           onClick={handleSave} disabled={saving || !canSave}
-          style={{ marginTop: 16, padding: '11px 28px', background: saving || !canSave ? '#BDBDBD' : T.primary, color: '#fff', border: 'none', borderRadius: 6, fontWeight: 700, fontSize: '.88rem', cursor: saving || !canSave ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}
+          style={{ marginTop: 16, padding: '11px 28px', minHeight: 44, background: saving || !canSave ? '#BDBDBD' : T.primary, color: '#fff', border: 'none', borderRadius: 6, fontWeight: 700, fontSize: '.88rem', cursor: saving || !canSave ? 'not-allowed' : 'pointer', fontFamily: 'inherit', width: isMobile ? '100%' : 'auto' }}
         >
           {saving ? 'Guardando...' : 'Guardar Inspección'}
         </button>
@@ -299,6 +306,29 @@ export default function DT() {
           <Skeleton height={200} />
         ) : (data || []).length === 0 ? (
           <p style={{ textAlign: 'center', padding: 32, color: T.textMid, fontSize: '.85rem' }}>Sin inspecciones aún.</p>
+        ) : isMobile ? (
+          <div>
+            {(data || []).map(r => (
+              <div key={r.id} style={{ background: '#fff', border: `1px solid ${T.border}`, borderRadius: 8, padding: '12px 14px', marginBottom: 8, boxShadow: '0 1px 2px rgba(0,0,0,.08)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <span style={{ fontWeight: 700, fontSize: 14, color: T.textDark }}>{r.conductor || '—'}</span>
+                    <span style={{ background: '#F5F5F5', border: `1px solid ${T.border}`, borderRadius: 4, padding: '1px 7px', fontSize: 12, fontWeight: 600 }}>{r.placa || '—'}</span>
+                  </div>
+                  <span style={{ fontSize: 12, color: T.textMid, whiteSpace: 'nowrap' }}>{r.fecha || '—'}</span>
+                </div>
+                {r.cliente && <div style={{ fontSize: 12, color: '#374151', marginBottom: 4 }}>📦 {r.cliente}</div>}
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <span style={{ fontSize: 12, color: T.textMid }}>{r.hora || '—'}</span>
+                  <span style={{ fontWeight: 700, fontSize: 14, color: (r.pct || 0) >= 80 ? T.secondary : (r.pct || 0) >= 60 ? T.warn : T.danger }}>
+                    {r.pct != null ? `${r.pct}%` : '—'}
+                  </span>
+                  <ResultadoBadge resultado={r.resultado} />
+                </div>
+                {r.obs && <div style={{ fontSize: 12, color: T.textMid, marginTop: 4 }}>{r.obs}</div>}
+              </div>
+            ))}
+          </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
