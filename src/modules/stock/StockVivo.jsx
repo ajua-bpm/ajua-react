@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback } from 'react';
+import { useMemo, useState, useCallback, useEffect } from 'react';
 import { useCollection } from '../../hooks/useFirestore';
 import { useMainData, useProductosCatalogo } from '../../hooks/useMainData';
 import Skeleton from '../../components/Skeleton';
@@ -49,11 +49,18 @@ function resolveProductId(productoId, nombre, prodById, prodByName, prodByFirstW
 
 // ── Main ──────────────────────────────────────────────────────────
 export default function StockVivo() {
-  const { data: colEntradas, loading: loadE } = useCollection('ientradas', { orderField: 'fecha', orderDir: 'desc', limit: 2000 });
-  const { data: colSalidas,  loading: loadS } = useCollection('isalidas',  { orderField: 'fecha', orderDir: 'desc', limit: 2000 });
+  const { data: colEntradas, loading: loadE } = useCollection('ientradas',       { orderField: 'fecha', orderDir: 'desc', limit: 2000 });
+  const { data: colSalidas,  loading: loadS } = useCollection('isalidas',        { orderField: 'fecha', orderDir: 'desc', limit: 2000 });
+  const { data: presData                    } = useCollection('iPresentaciones',  { limit: 200 });
   const { data: mainData,    loading: loadM } = useMainData();
   const { productos: catalogItems, loading: loadC } = useProductosCatalogo();
   const [filtProd, setFiltProd] = useState('');
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  useEffect(() => {
+    const h = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', h);
+    return () => window.removeEventListener('resize', h);
+  }, []);
 
   const loading = loadE || loadS || loadM || loadC;
 
@@ -77,6 +84,29 @@ export default function StockVivo() {
     (id, nombre) => resolveProductId(id, nombre, prodById, prodByName, prodByFirstWord),
     [prodById, prodByName, prodByFirstWord]
   );
+
+  // Map: canonId → unidades por caja
+  // Handles two schemas: Cotizador (cantidadCaja + tipoContenido) and Lista de Precios (descripcion "4 unidades × ...")
+  const cantPorCajaMap = useMemo(() => {
+    const m = {};
+    for (const p of (presData || [])) {
+      // Get qty: structured field OR parse "4 unidades" from descripcion/nombre
+      const qty = Number(p.cantidadCaja)
+        || Number((p.descripcion || p.nombre || '').match(/^(\d+)\s*unidades?/i)?.[1])
+        || 0;
+      if (!qty) continue;
+      // Resolve canonical product ID: by productoId (Lista de Precios) or by name string (Cotizador)
+      const canonId = (p.productoId && prodById[p.productoId])
+        ? p.productoId
+        : resolve(null, p.producto || '');
+      if (!canonId) continue;
+      // Only apply to products tracked by unit (esPorUnidad)
+      const cat = prodById[canonId];
+      if (!cat || (cat.unidadCompra !== 'unidad' && cat.unidadCompra !== 'pza')) continue;
+      if (!m[canonId]) m[canonId] = qty;
+    }
+    return m;
+  }, [presData, prodById, resolve]);
 
   // Merge Firestore ientradas + legacy ajua_bpm/main ientradas
   const entradas = useMemo(() => {
@@ -141,13 +171,21 @@ export default function StockVivo() {
             : [];
 
       for (const l of lineas) {
-        const nombre  = l.productoNombre || l.producto || l.nombre || '';
+        const nombre  = l.productoNombre || l.producto || l.nombre || l.descripcion || '';
         const canonId = resolve(l.productoId, nombre);
         if (!canonId) continue;
         ensure(canonId, nombre);
         const slot = m[canonId];
         if (slot.esPorUnidad) {
-          slot.salUnid += Number(l.bultos) || Number(l.cajasEnviadas) || Number(l.cantidad) || 0;
+          // New records: totalUnidades pre-calculated by SalidaBodega
+          if (Number(l.totalUnidades) > 0) {
+            slot.salUnid += Number(l.totalUnidades);
+          } else {
+            // Fallback for old records: cajas × cantidadCaja (linea) or cantPorCajaMap
+            const cajas       = Number(l.bultos) || Number(l.cajasEnviadas) || Number(l.cajas) || Number(l.cantidad) || 0;
+            const cantPorCaja = Number(l.cantidadCaja) || cantPorCajaMap[canonId] || 1;
+            slot.salUnid += cajas * cantPorCaja;
+          }
         } else {
           const lbs = Number(l.totalLbs) || Number(l.lbs) || (Number(l.lbsBulto) * (Number(l.bultos) || 0)) || 0;
           slot.salLbs += lbs;
@@ -156,7 +194,7 @@ export default function StockVivo() {
     }
 
     return m;
-  }, [entradas, salidas, prodById, resolve]);
+  }, [entradas, salidas, prodById, resolve, cantPorCajaMap]);
 
   const productos = useMemo(() =>
     Object.entries(stockMap)
@@ -214,13 +252,19 @@ export default function StockVivo() {
       const canal   = s.canal || (s.tipo === 'walmart' ? 'Walmart' : 'Salida');
       const entidad = s.cliente || s.clienteNombre || s.almacen || 'Walmart Guatemala';
       for (const l of lineas) {
-        const nombre  = l.productoNombre || l.producto || l.nombre || '';
+        const nombre  = l.productoNombre || l.producto || l.nombre || l.descripcion || '';
         const canonId = resolve(l.productoId, nombre);
         if (!canonId) continue;
         const cat     = prodById[canonId];
         const esPorUnidad = cat?.unidadCompra === 'unidad' || cat?.unidadCompra === 'pza';
-        const lbs  = esPorUnidad ? 0 : (Number(l.totalLbs) || Number(l.lbs) || (Number(l.lbsBulto) * (Number(l.bultos) || 0)) || 0);
-        const unid = esPorUnidad ? (Number(l.bultos) || Number(l.cajasEnviadas) || 0) : 0;
+        const lbs      = esPorUnidad ? 0 : (Number(l.totalLbs) || Number(l.lbs) || (Number(l.lbsBulto) * (Number(l.bultos) || 0)) || 0);
+        const cajasRaw = Number(l.bultos) || Number(l.cajasEnviadas) || Number(l.cajas) || 0;
+        // New records have totalUnidades; fallback for old records uses cantidadCaja or cantPorCajaMap
+        const unid = esPorUnidad
+          ? (Number(l.totalUnidades) > 0
+              ? Number(l.totalUnidades)
+              : cajasRaw * (Number(l.cantidadCaja) || cantPorCajaMap[canonId] || 1))
+          : 0;
         mvs.push({
           fecha: fmtDate(s.fecha),
           tipo:  'salida',
@@ -228,7 +272,7 @@ export default function StockVivo() {
           canonId,
           producto:    cat?.nombre || nombre,
           entidad,
-          bultos:      Number(l.bultos) || Number(l.cajasEnviadas) || 0,
+          bultos:      cajasRaw,
           lbs,
           unid,
           esPorUnidad,
@@ -249,7 +293,7 @@ export default function StockVivo() {
     }
 
     return mvs.reverse();
-  }, [entradas, salidas, prodById, resolve]);
+  }, [entradas, salidas, prodById, resolve, cantPorCajaMap]);
 
   const filtMvs = useMemo(() =>
     filtProd ? movements.filter(m => m.canonId === filtProd) : movements,
@@ -354,6 +398,37 @@ export default function StockVivo() {
           <div style={{ textAlign: 'center', padding: '40px 0', color: T.textMid, fontSize: '.88rem' }}>
             Sin movimientos registrados
           </div>
+        ) : isMobile ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {filtMvs.slice(0, 400).map((mv, i) => {
+              const badge  = canalBadge(mv.canal);
+              const sColor = mv.stockBodega >= 0 ? T.secondary : T.danger;
+              const qty    = mv.esPorUnidad ? mv.unid : mv.lbs;
+              const unit   = mv.esPorUnidad ? 'unid' : 'lbs';
+              return (
+                <div key={`${mv.docId}-${mv.canonId}-${i}`} style={{ background: '#fff', borderRadius: 10, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,.10)', borderLeft: `4px solid ${mv.tipo === 'entrada' ? T.secondary : T.danger}` }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                    <div>
+                      <span style={{ fontWeight: 700, fontSize: 15 }}>📅 {mv.fecha}</span>
+                      <span style={{ marginLeft: 8, padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 700, background: badge.bg, color: badge.color }}>{badge.label}</span>
+                    </div>
+                    <span style={{ fontWeight: 700, fontSize: 14, color: mv.tipo === 'entrada' ? T.secondary : T.danger }}>
+                      {mv.tipo === 'entrada' ? '+' : '-'}{fmtN(qty)} {unit}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: T.textDark, marginBottom: 4 }}>{mv.producto}</div>
+                  {mv.entidad && <div style={{ fontSize: 13, color: T.textMid, marginBottom: 4 }}>👤 {mv.entidad}</div>}
+                  <div style={{ display: 'flex', gap: 16, fontSize: 13, flexWrap: 'wrap' }}>
+                    {mv.bultos > 0 && (
+                      <span><b>Bultos:</b> {mv.bultos.toLocaleString()}{mv.esPorUnidad && mv.tipo === 'salida' && cantPorCajaMap[mv.canonId] > 1 ? ` ×${cantPorCajaMap[mv.canonId]}` : ''}</span>
+                    )}
+                    <span><b>Stock:</b> <span style={{ color: sColor, fontWeight: 700 }}>{fmtN(mv.stockBodega)} {unit}</span></span>
+                    {mv.felAuth && <span style={{ fontSize: 11, color: T.info, fontFamily: 'monospace' }}>{mv.felAuth.slice(0, 16)}…</span>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -383,7 +458,16 @@ export default function StockVivo() {
                       <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0', fontWeight: 600, color: T.textDark }}>{mv.producto}</td>
                       <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0', color: T.textMid }}>{mv.entidad}</td>
                       <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0', textAlign: 'right', color: T.textDark }}>
-                        {mv.bultos > 0 ? mv.bultos.toLocaleString() : '—'}
+                        {mv.bultos > 0 ? (
+                          <span>
+                            {mv.bultos.toLocaleString()}
+                            {mv.esPorUnidad && mv.tipo === 'salida' && cantPorCajaMap[mv.canonId] > 1 && (
+                              <span style={{ fontSize: '.68rem', color: T.textMid, marginLeft: 4 }}>
+                                ×{cantPorCajaMap[mv.canonId]}
+                              </span>
+                            )}
+                          </span>
+                        ) : '—'}
                       </td>
                       <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0', fontWeight: 700, color: mv.tipo === 'entrada' ? T.secondary : T.danger, textAlign: 'right', whiteSpace: 'nowrap' }}>
                         {mv.tipo === 'entrada' ? '+' : '-'}{fmtN(qty)} {unit}

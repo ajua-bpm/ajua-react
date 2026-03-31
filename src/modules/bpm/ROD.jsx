@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useCollection, useWrite } from '../../hooks/useFirestore';
 import { useEmpleados } from '../../hooks/useMainData';
 import { useToast } from '../../components/Toast';
@@ -13,44 +13,16 @@ const T = {
 // ─── Trap definitions ─────────────────────────────────────────────────────────
 const ZONAS = [
   {
-    zona: 'PORTÓN',
-    icon: '🚪',
-    trampas: [
-      { id: 'T1',  nombre: 'Trampa Portón Izq' },
-      { id: 'T2',  nombre: 'Trampa Portón Der' },
-    ],
-  },
-  {
-    zona: 'PARQUEO',
-    icon: '🚗',
-    trampas: [
-      { id: 'T3',  nombre: 'Trampa Parqueo Norte' },
-      { id: 'T4',  nombre: 'Trampa Parqueo Sur' },
-    ],
-  },
-  {
-    zona: 'PRE-CARGA',
-    icon: '📦',
-    trampas: [
-      { id: 'T5',  nombre: 'Pre-carga Ent' },
-      { id: 'T6',  nombre: 'Pre-carga Centro' },
-      { id: 'T7',  nombre: 'Pre-carga Sal' },
-      { id: 'T8',  nombre: 'Pre-carga Ext' },
-    ],
-  },
-  {
-    zona: 'BODEGA',
+    zona: 'MAQUILA EXTERNA',
     icon: '🏭',
     trampas: [
-      { id: 'T9',  nombre: 'Bodega Norte' },
-      { id: 'T10', nombre: 'Bodega Sur' },
-    ],
-  },
-  {
-    zona: 'PALLETS',
-    icon: '🪵',
-    trampas: [
-      { id: 'T11', nombre: 'Área Pallets' },
+      { id: 'T1', nombre: 'Trampa M-1' },
+      { id: 'T2', nombre: 'Trampa M-2' },
+      { id: 'T3', nombre: 'Trampa M-3' },
+      { id: 'T4', nombre: 'Trampa M-4' },
+      { id: 'T5', nombre: 'Trampa M-5' },
+      { id: 'T6', nombre: 'Trampa M-6' },
+      { id: 'T7', nombre: 'Trampa M-7' },
     ],
   },
 ];
@@ -111,6 +83,13 @@ export default function ROD() {
   const { empleados, loading: empLoading } = useEmpleados();
   const { data, loading } = useCollection('rod', { orderField: 'fecha', orderDir: 'desc', limit: 50 });
   const { add, saving } = useWrite('rod');
+
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  useEffect(() => {
+    const h = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', h);
+    return () => window.removeEventListener('resize', h);
+  }, []);
 
   const [fecha,       setFecha]       = useState(today());
   const [hora,        setHora]        = useState(nowHM());
@@ -179,7 +158,7 @@ export default function ROD() {
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ fontSize: '1.35rem', fontWeight: 800, color: T.primary, margin: 0 }}>Control de Plagas y Roedores</h1>
         <p style={{ fontSize: '.82rem', color: T.textMid, marginTop: 4, marginBottom: 0 }}>
-          Revisión de las {TOTAL} trampas — Portón · Parqueo · Pre-carga · Bodega · Pallets
+          Revisión de las {TOTAL} trampas — Área de Maquila Externa
         </p>
       </div>
 
@@ -387,7 +366,7 @@ export default function ROD() {
 
         <button
           onClick={handleSave} disabled={saving || !canSave}
-          style={{ marginTop: 16, padding: '11px 28px', background: saving || !canSave ? '#BDBDBD' : T.primary, color: '#fff', border: 'none', borderRadius: 6, fontWeight: 700, fontSize: '.88rem', cursor: saving || !canSave ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}
+          style={{ marginTop: 16, padding: '11px 28px', background: saving || !canSave ? '#BDBDBD' : T.primary, color: '#fff', border: 'none', borderRadius: 6, fontWeight: 700, fontSize: '.88rem', cursor: saving || !canSave ? 'not-allowed' : 'pointer', fontFamily: 'inherit', width: isMobile ? '100%' : 'auto', minHeight: 44 }}
         >
           {saving ? 'Guardando...' : 'Guardar Revisión'}
         </button>
@@ -401,6 +380,34 @@ export default function ROD() {
         ) : (data || []).length === 0 ? (
           <p style={{ textAlign: 'center', padding: 32, color: T.textMid, fontSize: '.85rem' }}>Sin revisiones registradas.</p>
         ) : (
+          {isMobile ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {(data || []).map(r => {
+                const traps = r.traps || r.trampas || [];
+                const rev = traps.filter(t => t.estado !== 'sin_revisar').length;
+                const nov = traps.filter(t => t.estado === 'novedad').length;
+                return (
+                  <div key={r.id} style={{ background: '#fff', borderRadius: 10, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,.10)', borderLeft: `4px solid ${r.resultado === 'con_novedades' ? T.danger : T.secondary}` }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                      <div>
+                        <span style={{ fontWeight: 700, fontSize: 15 }}>📅 {r.fecha || '—'}</span>
+                        {r.hora && <span style={{ marginLeft: 8, fontSize: 12, color: T.textMid }}>🕐 {r.hora}</span>}
+                      </div>
+                      <ResultadoBadge resultado={r.resultado} />
+                    </div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: T.textDark, marginBottom: 6 }}>
+                      👤 {r.responsable || r.resp || '—'}
+                    </div>
+                    <div style={{ display: 'flex', gap: 16, fontSize: 13 }}>
+                      <span><b>Revisadas:</b> <span style={{ color: T.secondary, fontWeight: 700 }}>{rev}/{traps.length}</span></span>
+                      <span><b>Novedades:</b> <span style={{ color: nov > 0 ? T.danger : T.textMid, fontWeight: nov > 0 ? 700 : 400 }}>{nov}</span></span>
+                    </div>
+                    {r.obs && <div style={{ marginTop: 6, fontSize: 12, color: T.textMid }}>📝 {r.obs}</div>}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
@@ -429,6 +436,7 @@ export default function ROD() {
               </tbody>
             </table>
           </div>
+          )}
         )}
       </Card>
     </div>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useCollection, useWrite } from '../../hooks/useFirestore';
 import { useEmpleados } from '../../hooks/useMainData';
 import { useToast } from '../../components/Toast';
@@ -46,11 +46,11 @@ const Badge = ({ ok }) => (
   </span>
 );
 
-const SaveBtn = ({ onClick, saving, label = 'Guardar Registro' }) => (
+const SaveBtn = ({ onClick, saving, label = 'Guardar Registro', fullWidth = false }) => (
   <button
     onClick={onClick}
     disabled={saving}
-    style={{ padding: '11px 28px', background: saving ? '#BDBDBD' : T.primary, color: T.white, border: 'none', borderRadius: 6, fontWeight: 700, fontSize: '.88rem', cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}
+    style={{ padding: '11px 28px', background: saving ? '#BDBDBD' : T.primary, color: T.white, border: 'none', borderRadius: 6, fontWeight: 700, fontSize: '.88rem', cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit', width: fullWidth ? '100%' : 'auto', minHeight: 44 }}
   >
     {saving ? 'Guardando...' : label}
   </button>
@@ -167,6 +167,13 @@ export default function LIMP() {
   const { add: addLimp, saving: savingLimp } = useWrite('limp');
   const { add: addBl,   saving: savingBl }   = useWrite('bl');
   const { add: addParq, saving: savingParq } = useWrite('parq');
+
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  useEffect(() => {
+    const h = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', h);
+    return () => window.removeEventListener('resize', h);
+  }, []);
 
   const [tab, setTab] = useState('limp');
 
@@ -290,25 +297,28 @@ export default function LIMP() {
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: `2px solid ${T.border}` }}>
-        {[
-          { key: 'limp', label: 'Áreas de Proceso' },
-          { key: 'bl',   label: 'Bodega Limpieza' },
-          { key: 'parq', label: 'Parqueo' },
-        ].map(t => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            style={{
-              padding: '10px 20px', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
-              fontSize: '.85rem', fontWeight: 600, borderRadius: '6px 6px 0 0',
-              background: tab === t.key ? T.primary : 'transparent',
-              color: tab === t.key ? T.white : T.textMid,
-            }}
-          >
-            {t.label}
-          </button>
-        ))}
+      <div style={{ overflowX: isMobile ? 'auto' : 'visible', marginBottom: 20, borderBottom: `2px solid ${T.border}` }}>
+        <div style={{ display: 'flex', gap: 4, minWidth: 'max-content' }}>
+          {[
+            { key: 'limp', label: 'Áreas de Proceso' },
+            { key: 'bl',   label: 'Bodega Limpieza' },
+            { key: 'parq', label: 'Parqueo' },
+          ].map(t => (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              style={{
+                padding: '10px 20px', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                fontSize: '.85rem', fontWeight: 600, borderRadius: '6px 6px 0 0',
+                background: tab === t.key ? T.primary : 'transparent',
+                color: tab === t.key ? T.white : T.textMid,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* ── Tab 1: Áreas de Proceso ── */}
@@ -373,13 +383,41 @@ export default function LIMP() {
 
             {denom > 0 && <ResultadoBox pct={pct} resultado={resultado} />}
 
-            <SaveBtn onClick={handleSaveLimp} saving={savingLimp} />
+            <SaveBtn onClick={handleSaveLimp} saving={savingLimp} fullWidth={isMobile} />
           </Card>
 
           <Card>
             <SectionTitle>Historial — Áreas de Proceso</SectionTitle>
             {limpLoad ? <Skeleton height={120} /> : (limpData || []).length === 0 ? (
               <p style={{ textAlign: 'center', padding: 24, color: T.textMid }}>Sin registros.</p>
+            ) : isMobile ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {(limpData || []).slice(0, 100).map(r => {
+                  const allC = ['cooler1', 'cooler2', 'precarga', 'bodega'].flatMap(k => r[k]?.checks || []);
+                  const si = allC.filter(c => c === 'si').length;
+                  const no = allC.filter(c => c === 'no').length;
+                  const foto = r.cooler1?.fotoUrl || r.cooler2?.fotoUrl || r.precarga?.fotoUrl || '';
+                  const obs = r.cooler1?.obs || r.cooler2?.obs || r.precarga?.obs || r.bodega?.obs || '';
+                  return (
+                    <div key={r.id} style={{ background: T.white, borderRadius: 10, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,.10)', borderLeft: `4px solid ${r.resultado === 'cumple' ? T.secondary : T.danger}` }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                        <div>
+                          <span style={{ fontWeight: 700, fontSize: 15 }}>📅 {r.fecha || '—'}</span>
+                          {r.hora && <span style={{ marginLeft: 8, fontSize: 12, color: T.textMid }}>🕐 {r.hora}</span>}
+                        </div>
+                        <Badge ok={r.resultado === 'cumple'} />
+                      </div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: T.textDark, marginBottom: 6 }}>👤 {r.responsable || '—'}</div>
+                      <div style={{ display: 'flex', gap: 16, fontSize: 13, marginBottom: foto || obs ? 6 : 0 }}>
+                        <span><b>Cumple:</b> <span style={{ color: T.secondary, fontWeight: 700 }}>{si}</span></span>
+                        <span><b>No cumple:</b> <span style={{ color: T.danger, fontWeight: 700 }}>{no}</span></span>
+                      </div>
+                      {obs && <div style={{ fontSize: 12, color: T.textMid, marginBottom: foto ? 6 : 0 }}>📝 {obs}</div>}
+                      {foto && <img src={foto} alt="f" style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 6, marginTop: 4 }} />}
+                    </div>
+                  );
+                })}
+              </div>
             ) : (
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -408,7 +446,7 @@ export default function LIMP() {
                             {foto ? <img src={foto} alt="f" style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 4 }} /> : '—'}
                           </td>
                           <td style={{ padding: '8px 12px', fontSize: '.75rem', borderBottom: '1px solid #F0F0F0', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {r.cooler1?.obs || r.cooler2?.obs || '—'}
+                            {r.cooler1?.obs || r.cooler2?.obs || r.precarga?.obs || r.bodega?.obs || '—'}
                           </td>
                         </tr>
                       );
@@ -487,13 +525,38 @@ export default function LIMP() {
               </Lbl>
             </div>
 
-            <SaveBtn onClick={handleSaveBl} saving={savingBl} />
+            <SaveBtn onClick={handleSaveBl} saving={savingBl} fullWidth={isMobile} />
           </Card>
 
           <Card>
             <SectionTitle>Historial Bodega Limpieza</SectionTitle>
             {blLoad ? <Skeleton height={120} /> : (blData || []).length === 0 ? (
               <p style={{ textAlign: 'center', padding: 24, color: T.textMid }}>Sin registros.</p>
+            ) : isMobile ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {(blData || []).slice(0, 100).map(r => {
+                  const okN = BL_CHECKS.filter(p => (r.checks || {})[p.key] === 'si').length;
+                  const resBg = r.resultado === 'Realizado' ? T.bgGreen : r.resultado === 'Pendiente' ? '#FFEBEE' : '#FFF3E0';
+                  const resC  = r.resultado === 'Realizado' ? T.secondary : r.resultado === 'Pendiente' ? T.danger : T.warn;
+                  return (
+                    <div key={r.id} style={{ background: T.white, borderRadius: 10, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,.10)', borderLeft: `4px solid ${resC}` }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                        <div>
+                          <span style={{ fontWeight: 700, fontSize: 15 }}>📅 {r.fecha || '—'}</span>
+                          {r.hora && <span style={{ marginLeft: 8, fontSize: 12, color: T.textMid }}>🕐 {r.hora}</span>}
+                        </div>
+                        <span style={{ padding: '2px 10px', borderRadius: 100, fontSize: 12, fontWeight: 600, background: resBg, color: resC }}>{r.resultado || '—'}</span>
+                      </div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: T.textDark, marginBottom: 4 }}>👤 {r.responsable || '—'}</div>
+                      <div style={{ display: 'flex', gap: 16, fontSize: 13, marginBottom: r.obs ? 4 : 0 }}>
+                        <span><b>Área:</b> {r.area || '—'}</span>
+                        <span><b>Checks OK:</b> <span style={{ color: okN === BL_CHECKS.length ? T.secondary : T.warn, fontWeight: 700 }}>{okN}/{BL_CHECKS.length}</span></span>
+                      </div>
+                      {r.obs && <div style={{ fontSize: 12, color: T.textMid }}>📝 {r.obs}</div>}
+                    </div>
+                  );
+                })}
+              </div>
             ) : (
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -586,13 +649,35 @@ export default function LIMP() {
               </Lbl>
             </div>
 
-            <SaveBtn onClick={handleSaveParq} saving={savingParq} />
+            <SaveBtn onClick={handleSaveParq} saving={savingParq} fullWidth={isMobile} />
           </Card>
 
           <Card>
             <SectionTitle>Historial Parqueo</SectionTitle>
             {parqLoad ? <Skeleton height={120} /> : (parqData || []).length === 0 ? (
               <p style={{ textAlign: 'center', padding: 24, color: T.textMid }}>Sin registros.</p>
+            ) : isMobile ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {(parqData || []).slice(0, 100).map(r => {
+                  const ok = PARQ_CHECKS.filter(p => (r.checks || {})[p.key] === 'si').length;
+                  return (
+                    <div key={r.id} style={{ background: T.white, borderRadius: 10, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,.10)', borderLeft: `4px solid ${r.resultado === 'cumple' ? T.secondary : T.danger}` }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                        <div>
+                          <span style={{ fontWeight: 700, fontSize: 15 }}>📅 {r.fecha || '—'}</span>
+                          {r.hora && <span style={{ marginLeft: 8, fontSize: 12, color: T.textMid }}>🕐 {r.hora}</span>}
+                        </div>
+                        <Badge ok={r.resultado === 'cumple'} />
+                      </div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: T.textDark, marginBottom: 4 }}>👤 {r.responsable || '—'}</div>
+                      <div style={{ fontSize: 13, marginBottom: r.obs ? 4 : 0 }}>
+                        <b>Checks OK:</b> <span style={{ color: ok === PARQ_CHECKS.length ? T.secondary : T.warn, fontWeight: 700 }}>{ok}/{PARQ_CHECKS.length}</span>
+                      </div>
+                      {r.obs && <div style={{ fontSize: 12, color: T.textMid }}>📝 {r.obs}</div>}
+                    </div>
+                  );
+                })}
+              </div>
             ) : (
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>

@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { useCollection, useWrite } from '../../hooks/useFirestore';
 import { useEmpleados } from '../../hooks/useMainData';
@@ -419,6 +419,13 @@ export default function Gastos() {
   const { empleados }       = useEmpleados();
   const { add, update, saving } = useWrite('gastosDiarios');
 
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  useEffect(() => {
+    const h = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', h);
+    return () => window.removeEventListener('resize', h);
+  }, []);
+
   // Form state
   const [form, setForm]           = useState({ ...BLANK });
   const [fotoPreview, setFotoPreview] = useState(null);
@@ -651,7 +658,7 @@ export default function Gastos() {
         <button onClick={handleSave} disabled={isBusy} style={{
           padding: '11px 28px', background: isBusy ? '#6B6B60' : T.primary, color: T.white,
           border: 'none', borderRadius: 6, fontWeight: 700, fontSize: '.88rem',
-          cursor: isBusy ? 'not-allowed' : 'pointer',
+          cursor: isBusy ? 'not-allowed' : 'pointer', width: isMobile ? '100%' : 'auto', minHeight: 44,
         }}>
           {uploading ? 'Subiendo foto...' : saving ? 'Guardando...' : 'Registrar Gasto'}
         </button>
@@ -700,6 +707,46 @@ export default function Gastos() {
           <div style={{ textAlign: 'center', padding: '48px 0', color: T.textMid, fontSize: '.9rem' }}>
             Sin gastos para los filtros seleccionados
           </div>
+        ) : isMobile ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {filtered.slice(0, 150).map(r => (
+              <div key={r.id} style={{ background: T.white, borderRadius: 10, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,.12)', borderLeft: `4px solid ${T.danger}` }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                  <span style={{ fontWeight: 700, fontSize: 15 }}>📅 {r.fecha || '—'}</span>
+                  <span style={{ fontWeight: 700, fontSize: 15, color: T.danger }}>{fmtQ(r.monto)}</span>
+                </div>
+                <div style={{ marginBottom: 4 }}>
+                  <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 100, fontSize: 12, fontWeight: 700, background: `${T.secondary}18`, color: T.secondary }}>
+                    {getCatLabel(r.categoria)}
+                  </span>
+                  {r.fuente === 'excel_bac' && (
+                    <span style={{ marginLeft: 4, fontSize: 11, background: '#1565C020', color: '#1565C0', borderRadius: 4, padding: '1px 5px', fontWeight: 700 }}>BAC</span>
+                  )}
+                </div>
+                <div style={{ fontSize: 14, color: T.textDark, marginBottom: 4 }}>{r.descripcion || '—'}</div>
+                <div style={{ display: 'flex', gap: 12, fontSize: 12, color: T.textMid, flexWrap: 'wrap', marginBottom: 6 }}>
+                  {r.recibo && <span><b>Recibo:</b> {r.recibo}</span>}
+                  {r.metodoPago && <span><b>Método:</b> {r.metodoPago}</span>}
+                  {r.pagadoPor && <span><b>Pagado por:</b> {r.pagadoPor}</span>}
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {r.fotoUrl && (
+                    <a href={r.fotoUrl} target="_blank" rel="noreferrer" style={{ minHeight: 44, display: 'flex', alignItems: 'center', padding: '0 12px', borderRadius: 8, background: '#F5F5F5', border: `1px solid ${T.border}`, fontSize: 13, color: T.secondary, fontWeight: 600, textDecoration: 'none' }}>
+                      🧾 Ver foto
+                    </a>
+                  )}
+                  <button onClick={() => setEditingId(r.id)} style={{ minHeight: 44, padding: '0 14px', borderRadius: 8, border: `1px solid ${T.secondary}`, background: T.bgGreen, color: T.secondary, fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
+                    ✏️ Editar
+                  </button>
+                </div>
+                {editingId === r.id && (
+                  <div style={{ marginTop: 12, borderTop: `1px solid ${T.border}`, paddingTop: 12 }}>
+                    <EditRow r={r} i={0} empleados={empleados} onSave={handleEditSave} onCancel={() => setEditingId(null)} saving={saving} />
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -739,13 +786,11 @@ export default function Gastos() {
                       <td style={{ ...TD_S(i % 2 === 1), color: T.textMid }}>{r.pagadoPor || '—'}</td>
                       <td style={{ ...TD_S(i % 2 === 1), fontWeight: 700, color: T.danger, whiteSpace: 'nowrap' }}>{fmtQ(r.monto)}</td>
                       <td style={{ ...TD_S(i % 2 === 1), whiteSpace: 'nowrap' }}>
-                        {/* Photo icon */}
                         {r.fotoUrl && (
                           <a href={r.fotoUrl} target="_blank" rel="noreferrer" title="Ver foto" style={{ marginRight: 6 }}>
                             <span style={{ fontSize: '1.1rem' }}>🧾</span>
                           </a>
                         )}
-                        {/* Edit pencil (Feature 2) */}
                         <button
                           onClick={() => setEditingId(r.id)}
                           title="Editar registro"
