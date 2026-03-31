@@ -984,6 +984,13 @@ function TabVentas({ data, update }) {
   const toast = useToast();
   const [felOpenId, setFelOpenId] = useState(null);
 
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, []);
+
   // Show pedidos that are entregado OR already have estadoCobro set (facturado/cobrado)
   const entregados = useMemo(
     () => data.filter(r => r.estado === 'entregado' || r.estadoCobro),
@@ -1022,7 +1029,60 @@ function TabVentas({ data, update }) {
 
       {entregados.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '40px 24px', color: T.textMid, fontSize: '.88rem' }}>Sin pedidos entregados.</div>
+      ) : isMobile ? (
+        /* ── MOBILE: cards facturación ── */
+        <div>
+          {entregados.map(r => (
+            <div key={r.id} style={{ background: WHITE, borderRadius: 10, padding: '14px 16px', marginBottom: 10, boxShadow: '0 1px 4px rgba(0,0,0,.12)', borderLeft: `4px solid ${T.primary}` }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:6 }}>
+                <span style={{ fontWeight:700, fontSize:15 }}>{r.fechaEntrega || r.fecha || '—'}</span>
+                <Badge cfg={COBRO_CFG} value={r.estadoCobro || 'pendiente'} />
+              </div>
+              <div style={{ fontSize:13, color:'#374151', marginBottom:4, lineHeight:1.4 }}>{r.descripcion || '—'}</div>
+              <div style={{ display:'flex', gap:16, fontSize:13, color:'#555', marginBottom:4, flexWrap:'wrap' }}>
+                <span><b>OC:</b> {r.numOC || '—'}</span>
+                <span><b>Monto:</b> {r.montoFactura ? `Q ${fmt(r.montoFactura)}` : r.total ? `Q ${fmt(r.total)}` : '—'}</span>
+              </div>
+              {(r.noFel || r.numFel) && (
+                <div style={{ fontSize:12, color:T.textMid, marginBottom:8, fontFamily:'monospace' }}>
+                  FEL: {r.noFel || r.numFel} {r.serieFel ? `· Serie ${r.serieFel}` : ''}
+                </div>
+              )}
+              <div style={{ display:'flex', gap:8 }}>
+                {r.estadoCobro !== 'cobrado' && (
+                  <button onClick={() => setFelOpenId(felOpenId === r.id ? null : r.id)}
+                    style={{ flex:1, minHeight:44, borderRadius:8, border:'1.5px solid #16a34a', background:'#F0FFF4', color:'#16a34a', fontWeight:600, fontSize:14, cursor:'pointer' }}>
+                    {r.noFel || r.numFel ? '✏️ Editar FEL' : '📄 Cargar FEL'}
+                  </button>
+                )}
+                {(r.noFel || r.numFel) && r.estadoCobro !== 'cobrado' && (
+                  <button onClick={() => handleCobrar(r.id)}
+                    style={{ flex:1, minHeight:44, borderRadius:8, border:'none', background:'#16a34a', color:WHITE, fontWeight:600, fontSize:14, cursor:'pointer' }}>
+                    ✓ Cobrado
+                  </button>
+                )}
+                {r.estadoCobro === 'cobrado' && (
+                  <span style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', minHeight:44, borderRadius:8, background:'#E8F5E9', color:T.secondary, fontWeight:700, fontSize:14 }}>
+                    ✓ Cobrado
+                  </span>
+                )}
+              </div>
+              {felOpenId === r.id && (
+                <div style={{ marginTop:12, borderTop:'1px solid #E0E0E0', paddingTop:12 }}>
+                  <FelForm record={r} onSave={felData => handleFelSave(r.id, felData)} onClose={() => setFelOpenId(null)} />
+                </div>
+              )}
+            </div>
+          ))}
+          <div style={{ background: T.bgGreen, borderRadius:8, padding:'12px 16px', fontWeight:700, color:T.primary, display:'flex', justifyContent:'space-between' }}>
+            <span>Total entregado</span><span>Q {fmt(totalEntregado)}</span>
+          </div>
+          <div style={{ background:'#E8F5E9', borderRadius:8, padding:'10px 16px', fontWeight:700, color:T.secondary, display:'flex', justifyContent:'space-between', marginTop:6 }}>
+            <span>Total cobrado</span><span>Q {fmt(totalCobrado)}</span>
+          </div>
+        </div>
       ) : (
+        /* ── DESKTOP: tabla original ── */
         <>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -1052,14 +1112,12 @@ function TabVentas({ data, update }) {
                       </td>
                       <td style={tdSt}>
                         <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-                          {/* FEL button — show if not yet cobrado */}
                           {r.estadoCobro !== 'cobrado' && (
                             <button onClick={() => setFelOpenId(felOpenId === r.id ? null : r.id)}
                               style={{ padding: '4px 9px', background: '#E8F5E9', color: T.secondary, border: `1px solid #C8E6C9`, borderRadius: 4, fontSize: '.7rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
                               {r.noFel || r.numFel ? 'Editar FEL' : 'Cargar Factura FEL'}
                             </button>
                           )}
-                          {/* Cobrado button — only show once FEL is loaded */}
                           {(r.noFel || r.numFel) && r.estadoCobro !== 'cobrado' && (
                             <button onClick={() => handleCobrar(r.id)}
                               style={{ padding: '4px 12px', background: T.secondary, color: WHITE, border: 'none', borderRadius: 4, fontSize: '.72rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
