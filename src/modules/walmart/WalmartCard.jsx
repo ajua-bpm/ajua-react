@@ -1,6 +1,4 @@
-// WalmartCard.jsx — mobile card para un pedido Walmart
-// Colapsada por defecto; se expande con "Ver detalles"
-
+// WalmartCard.jsx — card colapsable para pedido Walmart
 import { useState } from 'react';
 
 const BORDER = { pendiente:'#2563eb', preparando:'#d97706', entregado:'#16a34a', cancelado:'#dc2626' };
@@ -12,15 +10,12 @@ export default function WalmartCard({ r, onPreparando, onOpenEntregado, onFel, o
   const color      = BORDER[estado] || '#6b7280';
   const totalCajas = r.totalCajas || (r.rubros || []).reduce((s, x) => s + (x.cajas ?? x.cajasPedidas ?? 0), 0) || 0;
 
-  // Descripción corta para la vista colapsada
-  const descCorta = r.rubros?.length
-    ? r.rubros.map(rb => rb.descripcion || rb.item || '').filter(Boolean).join(' / ')
-    : (r.descripcion || '—');
+  // Nombre(s) del producto — sin códigos
+  const nombres = r.rubros?.length
+    ? r.rubros.map(rb => rb.descripcion || rb.item || '').filter(Boolean)
+    : r.descripcion ? [r.descripcion] : [];
 
-  // Descripción completa con item codes y cajas
-  const descCompleta = r.rubros?.length
-    ? r.rubros.map(rb => [rb.item && `[${rb.item}]`, rb.descripcion, rb.cajas != null && `(${rb.cajas})`].filter(Boolean).join(' ')).join(' / ')
-    : (r.descripcion || '—');
+  const nombreCorto = nombres.join(' / ') || '—';
 
   return (
     <div style={{
@@ -30,13 +25,12 @@ export default function WalmartCard({ r, onPreparando, onOpenEntregado, onFel, o
       overflow: 'hidden',
     }}>
 
-      {/* ── CABECERA siempre visible ── */}
-      <div
-        onClick={() => setOpen(o => !o)}
-        style={{ padding: '12px 16px', cursor: 'pointer', userSelect: 'none' }}
-      >
-        {/* Fila 1: Fecha + hora + badge estado */}
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: 5 }}>
+      {/* ── CABECERA siempre visible — toca para expandir ── */}
+      <div onClick={() => setOpen(o => !o)}
+        style={{ padding: '12px 16px', cursor: 'pointer', userSelect: 'none' }}>
+
+        {/* Fila 1: fecha + hora + estado */}
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4 }}>
           <div>
             <span style={{ fontWeight:700, fontSize:15 }}>📅 {r.fechaEntrega || r.fecha || '—'}</span>
             {r.horaEntrega && (
@@ -47,73 +41,77 @@ export default function WalmartCard({ r, onPreparando, onOpenEntregado, onFel, o
             <span style={{ background:color, color:'#fff', borderRadius:20, padding:'2px 10px', fontSize:12, fontWeight:600, whiteSpace:'nowrap' }}>
               {estado.charAt(0).toUpperCase() + estado.slice(1)}
             </span>
-            <span style={{ fontSize:18, color:'#9ca3af', lineHeight:1 }}>{open ? '▲' : '▼'}</span>
+            <span style={{ fontSize:16, color:'#9ca3af' }}>{open ? '▲' : '▼'}</span>
           </div>
         </div>
 
-        {/* Descripción corta */}
-        <div style={{ fontSize:13, color:'#374151', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
-          {descCorta}
+        {/* Fila 2: nombre producto (truncado) + cajas */}
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:8 }}>
+          <div style={{ fontSize:14, fontWeight:600, color:'#1a1a1a', flex:1, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+            {nombreCorto}
+          </div>
+          {totalCajas > 0 && (
+            <span style={{ fontSize:13, color:'#374151', fontWeight:600, flexShrink:0 }}>
+              📦 {totalCajas} cajas
+            </span>
+          )}
         </div>
       </div>
 
-      {/* ── DETALLE expandible ── */}
+      {/* ── EXPANDIDO ── */}
       {open && (
-        <div style={{ padding:'0 16px 14px', borderTop:'1px solid #F0F0F0' }}>
+        <div style={{ padding:'10px 16px 14px', borderTop:'1px solid #F0F0F0' }}>
 
-          {/* Descripción completa (si difiere de corta) */}
-          {descCompleta !== descCorta && (
-            <div style={{ fontSize:13, fontWeight:600, color:'#1a1a1a', marginTop:10, marginBottom:6, lineHeight:1.4 }}>
-              {descCompleta}
+          {/* Lista de rubros con cajas individuales */}
+          {r.rubros?.length > 1 && (
+            <div style={{ marginBottom:10, display:'flex', flexDirection:'column', gap:4 }}>
+              {r.rubros.map((rb, i) => {
+                const cajas = rb.cajas ?? rb.cajasPedidas ?? 0;
+                const nombre = rb.descripcion || rb.item || '—';
+                return (
+                  <div key={i} style={{ display:'flex', justifyContent:'space-between', fontSize:13, padding:'5px 0', borderBottom:'1px solid #F5F5F5' }}>
+                    <span style={{ color:'#1a1a1a' }}>{nombre}</span>
+                    {cajas > 0 && <span style={{ color:'#374151', fontWeight:600, flexShrink:0 }}>{cajas} cj</span>}
+                  </div>
+                );
+              })}
             </div>
           )}
 
           {/* Nota importante */}
           {r.notaImportante && (
-            <div style={{ fontSize:12, color:'#1565C0', marginTop:descCompleta !== descCorta ? 0 : 10, marginBottom:6 }}>
+            <div style={{ fontSize:12, color:'#1565C0', marginBottom:10, padding:'6px 10px', background:'#E3F2FD', borderRadius:6 }}>
               📋 {r.notaImportante}
             </div>
           )}
 
-          {/* OC + Atlas/SAP */}
-          <div style={{ display:'flex', gap:16, fontSize:13, color:'#555', marginTop: (descCompleta === descCorta && !r.notaImportante) ? 10 : 0, marginBottom:4, flexWrap:'wrap' }}>
-            <span>
-              <b>OC:</b> {r.numOC || '—'}
-              {r.fuente === 'gmail' && (
-                <span style={{ marginLeft:4, fontSize:10, background:'#E3F2FD', color:'#1565C0', borderRadius:8, padding:'1px 5px', fontWeight:700 }}>📧</span>
-              )}
-            </span>
-            <span><b>SAP:</b> {r.numAtlas || '—'}</span>
-          </div>
-
-          {/* Rampa + Cajas */}
-          <div style={{ fontSize:13, color:'#374151', marginBottom:12 }}>
-            <b>Rampa:</b> {r.rampa || '—'} &nbsp;|&nbsp; <b>Cajas:</b> {totalCajas || '—'}
-          </div>
-
           {/* Acciones */}
           <div style={{ display:'flex', gap:8 }}>
             {estado === 'pendiente' && (
-              <button onClick={e => { e.stopPropagation(); onPreparando(); }} style={{ flex:1, minHeight:44, borderRadius:8, border:'none', background:'#d97706', color:'#fff', fontWeight:600, fontSize:14, cursor:'pointer' }}>
+              <button onClick={e => { e.stopPropagation(); onPreparando(); }}
+                style={{ flex:1, minHeight:44, borderRadius:8, border:'none', background:'#d97706', color:'#fff', fontWeight:600, fontSize:14, cursor:'pointer' }}>
                 Preparando →
               </button>
             )}
             {estado === 'preparando' && (
-              <button onClick={e => { e.stopPropagation(); onOpenEntregado(); }} style={{ flex:1, minHeight:44, borderRadius:8, border:'none', background:'#16a34a', color:'#fff', fontWeight:600, fontSize:14, cursor:'pointer' }}>
+              <button onClick={e => { e.stopPropagation(); onOpenEntregado(); }}
+                style={{ flex:1, minHeight:44, borderRadius:8, border:'none', background:'#16a34a', color:'#fff', fontWeight:600, fontSize:14, cursor:'pointer' }}>
                 Entregado ✓
               </button>
             )}
             {estado === 'entregado' && (
-              <button onClick={e => { e.stopPropagation(); onFel(); }} style={{ flex:1, minHeight:44, borderRadius:8, border:'1.5px solid #16a34a', background:'#F0FFF4', color:'#16a34a', fontWeight:600, fontSize:14, cursor:'pointer' }}>
+              <button onClick={e => { e.stopPropagation(); onFel(); }}
+                style={{ flex:1, minHeight:44, borderRadius:8, border:'1.5px solid #16a34a', background:'#F0FFF4', color:'#16a34a', fontWeight:600, fontSize:14, cursor:'pointer' }}>
                 FEL
               </button>
             )}
-            <button onClick={e => { e.stopPropagation(); onDelete(); }} style={{ minHeight:44, width:44, borderRadius:8, border:'none', background:'#FFEBEE', color:'#C62828', fontWeight:700, fontSize:18, cursor:'pointer' }}>
+            <button onClick={e => { e.stopPropagation(); onDelete(); }}
+              style={{ minHeight:44, width:44, borderRadius:8, border:'none', background:'#FFEBEE', color:'#C62828', fontWeight:700, fontSize:18, cursor:'pointer' }}>
               ✕
             </button>
           </div>
 
-          {/* Contenido expandido (formularios de entrega / FEL) */}
+          {/* Formularios de entrega / FEL */}
           {expandedContent && (
             <div style={{ marginTop:12, borderTop:'1px solid #E0E0E0', paddingTop:12 }}>
               {expandedContent}

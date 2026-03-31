@@ -76,34 +76,53 @@ const WM_COLOR = { pendiente:'#2563eb', preparando:'#d97706', entregado:'#16a34a
 
 function WmCard({ r }) {
   const [open, setOpen] = useState(false);
-  const estado = r.estado || 'pendiente';
-  const color  = WM_COLOR[estado] || '#6b7280';
-  const cajas  = r.totalCajas || (r.rubros||[]).reduce((s,x)=>s+(x.cajas??x.cajasPedidas??0),0) || 0;
-  const desc   = r.descripcion || (r.rubros||[]).map(x=>x.descripcion||x.item||'').filter(Boolean).join(' / ') || r.numOC ? `OC ${r.numOC}` : '—';
+  const estado  = r.estado || 'pendiente';
+  const color   = WM_COLOR[estado] || '#6b7280';
+  const cajas   = r.totalCajas || (r.rubros||[]).reduce((s,x)=>s+(x.cajas??x.cajasPedidas??0),0) || 0;
+  const nombres = r.rubros?.length
+    ? r.rubros.map(x => x.descripcion || x.item || '').filter(Boolean)
+    : r.descripcion ? [r.descripcion] : [];
+  const nombreCorto = nombres.join(' / ') || '—';
   return (
-    <div style={{ background:'#fff', borderRadius:8, border:'1px solid #E0E0E0', borderLeft:`4px solid ${color}`, marginBottom:8, overflow:'hidden' }}>
-      <div onClick={()=>setOpen(o=>!o)} style={{ padding:'10px 14px', cursor:'pointer', userSelect:'none', display:'flex', justifyContent:'space-between', alignItems:'center', gap:8 }}>
-        <div style={{ flex:1, minWidth:0 }}>
-          <span style={{ fontWeight:700, fontSize:14 }}>{r.fechaEntrega || r.fecha || '—'}</span>
-          {r.horaEntrega && <span style={{ marginLeft:8, fontSize:12, color:T.secondary, fontWeight:700 }}>{r.horaEntrega}</span>}
-          <div style={{ fontSize:12, color:'#374151', marginTop:3, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{desc}</div>
+    <div style={{ background:'#F9FBF9', borderRadius:8, border:'1px solid #E0E0E0', borderLeft:`4px solid ${color}`, marginBottom:8, overflow:'hidden' }}>
+      <div onClick={()=>setOpen(o=>!o)} style={{ padding:'10px 14px', cursor:'pointer', userSelect:'none' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:8 }}>
+          <div style={{ flex:1, minWidth:0 }}>
+            <span style={{ fontWeight:700, fontSize:14 }}>{r.fechaEntrega || r.fecha || '—'}</span>
+            {r.horaEntrega && <span style={{ marginLeft:8, fontSize:12, color:T.secondary, fontWeight:700 }}>{r.horaEntrega}</span>}
+          </div>
+          <div style={{ display:'flex', alignItems:'center', gap:6, flexShrink:0 }}>
+            <span style={{ background:color, color:'#fff', borderRadius:20, padding:'2px 9px', fontSize:11, fontWeight:600 }}>
+              {estado.charAt(0).toUpperCase()+estado.slice(1)}
+            </span>
+            <span style={{ fontSize:16, color:'#9ca3af' }}>{open?'▲':'▼'}</span>
+          </div>
         </div>
-        <div style={{ display:'flex', alignItems:'center', gap:6, flexShrink:0 }}>
-          <span style={{ background:color, color:'#fff', borderRadius:20, padding:'2px 9px', fontSize:11, fontWeight:600 }}>
-            {estado.charAt(0).toUpperCase()+estado.slice(1)}
-          </span>
-          <span style={{ fontSize:16, color:'#9ca3af' }}>{open?'▲':'▼'}</span>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:3, gap:8 }}>
+          <div style={{ fontSize:13, color:'#1a1a1a', fontWeight:600, flex:1, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{nombreCorto}</div>
+          {cajas > 0 && <span style={{ fontSize:12, color:'#374151', fontWeight:600, flexShrink:0 }}>📦 {cajas} cj</span>}
         </div>
       </div>
       {open && (
-        <div style={{ padding:'0 14px 12px', borderTop:'1px solid #F0F0F0', fontSize:13, color:'#555' }}>
-          {r.notaImportante && <div style={{ color:'#1565C0', fontSize:12, marginTop:8, marginBottom:4 }}>📋 {r.notaImportante}</div>}
-          <div style={{ display:'flex', gap:16, marginTop:8, flexWrap:'wrap' }}>
-            <span><b>OC:</b> {r.numOC||'—'}</span>
-            <span><b>SAP:</b> {r.numAtlas||'—'}</span>
-            {r.rampa && <span><b>Rampa:</b> {r.rampa}</span>}
-            {cajas > 0 && <span><b>Cajas:</b> {cajas}</span>}
-          </div>
+        <div style={{ padding:'0 14px 12px', borderTop:'1px solid #E8E8E8' }}>
+          {r.rubros?.length > 1 && (
+            <div style={{ marginTop:8, marginBottom:8 }}>
+              {r.rubros.map((rb,i) => {
+                const c = rb.cajas ?? rb.cajasPedidas ?? 0;
+                return (
+                  <div key={i} style={{ display:'flex', justifyContent:'space-between', fontSize:13, padding:'4px 0', borderBottom:'1px solid #F0F0F0' }}>
+                    <span>{rb.descripcion || rb.item || '—'}</span>
+                    {c > 0 && <span style={{ fontWeight:600 }}>{c} cj</span>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {r.notaImportante && (
+            <div style={{ color:'#1565C0', fontSize:12, marginTop:8, padding:'5px 8px', background:'#E3F2FD', borderRadius:5 }}>
+              📋 {r.notaImportante}
+            </div>
+          )}
         </div>
       )}
     </div>
