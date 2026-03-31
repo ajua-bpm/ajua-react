@@ -1,11 +1,14 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useCollection, useWrite } from '../../hooks/useFirestore';
-import { useProductosCatalogo } from '../../hooks/useMainData';
+import { useMainData, useProductosCatalogo } from '../../hooks/useMainData';
 import { useToast } from '../../components/Toast';
 import Skeleton from '../../components/Skeleton';
+import WalmartCard from './WalmartCard';
 
-// ── Apps Script URL (configure in Admin → Integraciones) ──────────
-const APPS_SCRIPT_URL = ''; // Configure in Admin
+// ── Apps Script URL — stored in localStorage ──────────────────────
+const LS_KEY = 'ajua_walmart_gas_url';
+const getGasUrl = () => localStorage.getItem(LS_KEY) || '';
+const setGasUrl = (url) => localStorage.setItem(LS_KEY, url.trim());
 
 // ── Design tokens ─────────────────────────────────────────────────
 const T = {
@@ -55,94 +58,328 @@ function Badge({ cfg, value }) {
   );
 }
 
-// ── Email parser ──────────────────────────────────────────────────
-function parseEmailText(text) {
-  const result = { numOC: '', fechaEntrega: '', totalCajas: '', descripcion: '' };
+// ── Helpers de fecha en español ───────────────────────────────────
+const MESES_ES = {
+  ENERO:1,FEBRERO:2,MARZO:3,ABRIL:4,MAYO:5,JUNIO:6,
+  JULIO:7,AGOSTO:8,SEPTIEMBRE:9,OCTUBRE:10,NOVIEMBRE:11,DICIEMBRE:12
+};
+function parseFechaEsp(str) {
+  const m = (str || '').match(/(\d{1,2})\s+DE\s+([A-ZÁÉÍÓÚ]+)/i);
+  if (!m) return '';
+  const dia = parseInt(m[1]);
+  const mes = MESES_ES[(m[2] || '').toUpperCase()];
+  if (!dia || !mes) return '';
+  const yr = new Date().getFullYear();
+  return `${yr}-${String(mes).padStart(2,'0')}-${String(dia).padStart(2,'0')}`;
+}
 
-  // OC: look for "OC" or "Orden" followed by digits
-  const ocMatch = text.match(/(?:OC|Orden(?:\s+de\s+Compra)?)[:\s#]*(\d+)/i);
-  if (ocMatch) result.numOC = ocMatch[1];
+// ── Walmart email parser — 3 formatos (port de bpm.html) ──────────
+const KNOWN_SIZES = ['_300','_200','_100','_50','_48','_40','_36','_30','_24','_20','_18','_12','_10','_8','_6','_4'];
 
-  // Date: look for date patterns dd/mm/yyyy or yyyy-mm-dd
-  const dateMatch = text.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
-  if (dateMatch) {
-    const [, a, b, c] = dateMatch;
-    if (c.length === 4) result.fechaEntrega = `${c}-${b.padStart(2,'0')}-${a.padStart(2,'0')}`;
-    else result.fechaEntrega = `20${c}-${b.padStart(2,'0')}-${a.padStart(2,'0')}`;
+function splitDescCajas(str) {
+  for (const sz of KNOWN_SIZES) {
+    const idx = str.lastIndexOf(sz);
+    if (idx < 0) continue;
+    const after = str.slice(idx + sz.length).trim();
+    if (/^\d+$/.test(after)) return { desc: str.slice(0, idx + sz.length).trim(), cajas: parseInt(after, 10) };
+  }
+  const m = str.match(/^(.*\D)\s+(\d+)\s*$/);
+  return m ? { desc: m[1].trim(), cajas: parseInt(m[2], 10) } : { desc: str.trim(), cajas: 0 };
+}
+
+function matchProd(desc, productos) {
+  const dn = desc.toUpperCase().replace(/\s+/g,'').replace(/UXC_\d+/,'').replace(/LB/,'');
+  return (productos || []).find(p => {
+    const pn = (p.nombre||'').toUpperCase().replace(/\s+/g,'');
+    return pn.length > 3 && dn.length > 3 && (pn.includes(dn.slice(0,5)) || dn.includes(pn.slice(0,5)));
+  });
+}
+
+function parseWalmartEmail(raw, productos) {
+  // Returns { hora, rampa, dia, fechaEntrega, rubros[] }
+  const result = { hora: '16:00', rampa: '', dia: '', fechaEntrega: '', rubros: [] };
+  if (!raw || !raw.trim()) return result;
+
+  const addRubro = (item, desc, cajas, hora, rampa, dia) => {
+    const prod = matchProd(desc, productos);
+    result.rubros.push({
+      item: item || '',
+      descripcion: desc || '',
+      cajas: cajas || 0,
+      productoId:   prod ? (prod.id || '') : '',
+      productoNombre: prod ? (prod.nombre || '') : '',
+    });
+    if (hora  && !result.hora)         result.hora  = hora.slice(0, 5);
+    if (rampa && !result.rampa)        result.rampa = rampa;
+    if (dia   && !result.dia)          result.dia   = dia.replace(/\s*-\s*$/, '').trim();
+    // Siempre actualizar hora/rampa/dia del PRIMER rubro (como bpm.html)
+    if (result.rubros.length === 1) {
+      result.hora  = (hora || '16:00').slice(0, 5);
+      result.rampa = rampa || '';
+      result.dia   = (dia || '').replace(/\s*-\s*$/, '').trim();
+    }
+  };
+
+  // ── FORMAT A: TAB-SEPARATED ───────────────────────────────────
+  // Cols: #ATLAS | #SAP | COD.PROV | NOM.PROV | Item | Descrip | Cajas | Hora | Rampa | Dia | Nota
+  if (raw.includes('\t')) {
+    const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
+    lines.forEach(line => {
+      const cols = line.split('\t').map(c => c.trim());
+      if (cols[0].includes('ATLAS') || cols[4] === 'Item' || cols[0] === '#') return;
+      if (cols.length < 6) return;
+      const item  = cols[4] || '';
+      const desc  = cols[5] || '';
+      const cajas = parseInt(cols[6], 10) || 0;
+      const hora  = (cols[7] || '16:00').slice(0, 5);
+      const rampa = cols[8] || '';
+      const dia   = (cols[9] || '').replace(/\s*-\s*$/, '').trim();
+      if (!item && !desc) return;
+      addRubro(item, desc, cajas, hora, rampa, dia);
+    });
   }
 
-  // Cajas: look for numbers before "caja" or "box"
-  const cajasMatch = text.match(/(\d+)\s*(?:cajas?|boxes?)/i);
-  if (cajasMatch) result.totalCajas = cajasMatch[1];
+  // ── FORMAT B: CONCATENATED STRING (0015XXXXXXXXXX prefix) ────
+  if (!result.rubros.length) {
+    const dataM = raw.match(/0015\d{8}|\d{10}/);
+    const data = dataM ? raw.slice(dataM.index) : raw;
+    const recStarts = [];
+    const recRe = /0015\d{8}/g;
+    let rm;
+    while ((rm = recRe.exec(data)) !== null) recStarts.push(rm.index);
+    recStarts.push(data.length);
+    for (let i = 0; i < recStarts.length - 1; i++) {
+      let chunk = data.slice(recStarts[i], recStarts[i+1]).trim().replace(/\s*-\s*$/, '');
+      const tmM = chunk.match(/(\d{2}:\d{2}:\d{2})/);
+      if (!tmM) continue;
+      const before = chunk.slice(0, tmM.index);
+      const afterT = chunk.slice(tmM.index + tmM[1].length).trim();
+      const raM = afterT.match(/^(\d{4})\s*([\s\S]*)/);
+      const rampa = raM ? raM[1] : '';
+      const dia   = raM ? raM[2].replace(/\s{2,}/g,' ').replace(/\s*-\s*$/,'').trim() : '';
+      const pfxM = before.match(/^(\d{4})(\d{8})/);
+      if (!pfxM) continue;
+      const rest  = before.slice(pfxM[0].length);
+      const itemM = rest.match(/(\d{5,})/);
+      if (!itemM) continue;
+      const item  = itemM[1];
+      const { desc, cajas } = splitDescCajas(rest.slice(itemM.index + item.length));
+      addRubro(item, desc, cajas, tmM[1].slice(0,5), rampa, dia);
+    }
+  }
 
-  // Descripcion: first non-empty, non-header line (>4 words)
-  const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 10);
-  if (lines.length > 0) result.descripcion = lines[0].slice(0, 120);
+  // ── FORMAT C: LINE-BY-LINE with time anchor ───────────────────
+  if (!result.rubros.length) {
+    raw.split('\n').map(l => l.trim()).filter(Boolean).forEach(line => {
+      const tmM = line.match(/(\d{2}:\d{2}:\d{2})/);
+      if (!tmM) return;
+      const before = line.slice(0, tmM.index).trim();
+      const afterT = line.slice(tmM.index + tmM[1].length).trim();
+      const raM = afterT.match(/^(\d{4,})\s*(.*)/);
+      const rampa = raM ? raM[1] : '';
+      const dia   = raM ? raM[2].replace(/\s*-\s*$/, '').trim() : '';
+      const itemM = before.match(/(\d{5,8})\s+/);
+      if (!itemM) return;
+      const item  = itemM[1];
+      const { desc, cajas } = splitDescCajas(before.slice(itemM.index + itemM[0].length));
+      if (!desc) return;
+      addRubro(item, desc, cajas, tmM[1].slice(0,5), rampa, dia);
+    });
+  }
+
+  // Parsear fecha del campo dia
+  if (result.dia) result.fechaEntrega = parseFechaEsp(result.dia);
 
   return result;
 }
 
-// ── Email parser widget (reusable) ────────────────────────────────
-function EmailParser({ onParsed }) {
-  const [open,    setOpen]    = useState(false);
-  const [rawText, setRawText] = useState('');
+// ── Modal: importar pedido desde correo ───────────────────────────
+function EmailImportModal({ onClose, onSaved, add, productos }) {
+  const toast = useToast();
+  const [raw,     setRaw]     = useState('');
   const [parsed,  setParsed]  = useState(null);
+  const [rubros,  setRubros]  = useState([]);
+  const [fecha,   setFecha]   = useState('');
+  const [hora,    setHora]    = useState('');
+  const [rampa,   setRampa]   = useState('');
+  const [saving,  setSaving]  = useState(false);
 
   const handleParse = () => {
-    if (!rawText.trim()) return;
-    setParsed(parseEmailText(rawText));
+    const r = parseWalmartEmail(raw, productos);
+    if (!r.rubros.length) { toast('No se pudo leer el pedido. Prueba copiando la tabla completa.', 'error'); return; }
+    setParsed(r);
+    setRubros(r.rubros.map((x, i) => ({ ...x, _id: i })));
+    setFecha(r.fechaEntrega || today());
+    setHora(r.hora || '16:00');
+    setRampa(r.rampa || '');
   };
 
-  const handleConfirm = () => {
-    if (!parsed) return;
-    onParsed({ ...parsed, fuente: 'gmail', rawEmailText: rawText });
-    setOpen(false);
-    setRawText('');
-    setParsed(null);
+  const updateRubro = (idx, field, val) =>
+    setRubros(prev => prev.map((r, i) => i === idx ? { ...r, [field]: field === 'cajas' ? (parseInt(val)||0) : val } : r));
+
+  const removeRubro = (idx) => setRubros(prev => prev.filter((_, i) => i !== idx));
+
+  const totalCajas = rubros.reduce((s, r) => s + (r.cajas || 0), 0);
+
+  const handleGuardar = async () => {
+    if (!fecha) { toast('Ingresa la fecha de entrega', 'error'); return; }
+    if (!rubros.length) { toast('No hay rubros para guardar', 'error'); return; }
+    setSaving(true);
+    try {
+      const doc = {
+        fecha, fechaEntrega: fecha,
+        cliente:      'Walmart',
+        horaEntrega:  hora,
+        rampa,
+        notaImportante: parsed?.dia || '',
+        descripcion:  rubros.map(r => r.descripcion).join(' / ').slice(0, 200),
+        rubros:       rubros.map(({ _id, ...r }) => ({ ...r, estado:'pendiente', cajasAceptadas:null, cajasRechazadas:null })),
+        totalCajas,
+        total:        0,
+        estado:       'pendiente',
+        fuente:       'gmail',
+        numOC: '', numAtlas: '', numFel: '', montoFactura: 0, fechaFactura: '',
+        estadoCobro:  'pendiente',
+        obs:          '',
+        creadoEn:     new Date().toISOString(),
+      };
+      await add(doc);
+      toast(`✅ ${rubros.length} rubros importados — ${parsed?.dia || ''}`);
+      onSaved?.();
+      onClose();
+    } catch { toast('Error al guardar', 'error'); }
+    finally { setSaving(false); }
   };
 
   return (
-    <div style={{ marginBottom: 16 }}>
-      <button
-        onClick={() => setOpen(o => !o)}
-        style={{ padding: '7px 16px', background: '#E3F2FD', color: T.info, border: `1px solid #BBDEFB`, borderRadius: 6, fontWeight: 600, fontSize: '.82rem', cursor: 'pointer' }}>
-        {open ? '▲ Cerrar' : '📧 Importar desde email'}
-      </button>
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 200,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+    }}>
+      <div style={{
+        background: WHITE, borderRadius: 10, maxWidth: 780, width: '100%',
+        maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 8px 32px rgba(0,0,0,.18)',
+      }}>
+        {/* Header */}
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'16px 20px', borderBottom:`1px solid ${T.border}` }}>
+          <div>
+            <div style={{ fontWeight:700, fontSize:'1rem', color:T.textDark }}>📧 Importar pedido desde correo</div>
+            <div style={{ fontSize:'.75rem', color:T.textMid, marginTop:2 }}>
+              Funciona con: texto plano separado por |, copia de tabla con TAB, o línea por línea.
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background:'none', border:'none', fontSize:'1.2rem', cursor:'pointer', color:T.textMid, lineHeight:1 }}>✕</button>
+        </div>
 
-      {open && (
-        <div style={{ marginTop: 10, padding: 14, background: '#F0F4FF', border: `1px solid #BBDEFB`, borderRadius: 8 }}>
-          <label style={LS}>
-            Pegar texto del correo de Walmart
-            <textarea
-              value={rawText} onChange={e => { setRawText(e.target.value); setParsed(null); }}
-              rows={5} style={{ ...IS, resize: 'vertical', fontFamily: 'monospace', fontSize: '.8rem', marginTop: 4 }}
-              placeholder="Pegar el contenido del correo aquí..." />
-          </label>
-          <button
-            onClick={handleParse}
-            disabled={!rawText.trim()}
-            style={{ marginTop: 8, padding: '7px 18px', background: T.info, color: WHITE, border: 'none', borderRadius: 6, fontWeight: 600, fontSize: '.82rem', cursor: rawText.trim() ? 'pointer' : 'not-allowed', opacity: rawText.trim() ? 1 : 0.5 }}>
-            Parsear
-          </button>
+        <div style={{ padding: 20 }}>
+          {/* Textarea */}
+          <textarea
+            value={raw} onChange={e => { setRaw(e.target.value); setParsed(null); setRubros([]); }}
+            rows={5}
+            style={{ ...IS, resize:'vertical', fontFamily:'monospace', fontSize:'.8rem', marginBottom:12 }}
+            placeholder="Pega aquí el texto del correo de Walmart..." />
+
+          <div style={{ display:'flex', gap:8, marginBottom:parsed ? 20 : 0 }}>
+            <button onClick={handleParse} disabled={!raw.trim()}
+              style={{ padding:'8px 22px', background: raw.trim() ? T.warn : T.border, color:WHITE, border:'none', borderRadius:6, fontWeight:700, fontSize:'.88rem', cursor:raw.trim()?'pointer':'not-allowed' }}>
+              ⚡ Parsear
+            </button>
+            <button onClick={onClose} style={{ padding:'8px 16px', background:'none', border:`1px solid ${T.border}`, borderRadius:6, color:T.textMid, fontWeight:600, fontSize:'.88rem', cursor:'pointer' }}>
+              Cancelar
+            </button>
+          </div>
 
           {parsed && (
-            <div style={{ marginTop: 12, padding: 12, background: WHITE, border: `1px solid ${T.border}`, borderRadius: 6 }}>
-              <div style={{ fontWeight: 700, fontSize: '.8rem', color: T.textDark, marginBottom: 8 }}>Vista previa:</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, fontSize: '.8rem' }}>
-                <span><b>OC:</b> {parsed.numOC || <em style={{ color: T.textMid }}>no encontrado</em>}</span>
-                <span><b>Fecha entrega:</b> {parsed.fechaEntrega || <em style={{ color: T.textMid }}>no encontrado</em>}</span>
-                <span><b>Cajas:</b> {parsed.totalCajas || <em style={{ color: T.textMid }}>no encontrado</em>}</span>
-                <span style={{ gridColumn: '1/-1' }}><b>Descripción:</b> {parsed.descripcion || <em style={{ color: T.textMid }}>no encontrado</em>}</span>
+            <>
+              {/* Header editable */}
+              <div style={{ background:'#F0FFF4', border:`1px solid #C8E6C9`, borderRadius:8, padding:'14px 16px', marginBottom:16 }}>
+                <div style={{ fontSize:'.72rem', fontWeight:700, color:T.secondary, textTransform:'uppercase', letterSpacing:'.06em', marginBottom:10 }}>
+                  📋 Datos detectados — confirma antes de guardar
+                </div>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10 }}>
+                  <label style={LS}>Fecha entrega
+                    <input type="date" value={fecha} onChange={e => setFecha(e.target.value)} style={{ ...IS, fontSize:'.82rem' }} />
+                  </label>
+                  <label style={LS}>Hora
+                    <input type="time" value={hora} onChange={e => setHora(e.target.value)} style={{ ...IS, fontSize:'.82rem' }} />
+                  </label>
+                  <label style={LS}>Rampa
+                    <input value={rampa} onChange={e => setRampa(e.target.value)} style={{ ...IS, fontSize:'.82rem' }} />
+                  </label>
+                </div>
+                {parsed.dia && (
+                  <div style={{ marginTop:8, fontSize:'.78rem', color:T.secondary, fontWeight:600 }}>
+                    📅 Día del correo: {parsed.dia}
+                  </div>
+                )}
               </div>
-              <button
-                onClick={handleConfirm}
-                style={{ marginTop: 10, padding: '7px 18px', background: T.secondary, color: WHITE, border: 'none', borderRadius: 6, fontWeight: 600, fontSize: '.82rem', cursor: 'pointer' }}>
-                Confirmar → crear pedido
-              </button>
-            </div>
+
+              {/* Tabla rubros editable */}
+              <div style={{ overflowX:'auto', marginBottom:14 }}>
+                <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'.82rem' }}>
+                  <thead>
+                    <tr style={{ background:T.primary }}>
+                      {['# ITEM','DESCRIPCIÓN','CAJAS','PRODUCTO INVENTARIO',''].map(h => (
+                        <th key={h} style={{ ...thSt, padding:'8px 10px' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rubros.map((r, i) => (
+                      <tr key={r._id} style={{ background: i%2===0 ? WHITE : '#F9FBF9' }}>
+                        <td style={{ padding:'5px 8px', borderBottom:`1px solid #F0F0F0` }}>
+                          <input value={r.item} onChange={e => updateRubro(i,'item',e.target.value)}
+                            style={{ width:90, border:`1px solid ${T.border}`, borderRadius:4, padding:'4px 6px', fontSize:'.8rem', fontFamily:'monospace' }} />
+                        </td>
+                        <td style={{ padding:'5px 8px', borderBottom:`1px solid #F0F0F0` }}>
+                          <input value={r.descripcion} onChange={e => updateRubro(i,'descripcion',e.target.value)}
+                            style={{ width:'100%', border:`1px solid ${T.border}`, borderRadius:4, padding:'4px 6px', fontSize:'.8rem', minWidth:180 }} />
+                        </td>
+                        <td style={{ padding:'5px 8px', borderBottom:`1px solid #F0F0F0`, textAlign:'center' }}>
+                          <input type="number" min="0" value={r.cajas} onChange={e => updateRubro(i,'cajas',e.target.value)}
+                            style={{ width:70, border:`1px solid ${T.border}`, borderRadius:4, padding:'4px 6px', fontSize:'.88rem', fontWeight:700, color:T.secondary, textAlign:'center' }} />
+                        </td>
+                        <td style={{ padding:'5px 8px', borderBottom:`1px solid #F0F0F0` }}>
+                          <select value={r.productoId} onChange={e => updateRubro(i,'productoId',e.target.value)}
+                            style={{ width:'100%', border:`1px solid ${T.border}`, borderRadius:4, padding:'4px 6px', fontSize:'.78rem', minWidth:140 }}>
+                            <option value="">— Vincular producto —</option>
+                            {(productos || []).map(p => (
+                              <option key={p.id} value={p.id}>{p.nombre}</option>
+                            ))}
+                          </select>
+                        </td>
+                        <td style={{ padding:'5px 8px', borderBottom:`1px solid #F0F0F0`, textAlign:'center' }}>
+                          <button onClick={() => removeRubro(i)}
+                            style={{ background:'none', border:'none', cursor:'pointer', color:T.textMid, fontSize:'1rem', lineHeight:1 }}>✕</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ background:'#F0FFF4', fontWeight:700 }}>
+                      <td colSpan={2} style={{ padding:'8px 10px', color:T.secondary }}>Total</td>
+                      <td style={{ padding:'8px 10px', textAlign:'center', color:T.secondary, fontSize:'1rem' }}>{totalCajas}</td>
+                      <td colSpan={2} />
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+
+              {/* Guardar */}
+              <div style={{ display:'flex', gap:8 }}>
+                <button onClick={handleGuardar} disabled={saving}
+                  style={{ padding:'10px 28px', background: saving ? T.border : T.secondary, color:WHITE, border:'none', borderRadius:6, fontWeight:700, fontSize:'.88rem', cursor:saving?'not-allowed':'pointer' }}>
+                  {saving ? 'Guardando…' : '💾 Guardar pedido'}
+                </button>
+                <button onClick={() => { setParsed(null); setRubros([]); }}
+                  style={{ padding:'10px 16px', background:'none', border:`1px solid ${T.border}`, borderRadius:6, color:T.textMid, fontWeight:600, fontSize:'.88rem', cursor:'pointer' }}>
+                  — Volver
+                </button>
+              </div>
+            </>
           )}
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -202,65 +439,62 @@ function MetricCard({ label, value, accent }) {
 // ── BLANK form ────────────────────────────────────────────────────
 const BLANK_FORM = {
   fechaEntrega: today(), numOC: '', numAtlas: '', descripcion: '',
-  totalCajas: '', horaEntrega: '', rampa: '', estado: 'pendiente',
-  productos: [], fuente: 'manual', fuente_raw: '',
+  totalCajas: '', horaEntrega: '', rampa: '', notaImportante: '',
+  estado: 'pendiente', rubros: [], fuente: 'manual',
 };
 
 // ═══════════════════════════════════════════════════════════════════
 // TAB 1 — Pedidos
 // ═══════════════════════════════════════════════════════════════════
-function TabPedidos({ data, loading, add, update, remove, saving }) {
+function TabPedidos({ data, loading, add, update, remove, saving, productos }) {
   const toast = useToast();
 
-  // Form
-  const [formOpen, setFormOpen] = useState(false);
-  const [form,     setForm]     = useState({ ...BLANK_FORM });
+  const [formOpen,        setFormOpen]        = useState(false);
+  const [showImportModal, setShowImportModal]  = useState(false);
+  const [form,            setForm]            = useState({ ...BLANK_FORM });
   const s = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  // List filter/search
-  const [filterTab, setFilterTab] = useState('todos');
-  const [search,    setSearch]    = useState('');
+  const [filterTab,       setFilterTab]       = useState('todos');
+  const [search,          setSearch]          = useState('');
+  const [expandedId,      setExpandedId]      = useState(null);
 
-  // Row state
   const [felOpenId,       setFelOpenId]       = useState(null);
   const [entregadoOpenId, setEntregadoOpenId] = useState(null);
   const [entregadoForm,   setEntregadoForm]   = useState({ cajasEntregadas: '', tipoEntrega: 'aceptado_total', motivoRechazo: '' });
+  const [entregadoPorRubro, setEntregadoPorRubro] = useState(false);
 
-  const handleEmailParsed = (parsed) => {
-    setForm(f => ({
-      ...f,
-      numOC:        parsed.numOC        || f.numOC,
-      fechaEntrega: parsed.fechaEntrega || f.fechaEntrega,
-      totalCajas:   parsed.totalCajas   || f.totalCajas,
-      descripcion:  parsed.descripcion  || f.descripcion,
-      fuente:       'gmail',
-    }));
-  };
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, []);
 
   const handleSave = async () => {
     if (!form.fechaEntrega) { toast('Ingresa la fecha de entrega', 'error'); return; }
+    const totalCajas = form.rubros?.length
+      ? form.rubros.reduce((s, r) => s + (r.cajas || 0), 0)
+      : parseFloat(form.totalCajas) || 0;
     try {
       await add({
-        fecha:         form.fechaEntrega,
-        fechaEntrega:  form.fechaEntrega,
-        cliente:       'Walmart',
-        numOC:         form.numOC,
-        numAtlas:      form.numAtlas,
-        rampa:         form.rampa,
-        horaEntrega:   form.horaEntrega,
-        descripcion:   form.descripcion,
-        productos:     [],
-        totalCajas:    parseFloat(form.totalCajas) || 0,
-        total:         0,
-        estado:        form.estado,
-        fuente:        form.fuente,
-        numFel:        '',
-        montoFactura:  0,
-        fechaFactura:  '',
-        estadoCobro:   'pendiente',
-        gmailData:     {},
-        obs:           '',
-        creadoEn:      new Date().toISOString(),
+        fecha:          form.fechaEntrega,
+        fechaEntrega:   form.fechaEntrega,
+        cliente:        'Walmart',
+        numOC:          form.numOC,
+        numAtlas:       form.numAtlas,
+        rampa:          form.rampa,
+        horaEntrega:    form.horaEntrega,
+        notaImportante: form.notaImportante,
+        descripcion:    form.descripcion,
+        rubros:         form.rubros || [],
+        totalCajas,
+        total:          0,
+        estado:         form.estado,
+        fuente:         form.fuente,
+        numFel: '', montoFactura: 0, fechaFactura: '',
+        estadoCobro:    'pendiente',
+        obs:            '',
+        creadoEn:       new Date().toISOString(),
       });
       toast('Pedido creado');
       setForm({ ...BLANK_FORM });
@@ -276,19 +510,40 @@ function TabPedidos({ data, loading, add, update, remove, saving }) {
   };
 
   const openEntregado = (r) => {
-    setEntregadoForm({ cajasEntregadas: r.totalCajas || '', tipoEntrega: 'aceptado_total', motivoRechazo: '' });
+    if (r.rubros?.length) {
+      setEntregadoPorRubro(true);
+      setEntregadoForm(r.rubros.map(rb => ({
+        cajasEntregadas: String(rb.cajas ?? rb.cajasPedidas ?? ''),
+        tipoEntrega: 'aceptado_total',
+        motivoRechazo: '',
+      })));
+    } else {
+      setEntregadoPorRubro(false);
+      setEntregadoForm({ cajasEntregadas: r.totalCajas || '', tipoEntrega: 'aceptado_total', motivoRechazo: '' });
+    }
     setEntregadoOpenId(r.id);
   };
 
-  const handleEntregadoSave = async (id) => {
+  const handleEntregadoSave = async (id, r) => {
     try {
-      await update(id, {
-        estado: 'entregado',
-        cajasEntregadas: parseFloat(entregadoForm.cajasEntregadas) || 0,
-        tipoEntrega:     entregadoForm.tipoEntrega,
-        motivoRechazo:   entregadoForm.motivoRechazo,
-        fechaEntregaReal: today(),
-      });
+      let payload = { estado: 'entregado', fechaEntregaReal: today() };
+      if (entregadoPorRubro && Array.isArray(entregadoForm)) {
+        const updRubros = (r.rubros || []).map((rb, i) => ({
+          ...rb,
+          cajasEntregadas: parseFloat(entregadoForm[i]?.cajasEntregadas) || 0,
+          tipoEntrega:     entregadoForm[i]?.tipoEntrega || 'aceptado_total',
+          motivoRechazo:   entregadoForm[i]?.motivoRechazo || '',
+        }));
+        payload.rubros = updRubros;
+        payload.cajasEntregadas = updRubros.reduce((s, rb) => s + (rb.cajasEntregadas || 0), 0);
+        const tipos = updRubros.map(rb => rb.tipoEntrega);
+        payload.tipoEntrega = tipos.every(t => t === 'aceptado_total') ? 'aceptado_total' : 'aceptado_parcial';
+      } else {
+        payload.cajasEntregadas = parseFloat(entregadoForm.cajasEntregadas) || 0;
+        payload.tipoEntrega     = entregadoForm.tipoEntrega;
+        payload.motivoRechazo   = entregadoForm.motivoRechazo;
+      }
+      await update(id, payload);
       toast('Entrega registrada');
       setEntregadoOpenId(null);
       setFelOpenId(id);
@@ -332,67 +587,68 @@ function TabPedidos({ data, loading, add, update, remove, saving }) {
 
   return (
     <div>
-      {/* New Pedido form toggle */}
-      <div style={{ marginBottom: 16 }}>
-        <button
-          onClick={() => setFormOpen(o => !o)}
-          style={{ padding: '9px 20px', background: formOpen ? '#F5F5F5' : T.primary, color: formOpen ? T.textMid : WHITE, border: formOpen ? `1px solid ${T.border}` : 'none', borderRadius: 6, fontWeight: 600, fontSize: '.88rem', cursor: 'pointer' }}>
-          {formOpen ? '▲ Cerrar formulario' : '＋ Nuevo Pedido'}
+      {/* Modal importar correo */}
+      {showImportModal && (
+        <EmailImportModal
+          productos={productos}
+          add={add}
+          onClose={() => setShowImportModal(false)}
+          onSaved={() => setShowImportModal(false)}
+        />
+      )}
+
+      {/* Botones de acción */}
+      <div style={{ display:'flex', gap:8, marginBottom:16, flexWrap:'wrap' }}>
+        <button onClick={() => setFormOpen(o => !o)}
+          style={{ padding:'9px 18px', background: formOpen ? '#F5F5F5' : T.primary, color: formOpen ? T.textMid : WHITE, border: formOpen ? `1px solid ${T.border}` : 'none', borderRadius:6, fontWeight:600, fontSize:'.88rem', cursor:'pointer' }}>
+          {formOpen ? '▲ Cerrar' : '＋ Nuevo Pedido'}
+        </button>
+        <button onClick={() => setShowImportModal(true)}
+          style={{ padding:'9px 18px', background:'#E3F2FD', color:T.info, border:`1px solid #BBDEFB`, borderRadius:6, fontWeight:600, fontSize:'.88rem', cursor:'pointer' }}>
+          📧 Desde correo
         </button>
       </div>
 
       {formOpen && (
         <div style={card}>
-          <div style={{ fontWeight: 700, fontSize: '.92rem', color: T.textDark, marginBottom: 16, paddingBottom: 10, borderBottom: `1px solid ${T.border}` }}>
-            Nuevo Pedido Walmart
+          <div style={{ fontWeight:700, fontSize:'.92rem', color:T.textDark, marginBottom:16, paddingBottom:10, borderBottom:`1px solid ${T.border}` }}>
+            Nuevo Pedido — Manual
           </div>
-
-          <EmailParser onParsed={handleEmailParsed} />
-
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 14 }}>
-            <label style={LS}>
-              Fecha entrega *
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(140px, 1fr))', gap:12, marginBottom:14 }}>
+            <label style={LS}>Fecha entrega *
               <input type="date" value={form.fechaEntrega} onChange={e => s('fechaEntrega', e.target.value)} style={IS} />
             </label>
-            <label style={LS}>
-              OC #
+            <label style={LS}>OC #
               <input value={form.numOC} onChange={e => s('numOC', e.target.value)} placeholder="Número OC" style={IS} />
             </label>
-            <label style={LS}>
-              Atlas/SAP
-              <input value={form.numAtlas} onChange={e => s('numAtlas', e.target.value)} placeholder="# Atlas o SAP" style={IS} />
+            <label style={LS}>Atlas/SAP
+              <input value={form.numAtlas} onChange={e => s('numAtlas', e.target.value)} placeholder="# Atlas" style={IS} />
             </label>
-            <label style={LS}>
-              Descripción del pedido
-              <input value={form.descripcion} onChange={e => s('descripcion', e.target.value)} placeholder="Descripción" style={IS} />
-            </label>
-            <label style={LS}>
-              Total cajas
-              <input type="number" min="0" value={form.totalCajas} onChange={e => s('totalCajas', e.target.value)} placeholder="0" style={IS} />
-            </label>
-            <label style={LS}>
-              Hora entrega
+            <label style={LS}>Hora entrega
               <input type="time" value={form.horaEntrega} onChange={e => s('horaEntrega', e.target.value)} style={IS} />
             </label>
-            <label style={LS}>
-              Rampa
+            <label style={LS}>Rampa
               <input value={form.rampa} onChange={e => s('rampa', e.target.value)} placeholder="Ej. 5010" style={IS} />
             </label>
-            <label style={LS}>
-              Estado
+            <label style={LS}>Total cajas
+              <input type="number" min="0" value={form.totalCajas} onChange={e => s('totalCajas', e.target.value)} placeholder="0" style={IS} />
+            </label>
+            <label style={LS}>Estado
               <select value={form.estado} onChange={e => s('estado', e.target.value)} style={IS}>
                 {Object.entries(ESTADO_CFG).map(([v, b]) => <option key={v} value={v}>{b.label}</option>)}
               </select>
             </label>
+            <label style={LS}>Nota importante
+              <input value={form.notaImportante} onChange={e => s('notaImportante', e.target.value)} placeholder="Ej. JUEVES 26 DE MARZO" style={IS} />
+            </label>
           </div>
-
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display:'flex', gap:8 }}>
             <button onClick={handleSave} disabled={saving}
-              style={{ padding: '10px 26px', background: saving ? T.border : T.primary, color: WHITE, border: 'none', borderRadius: 6, fontWeight: 600, fontSize: '.88rem', cursor: saving ? 'not-allowed' : 'pointer' }}>
+              style={{ padding:'10px 26px', background: saving ? T.border : T.primary, color:WHITE, border:'none', borderRadius:6, fontWeight:600, fontSize:'.88rem', cursor:saving?'not-allowed':'pointer' }}>
               {saving ? 'Guardando…' : 'Guardar Pedido'}
             </button>
             <button onClick={() => setFormOpen(false)}
-              style={{ padding: '10px 16px', background: 'none', color: T.textMid, border: `1px solid ${T.border}`, borderRadius: 6, fontWeight: 600, fontSize: '.88rem', cursor: 'pointer' }}>
+              style={{ padding:'10px 16px', background:'none', color:T.textMid, border:`1px solid ${T.border}`, borderRadius:6, fontWeight:600, fontSize:'.88rem', cursor:'pointer' }}>
               Cancelar
             </button>
           </div>
@@ -402,29 +658,124 @@ function TabPedidos({ data, loading, add, update, remove, saving }) {
       {/* List card */}
       <div style={card}>
         {/* Filter tabs + search */}
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12, alignItems: 'center' }}>
-          {FILTER_TABS.map(ft => {
-            const count = ft.key === 'todos' ? data.length : data.filter(r => r.estado === ft.key).length;
-            return (
-              <button key={ft.key} onClick={() => setFilterTab(ft.key)} style={{
-                padding: '5px 14px', borderRadius: 20, fontSize: '.75rem', fontWeight: 600, cursor: 'pointer',
-                border: `1.5px solid ${filterTab === ft.key ? T.primary : T.border}`,
-                background: filterTab === ft.key ? T.primary : WHITE,
-                color: filterTab === ft.key ? WHITE : T.textMid,
-              }}>
-                {ft.label} ({count})
-              </button>
-            );
-          })}
-          <input
-            value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Buscar OC, descripción, rampa…"
-            style={{ ...IS, width: 220, marginLeft: 'auto', fontSize: '.82rem', padding: '6px 10px' }} />
+        <div style={{ overflowX: isMobile ? 'auto' : 'visible', paddingBottom: isMobile ? 4 : 0, marginBottom: 8 }}>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', minWidth: 'max-content' }}>
+            {FILTER_TABS.map(ft => {
+              const count = ft.key === 'todos' ? data.length : data.filter(r => r.estado === ft.key).length;
+              return (
+                <button key={ft.key} onClick={() => setFilterTab(ft.key)} style={{
+                  padding: '5px 12px', borderRadius: 20, fontSize: '.75rem', fontWeight: 600, cursor: 'pointer',
+                  border: `1.5px solid ${filterTab === ft.key ? T.primary : T.border}`,
+                  background: filterTab === ft.key ? T.primary : WHITE,
+                  color: filterTab === ft.key ? WHITE : T.textMid,
+                  whiteSpace: 'nowrap', minWidth: 0,
+                }}>
+                  {ft.label} ({count})
+                </button>
+              );
+            })}
+          </div>
         </div>
+        <input
+          value={search} onChange={e => setSearch(e.target.value)}
+          placeholder="Buscar OC, descripción, rampa…"
+          style={{ ...IS, width: '100%', fontSize: '.82rem', padding: '6px 10px', marginBottom: 12 }} />
 
         {loading ? <Skeleton rows={6} /> : filtered.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '40px 24px', color: T.textMid, fontSize: '.88rem' }}>Sin pedidos.</div>
+        ) : isMobile ? (
+          /* ── MOBILE: cards ── */
+          <div>
+            {filtered.slice(0, 150).map(r => {
+              const entregadoContent = entregadoOpenId === r.id ? (
+                r.rubros?.length > 0 ? (
+                  <div>
+                    <div style={{ fontWeight:700, fontSize:13, color:T.secondary, textTransform:'uppercase', marginBottom:8 }}>Confirmar entrega por producto</div>
+                    {r.rubros.map((rb, ri) => {
+                      const frm = Array.isArray(entregadoForm) ? (entregadoForm[ri] || {}) : {};
+                      const setFrm = (k, v) => setEntregadoForm(prev => {
+                        const next = [...(Array.isArray(prev) ? prev : [])];
+                        next[ri] = { ...(next[ri] || {}), [k]: v };
+                        return next;
+                      });
+                      const tipo = frm.tipoEntrega || 'aceptado_total';
+                      return (
+                        <div key={ri} style={{ background:'#F9FBF9', borderRadius:6, padding:'10px', marginBottom:6 }}>
+                          <div style={{ fontSize:13, fontWeight:600, marginBottom:6 }}>
+                            {rb.item && <span style={{ fontFamily:'monospace', fontSize:11, color:T.textMid, marginRight:4 }}>{rb.item}</span>}
+                            {rb.descripcion} — <b style={{ color:T.secondary }}>{rb.cajas ?? rb.cajasPedidas ?? 0} ped.</b>
+                          </div>
+                          <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
+                            <input type="number" min="0" value={frm.cajasEntregadas ?? ''} onChange={e => setFrm('cajasEntregadas', e.target.value)}
+                              placeholder="Entregadas" style={{ width:90, padding:'6px 8px', border:`1.5px solid ${T.border}`, borderRadius:6, fontSize:14, outline:'none' }} />
+                            <select value={tipo} onChange={e => setFrm('tipoEntrega', e.target.value)}
+                              style={{ flex:1, padding:'6px 8px', border:`1.5px solid ${T.border}`, borderRadius:6, fontSize:13, outline:'none' }}>
+                              <option value="aceptado_total">✓ Total</option>
+                              <option value="aceptado_parcial">~ Parcial</option>
+                              <option value="rechazo">✕ Rechazo</option>
+                              <option value="no_entregado">— No entregado</option>
+                            </select>
+                          </div>
+                          {(tipo === 'rechazo' || tipo === 'aceptado_parcial') && (
+                            <input value={frm.motivoRechazo || ''} onChange={e => setFrm('motivoRechazo', e.target.value)}
+                              placeholder="Motivo…" style={{ width:'100%', marginTop:6, padding:'6px 8px', border:`1.5px solid ${T.border}`, borderRadius:6, fontSize:13, outline:'none', boxSizing:'border-box' }} />
+                          )}
+                        </div>
+                      );
+                    })}
+                    <div style={{ display:'flex', gap:8, marginTop:8 }}>
+                      <button onClick={() => handleEntregadoSave(r.id, r)} style={{ flex:1, minHeight:44, background:T.primary, color:WHITE, border:'none', borderRadius:8, fontWeight:700, fontSize:14, cursor:'pointer' }}>Confirmar entrega</button>
+                      <button onClick={() => setEntregadoOpenId(null)} style={{ minHeight:44, padding:'0 16px', background:'#F5F5F5', color:T.textMid, border:`1px solid ${T.border}`, borderRadius:8, fontWeight:600, fontSize:14, cursor:'pointer' }}>Cancelar</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <div style={{ display:'flex', flexDirection:'column', gap:10, marginBottom:10 }}>
+                      <label style={{ display:'flex', flexDirection:'column', gap:4, fontSize:12, fontWeight:600, color:T.textMid, textTransform:'uppercase' }}>
+                        Cajas entregadas
+                        <input type="number" min="0" value={entregadoForm.cajasEntregadas || ''} onChange={e => setEntregadoForm(f => ({ ...f, cajasEntregadas: e.target.value }))} style={{ ...IS }} />
+                      </label>
+                      <label style={{ display:'flex', flexDirection:'column', gap:4, fontSize:12, fontWeight:600, color:T.textMid, textTransform:'uppercase' }}>
+                        Tipo de entrega
+                        <select value={entregadoForm.tipoEntrega || 'aceptado_total'} onChange={e => setEntregadoForm(f => ({ ...f, tipoEntrega: e.target.value }))} style={{ ...IS }}>
+                          <option value="aceptado_total">Aceptado total</option>
+                          <option value="aceptado_parcial">Aceptado parcial</option>
+                          <option value="rechazo">Rechazo</option>
+                          <option value="no_entregado">No entregado</option>
+                        </select>
+                      </label>
+                      {(entregadoForm.tipoEntrega === 'rechazo' || entregadoForm.tipoEntrega === 'aceptado_parcial') && (
+                        <label style={{ display:'flex', flexDirection:'column', gap:4, fontSize:12, fontWeight:600, color:T.textMid, textTransform:'uppercase' }}>
+                          Motivo
+                          <input value={entregadoForm.motivoRechazo || ''} onChange={e => setEntregadoForm(f => ({ ...f, motivoRechazo: e.target.value }))} placeholder="Detalle motivo..." style={{ ...IS }} />
+                        </label>
+                      )}
+                    </div>
+                    <div style={{ display:'flex', gap:8 }}>
+                      <button onClick={() => handleEntregadoSave(r.id, r)} style={{ flex:1, minHeight:44, background:T.primary, color:WHITE, border:'none', borderRadius:8, fontWeight:700, fontSize:14, cursor:'pointer' }}>Confirmar entrega</button>
+                      <button onClick={() => setEntregadoOpenId(null)} style={{ minHeight:44, padding:'0 16px', background:'#F5F5F5', color:T.textMid, border:`1px solid ${T.border}`, borderRadius:8, fontWeight:600, fontSize:14, cursor:'pointer' }}>Cancelar</button>
+                    </div>
+                  </div>
+                )
+              ) : felOpenId === r.id ? (
+                <FelForm record={r} onSave={data => handleFelSave(r.id, data)} onClose={() => setFelOpenId(null)} />
+              ) : null;
+
+              return (
+                <WalmartCard
+                  key={r.id}
+                  r={r}
+                  onPreparando={() => handleEstado(r.id, 'preparando')}
+                  onOpenEntregado={() => openEntregado(r)}
+                  onFel={() => setFelOpenId(felOpenId === r.id ? null : r.id)}
+                  onDelete={() => handleDelete(r.id)}
+                  expandedContent={entregadoContent}
+                />
+              );
+            })}
+          </div>
         ) : (
+          /* ── DESKTOP: tabla original ── */
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
@@ -438,18 +789,34 @@ function TabPedidos({ data, loading, add, update, remove, saving }) {
                 {filtered.slice(0, 150).map((r, i) => (
                   <>
                     <tr key={r.id} style={{ background: i % 2 === 1 ? '#F9FBF9' : WHITE }}>
-                      <td style={{ ...tdSt, fontWeight: 600 }}>{r.fechaEntrega || r.fecha || '—'}</td>
+                      <td style={{ ...tdSt, fontWeight: 600 }}>
+                        <div>{r.fechaEntrega || r.fecha || '—'}</div>
+                        {r.horaEntrega && <div style={{ fontSize:'.72rem', color:T.secondary, fontWeight:700 }}>{r.horaEntrega}</div>}
+                        {r.notaImportante && <div style={{ fontSize:'.7rem', color:T.info, marginTop:1 }}>📅 {r.notaImportante}</div>}
+                      </td>
                       <td style={{ ...tdSt, fontSize: '.8rem', fontFamily: 'monospace' }}>
                         {r.numOC || '—'}
                         {r.fuente === 'gmail' && (
-                          <span style={{ marginLeft: 6, padding: '2px 6px', background: '#E3F2FD', color: T.info, borderRadius: 10, fontSize: '.65rem', fontWeight: 700 }}>📧 Gmail</span>
+                          <span style={{ marginLeft: 6, padding: '2px 6px', background: '#E3F2FD', color: T.info, borderRadius: 10, fontSize: '.65rem', fontWeight: 700 }}>📧</span>
                         )}
                       </td>
                       <td style={{ ...tdSt, fontSize: '.78rem', color: T.textMid }}>{r.numAtlas || '—'}</td>
-                      <td style={{ ...tdSt, maxWidth: 200 }}>
-                        <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '.82rem' }}>{r.descripcion || '—'}</div>
+                      <td style={{ ...tdSt, maxWidth: 240 }}>
+                        {r.rubros?.length > 0 ? (
+                          <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
+                            {r.rubros.map((rb, ri) => (
+                              <div key={ri} style={{ fontSize:'.76rem', lineHeight:1.3 }}>
+                                {rb.item && <span style={{ fontFamily:'monospace', fontSize:'.68rem', color:T.textMid, marginRight:5 }}>{rb.item}</span>}
+                                <span style={{ color:T.textDark }}>{rb.descripcion || '—'}</span>
+                                <span style={{ fontWeight:700, color:T.secondary, marginLeft:5 }}>({rb.cajas ?? rb.cajasPedidas ?? 0})</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:'.82rem' }}>{r.descripcion || '—'}</div>
+                        )}
                       </td>
-                      <td style={{ ...tdSt, fontWeight: 600 }}>{r.totalCajas || '—'}</td>
+                      <td style={{ ...tdSt, fontWeight: 600 }}>{r.totalCajas || r.rubros?.reduce((s,x)=>s+(x.cajas??x.cajasPedidas??0),0) || '—'}</td>
                       <td style={tdSt}>{r.rampa || '—'}</td>
                       <td style={tdSt}>
                         <Badge cfg={ESTADO_CFG} value={r.estado} />
@@ -484,44 +851,107 @@ function TabPedidos({ data, loading, add, update, remove, saving }) {
                     {entregadoOpenId === r.id && (
                       <tr key={r.id + '_ent'} style={{ background: '#F1F8E9' }}>
                         <td colSpan={8} style={{ padding: '12px 14px' }}>
-                          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-                            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '.72rem', fontWeight: 600, color: T.textMid, textTransform: 'uppercase' }}>
-                              Cajas entregadas
-                              <input type="number" min="0" value={entregadoForm.cajasEntregadas}
-                                onChange={e => setEntregadoForm(f => ({ ...f, cajasEntregadas: e.target.value }))}
-                                style={{ ...IS, width: 110 }} />
-                            </label>
-                            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '.72rem', fontWeight: 600, color: T.textMid, textTransform: 'uppercase' }}>
-                              Tipo de entrega
-                              <select value={entregadoForm.tipoEntrega}
-                                onChange={e => setEntregadoForm(f => ({ ...f, tipoEntrega: e.target.value }))}
-                                style={{ ...IS, width: 190 }}>
-                                <option value="aceptado_total">Aceptado total</option>
-                                <option value="aceptado_parcial">Aceptado parcial</option>
-                                <option value="rechazo">Rechazo</option>
-                                <option value="no_entregado">No entregado (sin capacidad)</option>
-                              </select>
-                            </label>
-                            {(entregadoForm.tipoEntrega === 'rechazo' || entregadoForm.tipoEntrega === 'aceptado_parcial') && (
-                              <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '.72rem', fontWeight: 600, color: T.textMid, textTransform: 'uppercase', flex: 1 }}>
-                                Motivo
-                                <input value={entregadoForm.motivoRechazo}
-                                  onChange={e => setEntregadoForm(f => ({ ...f, motivoRechazo: e.target.value }))}
-                                  placeholder="Detalle motivo..."
-                                  style={{ ...IS, minWidth: 180 }} />
-                              </label>
-                            )}
-                            <div style={{ display: 'flex', gap: 8 }}>
-                              <button onClick={() => handleEntregadoSave(r.id)}
-                                style={{ padding: '9px 18px', background: T.primary, color: WHITE, border: 'none', borderRadius: 6, fontWeight: 700, fontSize: '.82rem', cursor: 'pointer' }}>
-                                Confirmar entrega
-                              </button>
-                              <button onClick={() => setEntregadoOpenId(null)}
-                                style={{ padding: '9px 14px', background: '#F5F5F5', color: T.textMid, border: `1px solid ${T.border}`, borderRadius: 6, fontWeight: 600, fontSize: '.82rem', cursor: 'pointer' }}>
-                                Cancelar
-                              </button>
+                          {r.rubros?.length > 0 ? (
+                            <div>
+                              <div style={{ fontWeight:700, fontSize:'.78rem', color:T.secondary, textTransform:'uppercase', marginBottom:8 }}>Confirmar entrega por producto</div>
+                              <table style={{ width:'100%', borderCollapse:'collapse', marginBottom:10 }}>
+                                <thead>
+                                  <tr style={{ background:'#C8E6C9' }}>
+                                    {['Item','Descripción','Pedidas','Entregadas','Tipo','Motivo'].map(h => (
+                                      <th key={h} style={{ padding:'5px 8px', fontSize:'.68rem', fontWeight:700, textAlign:'left', color:T.secondary, textTransform:'uppercase' }}>{h}</th>
+                                    ))}
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {r.rubros.map((rb, ri) => {
+                                    const frm = Array.isArray(entregadoForm) ? (entregadoForm[ri] || {}) : {};
+                                    const setFrm = (k, v) => setEntregadoForm(prev => {
+                                      const next = [...(Array.isArray(prev) ? prev : [])];
+                                      next[ri] = { ...(next[ri] || {}), [k]: v };
+                                      return next;
+                                    });
+                                    const tipo = frm.tipoEntrega || 'aceptado_total';
+                                    return (
+                                      <tr key={ri} style={{ background: ri%2===0 ? WHITE : '#F9FBF9' }}>
+                                        <td style={{ padding:'5px 8px', fontFamily:'monospace', fontSize:'.72rem', color:T.textMid }}>{rb.item || '—'}</td>
+                                        <td style={{ padding:'5px 8px', fontSize:'.78rem' }}>{rb.descripcion || '—'}</td>
+                                        <td style={{ padding:'5px 8px', fontWeight:700, color:T.secondary, textAlign:'center' }}>{rb.cajas ?? rb.cajasPedidas ?? 0}</td>
+                                        <td style={{ padding:'5px 8px' }}>
+                                          <input type="number" min="0" value={frm.cajasEntregadas ?? ''}
+                                            onChange={e => setFrm('cajasEntregadas', e.target.value)}
+                                            style={{ width:70, padding:'4px 6px', border:`1.5px solid ${T.border}`, borderRadius:4, fontSize:'.82rem', outline:'none' }} />
+                                        </td>
+                                        <td style={{ padding:'5px 8px' }}>
+                                          <select value={tipo} onChange={e => setFrm('tipoEntrega', e.target.value)}
+                                            style={{ padding:'4px 6px', border:`1.5px solid ${T.border}`, borderRadius:4, fontSize:'.75rem', outline:'none' }}>
+                                            <option value="aceptado_total">✓ Total</option>
+                                            <option value="aceptado_parcial">~ Parcial</option>
+                                            <option value="rechazo">✕ Rechazo</option>
+                                            <option value="no_entregado">— No entregado</option>
+                                          </select>
+                                        </td>
+                                        <td style={{ padding:'5px 8px' }}>
+                                          {(tipo === 'rechazo' || tipo === 'aceptado_parcial') && (
+                                            <input value={frm.motivoRechazo || ''} onChange={e => setFrm('motivoRechazo', e.target.value)}
+                                              placeholder="Motivo…"
+                                              style={{ width:130, padding:'4px 6px', border:`1.5px solid ${T.border}`, borderRadius:4, fontSize:'.75rem', outline:'none' }} />
+                                          )}
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                              <div style={{ display:'flex', gap:8 }}>
+                                <button onClick={() => handleEntregadoSave(r.id, r)}
+                                  style={{ padding:'9px 20px', background:T.primary, color:WHITE, border:'none', borderRadius:6, fontWeight:700, fontSize:'.82rem', cursor:'pointer' }}>
+                                  Confirmar entrega
+                                </button>
+                                <button onClick={() => setEntregadoOpenId(null)}
+                                  style={{ padding:'9px 14px', background:'none', color:T.textMid, border:`1px solid ${T.border}`, borderRadius:6, fontWeight:600, fontSize:'.82rem', cursor:'pointer' }}>
+                                  Cancelar
+                                </button>
+                              </div>
                             </div>
-                          </div>
+                          ) : (
+                            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                              <label style={{ display:'flex', flexDirection:'column', gap:4, fontSize:'.72rem', fontWeight:600, color:T.textMid, textTransform:'uppercase' }}>
+                                Cajas entregadas
+                                <input type="number" min="0" value={entregadoForm.cajasEntregadas || ''}
+                                  onChange={e => setEntregadoForm(f => ({ ...f, cajasEntregadas: e.target.value }))}
+                                  style={{ ...IS, width: 110 }} />
+                              </label>
+                              <label style={{ display:'flex', flexDirection:'column', gap:4, fontSize:'.72rem', fontWeight:600, color:T.textMid, textTransform:'uppercase' }}>
+                                Tipo de entrega
+                                <select value={entregadoForm.tipoEntrega || 'aceptado_total'}
+                                  onChange={e => setEntregadoForm(f => ({ ...f, tipoEntrega: e.target.value }))}
+                                  style={{ ...IS, width: 190 }}>
+                                  <option value="aceptado_total">Aceptado total</option>
+                                  <option value="aceptado_parcial">Aceptado parcial</option>
+                                  <option value="rechazo">Rechazo</option>
+                                  <option value="no_entregado">No entregado</option>
+                                </select>
+                              </label>
+                              {(entregadoForm.tipoEntrega === 'rechazo' || entregadoForm.tipoEntrega === 'aceptado_parcial') && (
+                                <label style={{ display:'flex', flexDirection:'column', gap:4, fontSize:'.72rem', fontWeight:600, color:T.textMid, textTransform:'uppercase', flex:1 }}>
+                                  Motivo
+                                  <input value={entregadoForm.motivoRechazo || ''}
+                                    onChange={e => setEntregadoForm(f => ({ ...f, motivoRechazo: e.target.value }))}
+                                    placeholder="Detalle motivo..." style={{ ...IS, minWidth: 180 }} />
+                                </label>
+                              )}
+                              <div style={{ display: 'flex', gap: 8 }}>
+                                <button onClick={() => handleEntregadoSave(r.id, r)}
+                                  style={{ padding:'9px 18px', background:T.primary, color:WHITE, border:'none', borderRadius:6, fontWeight:700, fontSize:'.82rem', cursor:'pointer' }}>
+                                  Confirmar entrega
+                                </button>
+                                <button onClick={() => setEntregadoOpenId(null)}
+                                  style={{ padding:'9px 14px', background:'#F5F5F5', color:T.textMid, border:`1px solid ${T.border}`, borderRadius:6, fontWeight:600, fontSize:'.82rem', cursor:'pointer' }}>
+                                  Cancelar
+                                </button>
+                              </div>
+                            </div>
+                          )}
                         </td>
                       </tr>
                     )}
@@ -764,7 +1194,7 @@ function TabCalendario({ data }) {
                 const cfg = ESTADO_CFG[p.estado] || ESTADO_CFG.pendiente;
                 return (
                   <div key={p.id} style={{ background: cfg.bg, color: cfg.c, borderRadius: 3, padding: '2px 5px', fontSize: '.62rem', fontWeight: 600, marginBottom: 2, lineHeight: 1.3 }}>
-                    {p.totalCajas ? `${p.totalCajas} caj.` : p.numOC ? `OC ${p.numOC}` : '—'}
+                    {(() => { const c = p.totalCajas || p.rubros?.reduce((s,x)=>s+(x.cajas??x.cajasPedidas??0),0) || 0; return c ? `${c} caj.` : p.numOC ? `OC ${p.numOC}` : p.descripcion?.slice(0,12) || '—'; })()}
                   </div>
                 );
               })}
@@ -786,7 +1216,7 @@ function TabCalendario({ data }) {
               <div key={r.id} style={{ background: WHITE, border: `1px solid ${T.border}`, borderRadius: 6, padding: '10px 14px', marginBottom: 8, display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center', fontSize: '.83rem' }}>
                 <span style={{ fontWeight: 700 }}>{r.numOC ? `OC ${r.numOC}` : '—'}</span>
                 <span style={{ color: T.textMid }}>{r.descripcion || '—'}</span>
-                <span style={{ fontWeight: 600 }}>{r.totalCajas ? `${r.totalCajas} cajas` : ''}</span>
+                <span style={{ fontWeight: 600 }}>{(() => { const c = r.totalCajas || r.rubros?.reduce((s,x)=>s+(x.cajas??x.cajasPedidas??0),0) || 0; return c ? `${c} cajas` : ''; })()}</span>
                 <Badge cfg={ESTADO_CFG} value={r.estado} />
               </div>
             ))
@@ -812,83 +1242,131 @@ function TabCalendario({ data }) {
 // ═══════════════════════════════════════════════════════════════════
 function TabGmail({ data, add }) {
   const toast = useToast();
-  const [loading, setLoading] = useState(false);
-  const [result,  setResult]  = useState(null);
+  const [loading,    setLoading]    = useState(false);
+  const [result,     setResult]     = useState(null);
+  const [gasUrl,     setGasUrlState] = useState(getGasUrl);
+  const [urlDraft,   setUrlDraft]   = useState(getGasUrl);
+  const [showConfig, setShowConfig] = useState(!getGasUrl());
 
   const gmailPedidos = useMemo(
     () => data.filter(r => r.fuente === 'gmail').slice(0, 10),
     [data]
   );
 
+  const handleSaveUrl = () => {
+    setGasUrl(urlDraft);
+    setGasUrlState(urlDraft.trim());
+    setShowConfig(false);
+    toast('URL guardada');
+  };
+
   const handleRevisar = async () => {
-    if (!APPS_SCRIPT_URL) {
-      toast('URL de Apps Script no configurada', 'error');
-      return;
-    }
+    const url = getGasUrl();
+    if (!url) { toast('Configura la URL del Apps Script primero', 'error'); return; }
     setLoading(true);
     setResult(null);
     try {
-      const res = await fetch(APPS_SCRIPT_URL, { method: 'POST', body: JSON.stringify({ action: 'fetchWalmart' }) });
+      const res = await fetch(url, { method: 'GET' });
       const json = await res.json();
       setResult(json);
-      toast('Correos revisados');
-    } catch (e) {
-      toast('Error al conectar con Apps Script', 'error');
+      // Auto-import new pedidos found
+      if (json.pedidos && Array.isArray(json.pedidos)) {
+        let nuevos = 0;
+        for (const p of json.pedidos) {
+          // Skip if OC already exists
+          const existe = data.some(r => r.numOC && r.numOC === p.numOC);
+          if (existe) continue;
+          await add({
+            fecha:        p.fechaEntrega || today(),
+            fechaEntrega: p.fechaEntrega || today(),
+            cliente:      'Walmart',
+            numOC:        p.numOC        || '',
+            numAtlas:     '',
+            rampa:        p.rampa        || '',
+            horaEntrega:  p.horaEntrega  || '',
+            descripcion:  p.descripcion  || p.asunto || '',
+            productos:    [],
+            totalCajas:   parseFloat(p.totalCajas) || 0,
+            total:        0,
+            estado:       'pendiente',
+            fuente:       'gmail',
+            numFel:       '',
+            montoFactura: 0,
+            fechaFactura: '',
+            estadoCobro:  'pendiente',
+            gmailData:    { subject: p.asunto || '', from: p.from || '', date: p.fechaEmail || '' },
+            obs:          '',
+            creadoEn:     new Date().toISOString(),
+          });
+          nuevos++;
+        }
+        toast(nuevos > 0 ? `${nuevos} pedido${nuevos>1?'s':''} importado${nuevos>1?'s':''}` : 'Sin pedidos nuevos en Gmail');
+      } else {
+        toast('Correos revisados — sin pedidos nuevos');
+      }
+    } catch {
+      toast('Error al conectar con Apps Script. Verifica la URL.', 'error');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleEmailParsed = async (parsed) => {
-    try {
-      await add({
-        fecha:        parsed.fechaEntrega || today(),
-        fechaEntrega: parsed.fechaEntrega || today(),
-        cliente:      'Walmart',
-        numOC:        parsed.numOC        || '',
-        numAtlas:     '',
-        rampa:        '',
-        horaEntrega:  '',
-        descripcion:  parsed.descripcion  || '',
-        productos:    [],
-        totalCajas:   parseFloat(parsed.totalCajas) || 0,
-        total:        0,
-        estado:       'pendiente',
-        fuente:       'gmail',
-        numFel:       '',
-        montoFactura: 0,
-        fechaFactura: '',
-        estadoCobro:  'pendiente',
-        gmailData:    { subject: parsed.descripcion || '', from: '', date: parsed.fechaEntrega || '' },
-        obs:          '',
-        creadoEn:     new Date().toISOString(),
-      });
-      toast('Pedido importado desde email');
-    } catch { toast('Error al importar', 'error'); }
-  };
-
   return (
     <div>
+      {/* ── Configuración Apps Script URL ── */}
       <div style={card}>
-        <div style={{ fontWeight: 700, fontSize: '.95rem', color: T.textDark, marginBottom: 6 }}>📧 Correos Walmart</div>
-        <p style={{ fontSize: '.85rem', color: T.textMid, margin: '0 0 18px' }}>
-          Revisar correos de Walmart para importar pedidos automáticamente.
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <div style={{ fontWeight: 700, fontSize: '.95rem', color: T.textDark }}>📧 Importar desde Gmail</div>
+          <button onClick={() => setShowConfig(o => !o)} style={{ fontSize: '.78rem', color: T.info, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
+            {showConfig ? 'Ocultar config' : '⚙️ Configurar URL'}
+          </button>
+        </div>
+
+        {showConfig && (
+          <div style={{ marginBottom: 14, padding: 14, background: '#F0F4FF', border: `1px solid #BBDEFB`, borderRadius: 8 }}>
+            <div style={{ fontSize: '.78rem', fontWeight: 700, color: T.info, marginBottom: 8 }}>
+              URL del Apps Script de Gmail
+            </div>
+            <div style={{ fontSize: '.75rem', color: T.textMid, marginBottom: 10, lineHeight: 1.5 }}>
+              Despliega el script <code>apps-script-walmart.gs</code> en Google Apps Script y pega la URL aquí.
+              Se guarda localmente en este navegador.
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <input
+                value={urlDraft} onChange={e => setUrlDraft(e.target.value)}
+                placeholder="https://script.google.com/macros/s/AKfycb.../exec"
+                style={{ ...IS, flex: '1 1 300px', fontSize: '.82rem' }}
+              />
+              <button onClick={handleSaveUrl} style={{ padding: '9px 18px', background: T.info, color: WHITE, border: 'none', borderRadius: 6, fontWeight: 600, fontSize: '.82rem', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                Guardar URL
+              </button>
+            </div>
+          </div>
+        )}
+
+        <p style={{ fontSize: '.85rem', color: T.textMid, margin: '0 0 14px' }}>
+          Conecta con Gmail para detectar correos de Walmart e importar pedidos automáticamente.
         </p>
 
-        {!APPS_SCRIPT_URL ? (
-          <div style={{ padding: '12px 16px', background: '#E3F2FD', border: `1px solid #BBDEFB`, borderRadius: 8, fontSize: '.84rem', color: T.info }}>
-            URL de Apps Script no configurada. Configurar en Admin → Integraciones.
+        {!gasUrl ? (
+          <div style={{ padding: '12px 16px', background: '#FFF3E0', border: `1px solid #FFB74D`, borderRadius: 8, fontSize: '.84rem', color: '#E65100' }}>
+            ⚠️ Configura la URL del Apps Script (botón arriba) para usar esta función.
           </div>
         ) : (
-          <button onClick={handleRevisar} disabled={loading}
-            style={{ padding: '9px 22px', background: loading ? T.border : T.info, color: WHITE, border: 'none', borderRadius: 6, fontWeight: 600, fontSize: '.88rem', cursor: loading ? 'not-allowed' : 'pointer' }}>
-            {loading ? 'Revisando…' : '🔄 Revisar correos'}
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <button onClick={handleRevisar} disabled={loading}
+              style={{ padding: '9px 22px', background: loading ? T.border : T.info, color: WHITE, border: 'none', borderRadius: 6, fontWeight: 600, fontSize: '.88rem', cursor: loading ? 'not-allowed' : 'pointer' }}>
+              {loading ? 'Revisando Gmail…' : '🔄 Revisar correos Walmart'}
+            </button>
+            <span style={{ fontSize: '.75rem', color: T.textMid }}>
+              Apps Script configurado ✓
+            </span>
+          </div>
         )}
 
         {result && (
           <div style={{ marginTop: 14, padding: 12, background: '#F0FFF4', border: `1px solid #C8E6C9`, borderRadius: 8, fontSize: '.83rem', color: T.secondary }}>
-            Respuesta Apps Script: {JSON.stringify(result)}
+            <b>Respuesta:</b> {typeof result === 'object' ? JSON.stringify(result, null, 2) : result}
           </div>
         )}
       </div>
@@ -925,12 +1403,11 @@ function TabGmail({ data, add }) {
         )}
       </div>
 
-      {/* Manual import */}
-      <div style={card}>
-        <div style={{ fontWeight: 700, fontSize: '.88rem', color: T.textDark, marginBottom: 12 }}>
-          Importar manualmente desde email
+      {/* Manual import — usar el botón "Desde correo" en la pestaña Pedidos */}
+      <div style={{ ...card, background: '#F9FBF9' }}>
+        <div style={{ fontSize: '.84rem', color: T.textMid }}>
+          Para importar manualmente un correo, usa el botón <b>📧 Desde correo</b> en la pestaña <b>Pedidos</b>.
         </div>
-        <EmailParser onParsed={handleEmailParsed} />
       </div>
     </div>
   );
@@ -940,14 +1417,121 @@ function TabGmail({ data, add }) {
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════════
 export default function Walmart() {
-  const { data, loading }           = useCollection('pedidosWalmart', { orderField: 'fecha', orderDir: 'desc', limit: 300 });
+  const { data: colData, loading }      = useCollection('pedidosWalmart', { orderField: 'fecha', orderDir: 'desc', limit: 500 });
   const { add, update, remove, saving } = useWrite('pedidosWalmart');
+  const { data: mainData }              = useMainData();
+  const { productos }                   = useProductosCatalogo();
+  const toast                           = useToast();
 
-  const [tab, setTab] = useState('pedidos');
+  const [tab,        setTab]        = useState('pedidos');
+  const [migrating,  setMigrating]  = useState(false);
+  const [migDone,    setMigDone]    = useState(false);
 
-  const pendientes    = data.filter(r => r.estado === 'pendiente').length;
+  // ── Datos legacy del bpm.html ──────────────────────────────────
+  const legacyRows = useMemo(() => {
+    if (!mainData?.pedidosWalmart?.length) return [];
+    const existingIds       = new Set(colData.map(r => r.id));
+    const existingLegacyIds = new Set(colData.map(r => r.legacyId).filter(Boolean));
+    const existingOCs       = new Set(colData.map(r => r.numOC).filter(Boolean));
+    // Fingerprint: fecha + numOC (si existe) o fecha + cajas + primer item rubro
+    const fp = r => {
+      const f = r.fechaEntrega || r.fecha || '';
+      if (r.numOC) return `${f}|oc|${r.numOC}`;
+      const c = r.totalCajas || (r.rubros||[]).reduce((s,x)=>s+(x.cajas||x.cajasPedidas||0),0) || 0;
+      const item = (r.rubros||[])[0]?.item || (r.descripcion||'').slice(0,20).replace(/\s+/g,'');
+      return `${f}|${c}|${item}`;
+    };
+    const existingFPs = new Set(colData.map(fp));
+    return (mainData.pedidosWalmart || []).filter(r => {
+      if (r.id  && existingIds.has(r.id))       return false;
+      if (r.id  && existingLegacyIds.has(r.id)) return false;
+      if (r.numOC && existingOCs.has(r.numOC))  return false;
+      if (existingFPs.has(fp(r)))               return false;
+      return true;
+    }).map(r => ({ ...r, _legacy: true }));
+  }, [mainData, colData]);
+
+  // ── Vista unificada: colección nueva + legacy — sin duplicados ─
+  const data = useMemo(() => {
+    // Deduplicar colData: si varios registros tienen el mismo legacyId, conservar solo el primero
+    const dedupedCol = colData.filter((r, idx, arr) =>
+      !r.legacyId || arr.findIndex(x => x.legacyId === r.legacyId) === idx
+    );
+    const combined = [...dedupedCol, ...legacyRows];
+    combined.sort((a, b) => {
+      const fa = a.fechaEntrega || a.fecha || '';
+      const fb = b.fechaEntrega || b.fecha || '';
+      return fb < fa ? -1 : fb > fa ? 1 : 0;
+    });
+    return combined;
+  }, [colData, legacyRows]);
+
+  // ── Migración: copiar legacy a la nueva colección ──────────────
+  const handleMigrar = async () => {
+    if (!legacyRows.length) return;
+    setMigrating(true);
+    try {
+      for (const r of legacyRows) {
+        const { _legacy, id: _id, ...rest } = r;
+        await add({ ...rest, legacyId: _id || null, _migrado: true, creadoEn: rest.creadoEn || new Date().toISOString() });
+      }
+      setMigDone(true);
+      toast(`${legacyRows.length} pedidos migrados a la nueva colección`);
+    } catch {
+      toast('Error durante la migración', 'error');
+    } finally {
+      setMigrating(false);
+    }
+  };
+
+  const pendientes    = data.filter(r => r.estado === 'pendiente' || !r.estado).length;
   const entregadosHoy = data.filter(r => r.estado === 'entregado' && (r.fechaEntrega || r.fecha) === today()).length;
   const totalQ        = useMemo(() => data.filter(r => r.estado !== 'cancelado').reduce((s, r) => s + (r.total || 0), 0), [data]);
+
+  // ── Alerta de pedidos nuevos ────────────────────────────────────
+  const seenIds    = useRef(null);
+  const audioRef   = useRef(null);
+
+  useEffect(() => {
+    if (loading) return;
+    const currentIds = new Set(colData.map(r => r.id));
+    if (seenIds.current === null) {
+      // Primera carga — solo guardar IDs, no alertar
+      seenIds.current = currentIds;
+      return;
+    }
+    const nuevos = colData.filter(r =>
+      !seenIds.current.has(r.id) && (r.estado === 'pendiente' || !r.estado)
+    );
+    if (nuevos.length > 0) {
+      seenIds.current = currentIds;
+      const msg = nuevos.length === 1
+        ? `📦 Nuevo pedido Walmart — ${nuevos[0].fechaEntrega || nuevos[0].fecha || ''} · ${nuevos[0].numOC ? 'OC ' + nuevos[0].numOC : (nuevos[0].descripcion || '').slice(0, 60)}`
+        : `📦 ${nuevos.length} pedidos nuevos de Walmart`;
+      toast(msg, 'info');
+      // Browser notification si tiene permiso
+      if (Notification?.permission === 'granted') {
+        new Notification('AJÚA — Pedido Walmart', {
+          body: msg.replace('📦 ', ''),
+          icon: '/favicon.svg',
+          tag: 'walmart-nuevo',
+        });
+      }
+      // Sonido beep con Web Audio API
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.frequency.value = 880;
+        gain.gain.setValueAtTime(0.3, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+        osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.4);
+      } catch { /* sin audio */ }
+    } else {
+      seenIds.current = currentIds;
+    }
+  }, [colData, loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const TABS = [
     { id: 'pedidos',    label: '📦 Pedidos' },
@@ -965,6 +1549,27 @@ export default function Walmart() {
           Gestión de pedidos, facturación, calendario e integración Gmail
         </p>
       </div>
+
+      {/* Banner migración */}
+      {legacyRows.length > 0 && !migDone && (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10,
+          background: '#FFF3E0', border: '1.5px solid #FFB74D', borderRadius: 8,
+          padding: '11px 16px', marginBottom: 18,
+        }}>
+          <span style={{ fontSize: '.84rem', fontWeight: 600, color: '#E65100' }}>
+            📦 Hay {legacyRows.length} pedido{legacyRows.length > 1 ? 's' : ''} del sistema anterior (bpm.html) sin migrar.
+            Se muestran aquí pero no podrás editarlos hasta migrarlos.
+          </span>
+          <button onClick={handleMigrar} disabled={migrating} style={{
+            padding: '7px 18px', background: migrating ? T.border : '#E65100', color: WHITE,
+            border: 'none', borderRadius: 6, fontWeight: 700, fontSize: '.82rem',
+            cursor: migrating ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap',
+          }}>
+            {migrating ? 'Migrando…' : '⬆ Migrar pedidos'}
+          </button>
+        </div>
+      )}
 
       {/* Metrics */}
       <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 22 }}>
@@ -988,7 +1593,7 @@ export default function Walmart() {
         ))}
       </div>
 
-      {tab === 'pedidos'    && <TabPedidos    data={data} loading={loading} add={add} update={update} remove={remove} saving={saving} />}
+      {tab === 'pedidos'    && <TabPedidos    data={data} loading={loading} add={add} update={update} remove={remove} saving={saving} productos={productos} />}
       {tab === 'ventas'     && <TabVentas     data={data} update={update} />}
       {tab === 'calendario' && <TabCalendario data={data} />}
       {tab === 'gmail'      && <TabGmail      data={data} add={add} />}
