@@ -1,7 +1,8 @@
 // CuentasProveedores.jsx — Estado de cuenta por proveedor
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../../hooks/useAuth';
+import { useProductosCatalogo } from '../../hooks/useMainData';
 import { useCuentaProveedor, useProveedoresList } from './useCuentaProveedor';
 import MovimientoForm from './MovimientoForm';
 import EstadoCuenta from './EstadoCuenta';
@@ -238,18 +239,57 @@ export default function CuentasProveedores() {
   }, []);
 
   const { proveedores, loading: loadingProv, cargar: cargarProv } = useProveedoresList();
+  const { productos: catProductos } = useProductosCatalogo();
+
   const [provId,     setProvId]     = useState('');
   const [desde,      setDesde]      = useState('');
   const [hasta,      setHasta]      = useState('');
   const [showForm,   setShowForm]   = useState(false);
-  const [editTarget, setEditTarget] = useState(null); // movimiento siendo editado
+  const [editTarget, setEditTarget] = useState(null);
   const [showEstado, setShowEstado] = useState(false);
+
+  // Filtros secundarios (client-side sobre movimientos ya cargados)
+  const [filtProd,   setFiltProd]   = useState('');
+  const [filtTipo,   setFiltTipo]   = useState('');   // 'recepcion'|'pago'|'rechazo'|''
+  const [filtEstado, setFiltEstado] = useState('');   // 'pendiente'|'pagado'|''
 
   const { movimientos, resumen, loading, saving, error, cargar, agregar, actualizar, eliminar } = useCuentaProveedor(provId);
 
   useEffect(() => { cargarProv(); }, [cargarProv]);
 
   const proveedor = proveedores.find(p => p.id === provId) || null;
+
+  // Lista de productos únicos presentes en los movimientos + catálogo
+  const productosDisponibles = useMemo(() => {
+    const enMovs = [...new Set(movimientos.filter(m => m.producto).map(m => m.producto))];
+    const enCat  = catProductos.map(p => p.nombre);
+    return [...new Set([...enMovs, ...enCat])].sort((a, b) => a.localeCompare(b));
+  }, [movimientos, catProductos]);
+
+  // Filtros client-side
+  const movimientosFiltrados = useMemo(() => {
+    return movimientos.filter(m => {
+      if (filtTipo   && m.tipo !== filtTipo) return false;
+      if (filtProd   && (m.producto || '').toLowerCase() !== filtProd.toLowerCase()) return false;
+      if (filtEstado === 'pendiente' && m.tipo === 'pago') return false;
+      if (filtEstado === 'pagado'    && m.tipo !== 'pago') return false;
+      return true;
+    });
+  }, [movimientos, filtTipo, filtProd, filtEstado]);
+
+  // Recalcular saldoAcum sobre la lista filtrada
+  const movsFiltConSaldo = useMemo(() => {
+    return movimientosFiltrados.reduce((acc, m) => {
+      const prev  = acc.length > 0 ? acc[acc.length - 1].saldoAcum : 0;
+      const cargo = m.tipo === 'recepcion' ? Number(m.totalBruto   || 0) : 0;
+      const abono = m.tipo === 'pago'      ? Number(m.monto        || 0)
+                  : m.tipo === 'rechazo'   ? Number(m.valorRechazo || 0) : 0;
+      acc.push({ ...m, cargo, abono, saldoAcum: prev + cargo - abono });
+      return acc;
+    }, []);
+  }, [movimientosFiltrados]);
+
+  const filtrosActivos = filtTipo || filtProd || filtEstado;
 
   const recargar = useCallback(() => {
     if (provId) cargar(desde, hasta);
@@ -410,11 +450,122 @@ export default function CuentasProveedores() {
             />
           </div>
 
+          {/* Filtros secundarios */}
+          {movimientos.length > 0 && (
+            <div style={{ background: '#fff', border: `1px solid ${T.border}`, borderRadius: 10,
+              padding: '12px 16px', marginBottom: 12 }}>
+              <div style={{ fontSize: '.68rem', fontWeight: 700, textTransform: 'uppercase',
+                letterSpacing: '.1em', color: T.primary, marginBottom: 10 }}>
+                Filtrar movimientos
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '2fr 1fr 1fr auto', gap: 8, alignItems: 'end' }}>
+
+                {/* Producto */}
+                <div>
+                  <label style={{ fontSize: '.68rem', fontWeight: 700, textTransform: 'uppercase',
+                    letterSpacing: '.08em', color: T.textMid, display: 'block', marginBottom: 3 }}>
+                    Producto
+                  </label>
+                  <input
+                    type="text" list="filt-prod-list"
+                    placeholder="Todos los productos..."
+                    value={filtProd}
+                    onChange={e => setFiltProd(e.target.value)}
+                    style={{ width: '100%', padding: '7px 10px', border: `1.5px solid ${filtProd ? T.primary : T.border}`,
+                      borderRadius: 6, fontSize: '.85rem', fontFamily: 'inherit',
+                      background: '#fff', color: T.textDark, outline: 'none', boxSizing: 'border-box' }}
+                  />
+                  <datalist id="filt-prod-list">
+                    {productosDisponibles.map(n => <option key={n} value={n} />)}
+                  </datalist>
+                </div>
+
+                {/* Tipo */}
+                <div>
+                  <label style={{ fontSize: '.68rem', fontWeight: 700, textTransform: 'uppercase',
+                    letterSpacing: '.08em', color: T.textMid, display: 'block', marginBottom: 3 }}>
+                    Tipo
+                  </label>
+                  <select value={filtTipo} onChange={e => setFiltTipo(e.target.value)}
+                    style={{ width: '100%', padding: '7px 8px', border: `1.5px solid ${filtTipo ? T.primary : T.border}`,
+                      borderRadius: 6, fontSize: '.85rem', fontFamily: 'inherit',
+                      background: '#fff', color: T.textDark, outline: 'none' }}>
+                    <option value="">Todos</option>
+                    <option value="recepcion">📥 Recepción</option>
+                    <option value="pago">💰 Pago</option>
+                    <option value="rechazo">⚠️ Rechazo</option>
+                  </select>
+                </div>
+
+                {/* Estado */}
+                <div>
+                  <label style={{ fontSize: '.68rem', fontWeight: 700, textTransform: 'uppercase',
+                    letterSpacing: '.08em', color: T.textMid, display: 'block', marginBottom: 3 }}>
+                    Estado
+                  </label>
+                  <select value={filtEstado} onChange={e => setFiltEstado(e.target.value)}
+                    style={{ width: '100%', padding: '7px 8px', border: `1.5px solid ${filtEstado ? T.primary : T.border}`,
+                      borderRadius: 6, fontSize: '.85rem', fontFamily: 'inherit',
+                      background: '#fff', color: T.textDark, outline: 'none' }}>
+                    <option value="">Todos</option>
+                    <option value="pendiente">⏳ Pendiente pago</option>
+                    <option value="pagado">✅ Pagado</option>
+                  </select>
+                </div>
+
+                {/* Limpiar */}
+                {filtrosActivos && (
+                  <button onClick={() => { setFiltProd(''); setFiltTipo(''); setFiltEstado(''); }}
+                    style={{ padding: '7px 14px', borderRadius: 6, border: `1px solid ${T.border}`,
+                      background: '#fff', color: T.textMid, fontSize: '.8rem',
+                      fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+                    ✕ Limpiar
+                  </button>
+                )}
+              </div>
+
+              {/* Chips de filtros activos */}
+              {filtrosActivos && (
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
+                  {filtProd && (
+                    <span style={{ background: '#E3F2FD', color: '#1565C0', borderRadius: 99,
+                      padding: '3px 10px', fontSize: '.72rem', fontWeight: 700 }}>
+                      📦 {filtProd} <button onClick={() => setFiltProd('')}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer',
+                          color: '#1565C0', fontWeight: 700, padding: '0 0 0 4px', fontSize: '.72rem' }}>✕</button>
+                    </span>
+                  )}
+                  {filtTipo && (
+                    <span style={{ background: TIPO_BG[filtTipo], color: TIPO_COLOR[filtTipo], borderRadius: 99,
+                      padding: '3px 10px', fontSize: '.72rem', fontWeight: 700 }}>
+                      {TIPO_ICON[filtTipo]} {TIPO_LABEL[filtTipo]}
+                      <button onClick={() => setFiltTipo('')}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer',
+                          color: TIPO_COLOR[filtTipo], fontWeight: 700, padding: '0 0 0 4px', fontSize: '.72rem' }}>✕</button>
+                    </span>
+                  )}
+                  {filtEstado && (
+                    <span style={{ background: '#E8F5E9', color: T.primary, borderRadius: 99,
+                      padding: '3px 10px', fontSize: '.72rem', fontWeight: 700 }}>
+                      {filtEstado === 'pagado' ? '✅ Pagado' : '⏳ Pendiente'}
+                      <button onClick={() => setFiltEstado('')}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer',
+                          color: T.primary, fontWeight: 700, padding: '0 0 0 4px', fontSize: '.72rem' }}>✕</button>
+                    </span>
+                  )}
+                  <span style={{ fontSize: '.72rem', color: T.textMid, alignSelf: 'center' }}>
+                    {movsFiltConSaldo.length} de {movimientos.length} movimientos
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Movimientos */}
           <div style={{ marginBottom: 80 }}>
             <div style={{ fontWeight: 700, fontSize: '.72rem', textTransform: 'uppercase',
               letterSpacing: '.1em', color: T.primary, marginBottom: 10 }}>
-              Movimientos {movimientos.length > 0 ? `(${movimientos.length})` : ''}
+              Movimientos {movsFiltConSaldo.length > 0 ? `(${movsFiltConSaldo.length}${filtrosActivos ? ` de ${movimientos.length}` : ''})` : ''}
             </div>
 
             {loading && (
@@ -435,13 +586,20 @@ export default function CuentasProveedores() {
               </div>
             )}
 
+            {!loading && !error && movimientos.length > 0 && movsFiltConSaldo.length === 0 && (
+              <div style={{ background: '#fff', border: `1px solid ${T.border}`, borderRadius: 10,
+                padding: '24px', textAlign: 'center', color: T.textMid }}>
+                Ningún movimiento coincide con los filtros aplicados.
+              </div>
+            )}
+
             {/* Mobile: cards */}
-            {!loading && !error && isMobile && movimientos.map(m => (
+            {!loading && !error && isMobile && movsFiltConSaldo.map(m => (
               <MovCard key={m.id} m={m} onEdit={setEditTarget} onDelete={handleEliminar} />
             ))}
 
             {/* Desktop: tabla */}
-            {!loading && !error && !isMobile && movimientos.length > 0 && (
+            {!loading && !error && !isMobile && movsFiltConSaldo.length > 0 && (
               <div style={{ background: '#fff', border: `1px solid ${T.border}`, borderRadius: 10, overflow: 'hidden' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.85rem' }}>
                   <thead>
@@ -456,7 +614,7 @@ export default function CuentasProveedores() {
                     </tr>
                   </thead>
                   <tbody>
-                    {movimientos.map((m, i) => (
+                    {movsFiltConSaldo.map((m, i) => (
                       <DesktopRow key={m.id}
                         m={m} i={i}
                         onEdit={setEditTarget}

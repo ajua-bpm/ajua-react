@@ -1,6 +1,7 @@
 // MovimientoForm.jsx — Modal para registrar recepción / pago / rechazo en cuenta proveedor
 
 import { useState } from 'react';
+import { useProductosCatalogo } from '../../hooks/useMainData';
 
 const T = {
   primary: '#1B5E20', danger: '#C62828', warn: '#E65100',
@@ -45,6 +46,7 @@ const Textarea = ({ style, ...props }) => (
 // initialData: cuando se edita un movimiento existente
 export default function MovimientoForm({ proveedorNombre, movimientos = [], initialData = null, onConfirm, onCancel }) {
   const isEdit = !!initialData;
+  const { productos: catProductos } = useProductosCatalogo();
   const today  = new Date().toISOString().slice(0, 10);
 
   const [tipo,        setTipo]        = useState(initialData?.tipo        || 'recepcion');
@@ -170,9 +172,17 @@ export default function MovimientoForm({ proveedorNombre, movimientos = [], init
           {tipo === 'recepcion' && (<>
             <Field label="Producto">
               <Input
-                type="text" placeholder="Ej. Brócoli premium"
-                value={producto} onChange={e => setProducto(e.target.value)}
+                type="text"
+                list="prod-list"
+                placeholder="Escribe o selecciona..."
+                value={producto}
+                onChange={e => setProducto(e.target.value)}
               />
+              <datalist id="prod-list">
+                {catProductos.map(p => (
+                  <option key={p.id} value={p.nombre} />
+                ))}
+              </datalist>
             </Field>
             <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 10 }}>
               <Field label="Cantidad">
