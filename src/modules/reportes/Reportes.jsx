@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useCollection } from '../../hooks/useFirestore';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -40,7 +40,7 @@ const SECTION_HDR = {
   letterSpacing: '.08em', color: T.primary,
   marginBottom: 14, paddingBottom: 10, borderBottom: `1px solid ${T.border}`,
 };
-const TAB_MODS = ['📊 Estado de Resultados', '✅ Cumplimiento BPM', '📥 Exportar Excel'];
+const TAB_MODS = ['📊 Estado de Resultados', '✅ Cumplimiento BPM', '📥 Exportar Excel', '🤖 Análisis IA'];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const today = () => new Date().toISOString().slice(0, 10);
@@ -170,10 +170,14 @@ export default function Reportes() {
   const [hasta, setHasta] = useState(today());
   const [tab, setTab] = useState(0);
   const [exporting, setExporting] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [aiResult, setAiResult] = useState('');
+  const [aiError, setAiError] = useState('');
 
   // ── Collections ──────────────────────────────────────────────────────────
   const { data: wmData,    loading: lWm  } = useCollection('pedidosWalmart', { orderField: 'fechaEntrega', orderDir: 'desc', limit: 500 });
   const { data: vgtData,   loading: lVgt } = useCollection('vgtVentas',      { orderField: 'fecha', orderDir: 'desc', limit: 500 });
+  const { data: vintData                } = useCollection('vintVentas',      { orderField: 'fecha', orderDir: 'desc', limit: 500 });
   const { data: gasData,   loading: lGas } = useCollection('gastosDiarios',  { orderField: 'fecha', orderDir: 'desc', limit: 500 });
   const { data: anticipos, loading: lAnt } = useCollection('iAnticipo',      { orderField: 'fecha', orderDir: 'desc', limit: 200 });
   const { data: entradas,  loading: lEnt } = useCollection('ientradas',      { orderField: 'fecha', orderDir: 'desc', limit: 200 });
@@ -287,8 +291,8 @@ export default function Reportes() {
     [bpmResults]
   );
 
-  // ── Export Excel ─────────────────────────────────────────────────────────
-  const exportExcel = () => {
+  // ── Export Excel completo ────────────────────────────────────────────────
+  const exportExcel = useCallback(() => {
     setExporting(true);
     try {
       const wb = XLSX.utils.book_new();
@@ -297,11 +301,11 @@ export default function Reportes() {
       const ws1Data = [
         ['AGROINDUSTRIA AJÚA — Reporte Ejecutivo'],
         [`Período: ${desde} al ${hasta}`],
+        [`Generado: ${new Date().toLocaleString('es-GT')}`],
         [],
-        ['RESUMEN FINANCIERO'],
-        ['Concepto', 'Monto Q'],
+        ['RESUMEN FINANCIERO', 'Monto Q'],
         ['Ventas Walmart', fmtN(ingWalmart)],
-        ['Ventas GT', fmtN(ingGT)],
+        ['Ventas GT / Local', fmtN(ingGT)],
         ['TOTAL INGRESOS', fmtN(totalIngresos)],
         [],
         ['Costo Importación MX', fmtN(costImport)],
@@ -309,10 +313,12 @@ export default function Reportes() {
         ['TOTAL COSTOS DIRECTOS', fmtN(totalCostos)],
         [],
         ['UTILIDAD BRUTA', fmtN(utilBruta)],
+        ['Margen Bruto %', totalIngresos > 0 ? `${Math.round(utilBruta / totalIngresos * 100)}%` : '—'],
         [],
         ['Total Gastos Operativos', fmtN(totalGastos)],
         [],
         ['UTILIDAD NETA', fmtN(utilNeta)],
+        ['Margen Neto %', totalIngresos > 0 ? `${Math.round(utilNeta / totalIngresos * 100)}%` : '—'],
       ];
       const ws1 = XLSX.utils.aoa_to_sheet(ws1Data);
       ws1['!cols'] = [{ wch: 35 }, { wch: 18 }];
@@ -322,7 +328,7 @@ export default function Reportes() {
       const ws2Rows = [
         ['INGRESOS', ''],
         ['  Ventas Walmart', fmtN(ingWalmart)],
-        ['  Ventas GT', fmtN(ingGT)],
+        ['  Ventas GT / Local', fmtN(ingGT)],
         ['  TOTAL INGRESOS', fmtN(totalIngresos)],
         ['', ''],
         ['COSTOS DIRECTOS', ''],
@@ -331,13 +337,14 @@ export default function Reportes() {
         ['  TOTAL COSTOS', fmtN(totalCostos)],
         ['', ''],
         ['UTILIDAD BRUTA', fmtN(utilBruta)],
+        ['Margen Bruto', totalIngresos > 0 ? `${Math.round(utilBruta / totalIngresos * 100)}%` : '—'],
         ['', ''],
         ['GASTOS OPERATIVOS', ''],
-        ...top8.map(([cat, amt]) => [`  ${cat}`, fmtN(amt)]),
-        ...(otros > 0 ? [['  Otros gastos', fmtN(otros)]] : []),
+        ...gastosSorted.map(([cat, amt]) => [`  ${cat}`, fmtN(amt)]),
         ['  TOTAL GASTOS', fmtN(totalGastos)],
         ['', ''],
         ['UTILIDAD NETA', fmtN(utilNeta)],
+        ['Margen Neto', totalIngresos > 0 ? `${Math.round(utilNeta / totalIngresos * 100)}%` : '—'],
       ];
       const ws2 = XLSX.utils.aoa_to_sheet([['CONCEPTO', 'MONTO Q'], ...ws2Rows]);
       ws2['!cols'] = [{ wch: 35 }, { wch: 18 }];
@@ -346,47 +353,139 @@ export default function Reportes() {
       // Sheet 3 — Gastos por Categoría
       const ws3Rows = gastosSorted.map(([cat, amt]) => [
         cat,
-        gastosSorted.filter(([c]) => c === cat).length || gasFilt.filter(r => (r.categoria || r.cat || 'Sin categoría') === cat).length,
+        gasFilt.filter(r => (r.categoria || r.cat || 'Sin categoría') === cat).length,
         fmtN(amt),
         totalGastos > 0 ? `${Math.round(amt / totalGastos * 100)}%` : '0%',
       ]);
       XLSX.utils.book_append_sheet(wb,
-        makeSheet(['Categoría', 'N° Registros', 'Total Q', '% del Total'], ws3Rows, [{ wch: 28 }, { wch: 14 }, { wch: 14 }, { wch: 12 }]),
+        makeSheet(['Categoría', 'N° Registros', 'Total Q', '% del Total'], ws3Rows,
+          [{ wch: 28 }, { wch: 14 }, { wch: 14 }, { wch: 12 }]),
         'Gastos por Categoría');
 
-      // Sheet 4 — BPM Cumplimiento
-      const ws4Rows = bpmResults.map(m => [
+      // Sheet 4 — Gastos Detalle completo
+      const ws4Rows = gasFilt.map(r => [
+        r.fecha || '',
+        r.categoria || r.cat || '',
+        r.descripcion || '',
+        r.recibo || '',
+        r.metodoPago || '',
+        r.pagadoPor || '',
+        fmtN(r.monto || 0),
+        r.fuente === 'excel_bac' ? 'BAC' : 'Manual',
+      ]);
+      XLSX.utils.book_append_sheet(wb,
+        makeSheet(['Fecha','Categoría','Descripción','Recibo','Método','Pagado por','Monto Q','Fuente'], ws4Rows,
+          [{ wch: 12 }, { wch: 24 }, { wch: 32 }, { wch: 14 }, { wch: 14 }, { wch: 18 }, { wch: 14 }, { wch: 10 }]),
+        'Gastos Detalle');
+
+      // Sheet 5 — Pedidos Walmart (TODOS en el período, con campos correctos)
+      const wmPeriodo = (wmData || []).filter(r => {
+        const f = r.fechaEntrega || r.fecha || '';
+        return f >= desde && f <= hasta;
+      });
+      const ws5Rows = wmPeriodo.map(r => {
+        const cajas = r.totalCajas || (r.rubros || []).reduce((s, x) => s + (x.cajas ?? x.cajasPedidas ?? 0), 0) || 0;
+        const desc  = r.rubros?.length
+          ? r.rubros.map(rb => [rb.descripcion, rb.cajas != null && `(${rb.cajas} cj)`].filter(Boolean).join(' ')).join(' / ')
+          : (r.descripcion || '');
+        return [
+          r.fechaEntrega || r.fecha || '',
+          r.horaEntrega || '',
+          r.numOC || '',
+          r.numAtlas || '',
+          desc,
+          r.rampa || '',
+          cajas || '',
+          fmtN(r.montoFactura || 0),
+          r.estado || 'pendiente',
+          r.notaImportante || '',
+        ];
+      });
+      XLSX.utils.book_append_sheet(wb,
+        makeSheet(['Fecha Entrega','Hora','OC','SAP/Atlas','Descripción','Rampa','Cajas','Monto Q','Estado','Nota'],
+          ws5Rows,
+          [{ wch: 14 }, { wch: 8 }, { wch: 16 }, { wch: 14 }, { wch: 36 }, { wch: 8 }, { wch: 8 }, { wch: 14 }, { wch: 14 }, { wch: 30 }]),
+        'Pedidos Walmart');
+
+      // Sheet 6 — Ventas GT
+      const ws6Rows = vgtFilt.map(r => [
+        r.fecha || '',
+        r.cliente || '',
+        r.descripcion || r.producto || '',
+        r.cantidad || '',
+        fmtN(r.precio || 0),
+        fmtN(r.total || 0),
+        r.estado || '',
+        r.numFel || r.fel || '',
+      ]);
+      XLSX.utils.book_append_sheet(wb,
+        makeSheet(['Fecha','Cliente','Descripción','Cantidad','Precio U.','Total Q','Estado','FEL'],
+          ws6Rows,
+          [{ wch: 12 }, { wch: 24 }, { wch: 30 }, { wch: 10 }, { wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 20 }]),
+        'Ventas GT');
+
+      // Sheet 7 — BPM Cumplimiento
+      const ws7Rows = bpmResults.map(m => [
         m.label,
         m.stats.total,
         m.stats.ok,
         m.stats.pct !== null ? `${m.stats.pct}%` : 'Sin datos',
         m.stats.pct === null ? 'Sin datos' : m.stats.pct >= 80 ? 'Cumple' : m.stats.pct >= 60 ? 'Alerta' : 'No cumple',
+        diasHabiles,
       ]);
       XLSX.utils.book_append_sheet(wb,
-        makeSheet(['Módulo', 'Registros', 'Cumplen', '%', 'Estado'], ws4Rows, [{ wch: 28 }, { wch: 12 }, { wch: 10 }, { wch: 8 }, { wch: 14 }]),
+        makeSheet(['Módulo', 'Registros', 'Cumplen', '% Cumplimiento', 'Estado', 'Días Hábiles'], ws7Rows,
+          [{ wch: 28 }, { wch: 12 }, { wch: 10 }, { wch: 16 }, { wch: 14 }, { wch: 14 }]),
         'BPM Cumplimiento');
-
-      // Sheet 5 — Pedidos Walmart
-      const ws5Rows = wmFilt.map(r => [
-        r.fechaEntrega || r.fecha || '',
-        r.oc || r.numeroOC || '',
-        r.atlas || r.sap || '',
-        r.descripcion || r.desc || '',
-        r.cajas || r.cantidad || '',
-        fmtN(r.montoFactura || 0),
-        r.estado || '',
-      ]);
-      XLSX.utils.book_append_sheet(wb,
-        makeSheet(['Fecha', 'OC', 'Atlas/SAP', 'Descripción', 'Cajas', 'Total Q', 'Estado'], ws5Rows,
-          [{ wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 30 }, { wch: 10 }, { wch: 14 }, { wch: 14 }]),
-        'Pedidos Walmart');
 
       XLSX.writeFile(wb, `Reporte_AJUA_${desde}_${hasta}.xlsx`);
     } catch (e) {
       console.error('Error generando Excel:', e);
+      alert('Error generando Excel: ' + e.message);
     }
     setExporting(false);
-  };
+  }, [desde, hasta, ingWalmart, ingGT, totalIngresos, costImport, costProducto, totalCostos,
+      utilBruta, totalGastos, utilNeta, gastosSorted, gasFilt, wmData, vgtFilt, bpmResults, diasHabiles]);
+
+  // ── Análisis IA ──────────────────────────────────────────────────────────
+  const runAiAnalysis = useCallback(async () => {
+    setAnalyzing(true);
+    setAiResult('');
+    setAiError('');
+    try {
+      const margenBruto = totalIngresos > 0 ? Math.round(utilBruta / totalIngresos * 100) : 0;
+      const margenNeto  = totalIngresos > 0 ? Math.round(utilNeta  / totalIngresos * 100) : 0;
+      const res = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          periodo: `${desde} al ${hasta}`,
+          financiero: {
+            ingWalmart: fmtN(ingWalmart),
+            ingGT: fmtN(ingGT),
+            totalIngresos: fmtN(totalIngresos),
+            costImport: fmtN(costImport),
+            costProducto: fmtN(costProducto),
+            totalCostos: fmtN(totalCostos),
+            utilBruta: fmtN(utilBruta),
+            margenBruto,
+            totalGastos: fmtN(totalGastos),
+            utilNeta: fmtN(utilNeta),
+            margenNeto,
+          },
+          gastos: gastosSorted.slice(0, 10),
+          bpm: bpmResults,
+        }),
+      });
+      const data = await res.json();
+      if (data.error) { setAiError(data.error); }
+      else { setAiResult(data.analysis || ''); }
+    } catch (e) {
+      setAiError(e.message);
+    }
+    setAnalyzing(false);
+  }, [desde, hasta, ingWalmart, ingGT, totalIngresos, costImport, costProducto, totalCostos,
+      utilBruta, totalGastos, utilNeta, gastosSorted, bpmResults]);
 
   // ─────────────────────────────────────────────────────────────────────────
   return (
@@ -618,9 +717,9 @@ export default function Reportes() {
           {/* Info cards */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 14, marginBottom: 24 }}>
             <div style={{ background: T.bgGreen, borderRadius: 8, padding: '14px 18px', border: `1px solid #C8E6C9` }}>
-              <div style={{ fontSize: '1.6rem', fontWeight: 700, color: T.primary }}>5</div>
+              <div style={{ fontSize: '1.6rem', fontWeight: 700, color: T.primary }}>7</div>
               <div style={{ fontSize: '.78rem', fontWeight: 600, color: T.secondary, marginTop: 2 }}>Hojas de trabajo</div>
-              <div style={{ fontSize: '.72rem', color: T.textMid, marginTop: 4 }}>Resumen · Resultados · Gastos · BPM · Walmart</div>
+              <div style={{ fontSize: '.72rem', color: T.textMid, marginTop: 4 }}>Resumen · Resultados · Gastos · Gastos Detalle · Walmart · Ventas GT · BPM</div>
             </div>
             <div style={{ background: '#E3F2FD', borderRadius: 8, padding: '14px 18px', border: `1px solid #BBDEFB` }}>
               <div style={{ fontSize: '1rem', fontWeight: 700, color: T.info }}>{desde}</div>
@@ -634,8 +733,10 @@ export default function Reportes() {
                 ['Resumen Ejecutivo', '—'],
                 ['Estado de Resultados', '—'],
                 ['Gastos x Categoría', gastosSorted.length],
+                ['Gastos Detalle', gasFilt.length],
+                ['Pedidos Walmart', (wmData||[]).filter(r=>(r.fechaEntrega||r.fecha||'')>=desde&&(r.fechaEntrega||r.fecha||'')<=hasta).length],
+                ['Ventas GT', vgtFilt.length],
                 ['BPM Cumplimiento', bpmResults.length],
-                ['Pedidos Walmart', wmFilt.length],
               ].map(([sh, n]) => (
                 <div key={sh} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.75rem', color: T.textDark, marginBottom: 2 }}>
                   <span>{sh}</span>
@@ -663,8 +764,78 @@ export default function Reportes() {
           </button>
 
           <div style={{ marginTop: 16, fontSize: '.76rem', color: T.textMid }}>
-            El archivo se descargará automáticamente en tu navegador.
+            El archivo incluye 7 hojas: Resumen Ejecutivo · Estado de Resultados · Gastos por Categoría · Gastos Detalle · Pedidos Walmart · Ventas GT · BPM Cumplimiento.
           </div>
+        </div>
+      )}
+
+      {/* ══════════════════ TAB 3 — Análisis IA ════════════════════════════ */}
+      {tab === 3 && (
+        <div style={card}>
+          <div style={SECTION_HDR}>Análisis Financiero con Inteligencia Artificial</div>
+          <p style={{ fontSize: '.84rem', color: T.textMid, marginBottom: 20 }}>
+            Claude AI analiza el período <strong>{desde}</strong> al <strong>{hasta}</strong> y genera recomendaciones ejecutivas basadas en ingresos, costos, gastos y cumplimiento BPM.
+          </p>
+
+          {loading ? (
+            <div style={{ fontSize: '.84rem', color: T.textMid }}>Cargando datos del período...</div>
+          ) : totalIngresos === 0 && totalGastos === 0 ? (
+            <div style={{ background: '#FFF3E0', border: `1px solid #FFB74D`, borderRadius: 8, padding: 16, fontSize: '.84rem', color: T.warn }}>
+              ⚠️ Sin datos financieros en el período seleccionado. Ajusta el rango de fechas.
+            </div>
+          ) : (
+            <>
+              {/* Resumen rápido antes de analizar */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 12, marginBottom: 20 }}>
+                {[
+                  { label: 'Ingresos', val: fmtQ(totalIngresos), color: T.secondary },
+                  { label: 'Costos', val: fmtQ(totalCostos), color: T.warn },
+                  { label: 'Utilidad Bruta', val: fmtQ(utilBruta), color: utilBruta >= 0 ? T.secondary : T.danger },
+                  { label: 'Utilidad Neta', val: fmtQ(utilNeta), color: utilNeta >= 0 ? T.secondary : T.danger },
+                ].map(s => (
+                  <div key={s.label} style={{ background: T.bgGreen, borderRadius: 8, padding: '12px 16px' }}>
+                    <div style={{ fontSize: '.7rem', color: T.textMid, textTransform: 'uppercase', fontWeight: 600, marginBottom: 4 }}>{s.label}</div>
+                    <div style={{ fontSize: '1.1rem', fontWeight: 700, color: s.color }}>{s.val}</div>
+                  </div>
+                ))}
+              </div>
+
+              <button
+                onClick={runAiAnalysis}
+                disabled={analyzing}
+                style={{
+                  padding: '12px 28px', background: analyzing ? T.border : T.primary,
+                  color: analyzing ? T.textMid : '#fff', border: 'none', borderRadius: 7,
+                  fontWeight: 700, fontSize: '.9rem', cursor: analyzing ? 'not-allowed' : 'pointer',
+                  fontFamily: 'inherit', marginBottom: 20,
+                }}
+              >
+                {analyzing ? '🤖 Analizando...' : '🤖 Generar Análisis con IA'}
+              </button>
+
+              {aiError && (
+                <div style={{ background: '#FFEBEE', border: `1px solid #EF9A9A`, borderRadius: 8, padding: 14, fontSize: '.83rem', color: T.danger, marginBottom: 16 }}>
+                  <strong>Error:</strong> {aiError}
+                  {aiError.includes('ANTHROPIC_API_KEY') && (
+                    <div style={{ marginTop: 8 }}>
+                      Configura la variable <code>ANTHROPIC_API_KEY</code> en el panel de Vercel → Settings → Environment Variables.
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {aiResult && (
+                <div style={{ background: '#F9FBF9', border: `1px solid ${T.border}`, borderRadius: 8, padding: 20 }}>
+                  <div style={{ fontSize: '.72rem', color: T.textMid, textTransform: 'uppercase', fontWeight: 700, letterSpacing: '.08em', marginBottom: 14 }}>
+                    🤖 Análisis Generado — {new Date().toLocaleString('es-GT')}
+                  </div>
+                  <div style={{ fontSize: '.88rem', lineHeight: 1.7, color: T.textDark, whiteSpace: 'pre-wrap' }}>
+                    {aiResult}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
     </div>

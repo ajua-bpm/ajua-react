@@ -183,8 +183,9 @@ export default function Dashboard() {
     { icon:'🚛', label:'Limpieza Transporte', data: tlC.data },
     { icon:'📋', label:'Despacho',            data: dtC.data },
     { icon:'🙌', label:'Acceso y Lavado',     data: alC.data },
-    { icon:'⚖️', label:'Básculas',             data: basC.data },
-    { icon:'🧹', label:'Limpieza Bodega',      data: limpC.data },
+    { icon:'⚖️', label:'Básculas',            data: basC.data },
+    { icon:'🐀', label:'Roedores',            data: rodC.data },
+    { icon:'🧹', label:'Limpieza Bodega',     data: limpC.data },
   ];
   const bpmFaltaHoy = BPM_HOY.filter(m => !m.data.some(r => r.fecha === td));
 
