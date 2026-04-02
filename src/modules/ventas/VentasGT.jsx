@@ -3,6 +3,7 @@ import { useCollection, useWrite } from '../../hooks/useFirestore';
 import { useProductosCatalogo } from '../../hooks/useMainData';
 import { useToast } from '../../components/Toast';
 import Skeleton from '../../components/Skeleton';
+import RechazosDespacho from './RechazosDespacho';
 
 // ── Design tokens ─────────────────────────────────────────────────
 const T = {
@@ -100,9 +101,16 @@ function MetricCard({ label, value, accent }) {
   );
 }
 
+// ── Internal nav items ─────────────────────────────────────────────
+const NAV_ITEMS = [
+  { key: 'despachos', icon: '📦', label: 'Despachos Locales' },
+  { key: 'rechazos',  icon: '⚠️', label: 'Rechazos' },
+];
+
 // ── Main component ────────────────────────────────────────────────
 export default function VentasGT() {
   const toast = useToast();
+  const [section, setSection] = useState('despachos');
 
   const { data, loading }              = useCollection('vgtVentas', { orderField: 'fecha', orderDir: 'desc', limit: 300 });
   const { data: cotData }              = useCollection('cotizadorRapido', { orderField: 'fecha', orderDir: 'desc', limit: 200 });
@@ -198,14 +206,43 @@ export default function VentasGT() {
   const loadingAll = loading || loadProd;
 
   return (
-    <div style={{ padding: '24px 28px', fontFamily: 'inherit', maxWidth: 1100 }}>
-      {/* Header */}
-      <div style={{ marginBottom: 24 }}>
+    <div style={{ fontFamily: 'inherit', maxWidth: 1100 }}>
+      {/* Módulo header */}
+      <div style={{ marginBottom: 20 }}>
         <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, color: T.textDark }}>Despachos — Locales Guatemala</h2>
         <p style={{ margin: '4px 0 0', fontSize: '.83rem', color: T.textMid }}>
-          Mercado mayorista · distribuidores · restaurantes · contenedor completo o parcial — sin FEL requerida
+          Mercado mayorista · distribuidores · restaurantes · rechazos
         </p>
       </div>
+
+      {/* Internal sidebar nav */}
+      <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
+        <nav style={{ flexShrink: 0, width: 180, background: '#fff', borderRadius: 10,
+          border: `1px solid ${T.border}`, padding: '8px 0', position: 'sticky', top: 70 }}>
+          {NAV_ITEMS.map(n => {
+            const active = section === n.key;
+            return (
+              <button key={n.key} onClick={() => setSection(n.key)} style={{
+                display: 'flex', alignItems: 'center', gap: 9,
+                width: '100%', padding: '10px 16px', border: 'none',
+                background: active ? 'rgba(27,94,32,.08)' : 'transparent',
+                borderLeft: `3px solid ${active ? T.primary : 'transparent'}`,
+                color: active ? T.primary : T.textMid,
+                fontWeight: active ? 700 : 500, fontSize: '.85rem',
+                cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
+                transition: 'all .12s',
+              }}>
+                <span>{n.icon}</span>
+                <span>{n.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* Content */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {section === 'rechazos' && <RechazosDespacho />}
+          {section === 'despachos' && (<>
 
       {/* Metrics */}
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 24 }}>
@@ -433,6 +470,9 @@ export default function VentasGT() {
           </div>
         )}
       </div>
+          </>)}
+        </div>{/* /content */}
+      </div>{/* /flex layout */}
     </div>
   );
 }
