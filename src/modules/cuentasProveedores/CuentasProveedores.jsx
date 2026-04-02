@@ -1,6 +1,7 @@
 // CuentasProveedores.jsx — Estado de cuenta por proveedor
 
 import { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '../../hooks/useAuth';
 import { useCuentaProveedor, useProveedoresList } from './useCuentaProveedor';
 import MovimientoForm from './MovimientoForm';
 import EstadoCuenta from './EstadoCuenta';
@@ -45,6 +46,54 @@ function SummaryCard({ label, value, color, sub }) {
   );
 }
 
+function AuditLog({ historial }) {
+  if (!historial || historial.length === 0) return null;
+  return (
+    <div style={{ marginTop: 10, borderTop: `1px dashed ${T.border}`, paddingTop: 8 }}>
+      <div style={{ fontSize: '.68rem', fontWeight: 700, textTransform: 'uppercase',
+        letterSpacing: '.08em', color: T.textMid, marginBottom: 6 }}>
+        📋 Historial de ediciones
+      </div>
+      {[...historial].reverse().map((h, i) => (
+        <div key={i} style={{ fontSize: '.75rem', color: T.textMid, marginBottom: 4,
+          paddingLeft: 8, borderLeft: `2px solid ${T.border}` }}>
+          <span style={{ color: T.textDark, fontWeight: 600 }}>{h.por || 'Usuario'}</span>
+          {' · '}{h.ts ? new Date(h.ts).toLocaleString('es-GT') : '—'}
+          {h.motivo && <div style={{ fontStyle: 'italic', color: T.warn }}>"{h.motivo}"</div>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function DetailRows({ m }) {
+  return (
+    <div style={{ fontSize: '.82rem', color: T.textMid, lineHeight: 1.8 }}>
+      {m.tipo === 'recepcion' && (<>
+        {m.producto    && <div>Producto: <strong style={{ color: T.textDark }}>{m.producto}</strong></div>}
+        {m.cantidad    && <div>Cantidad: <strong style={{ color: T.textDark }}>{m.cantidad} {m.unidad}</strong></div>}
+        {m.precioUnit > 0 && <div>Precio/unidad: <strong style={{ color: T.textDark }}>{fmtQ(m.precioUnit)}</strong></div>}
+        {m.factura     && <div>Factura: <strong style={{ color: T.textDark }}>{m.factura}</strong></div>}
+      </>)}
+      {m.tipo === 'pago' && (<>
+        {m.metodoPago  && <div>Método: <strong style={{ color: T.textDark }}>{m.metodoPago}</strong></div>}
+        {m.referencia  && <div>Referencia: <strong style={{ color: T.textDark }}>{m.referencia}</strong></div>}
+      </>)}
+      {m.tipo === 'rechazo' && (<>
+        {m.resolucion  && <div>Resolución: <strong style={{ color: T.textDark }}>{m.resolucion}</strong></div>}
+      </>)}
+      {m.notas && <div style={{ fontStyle: 'italic', marginTop: 2 }}>{m.notas}</div>}
+      {m.creadoEn && (
+        <div style={{ marginTop: 4, fontSize: '.72rem', color: '#AEAEAE' }}>
+          Creado: {new Date(m.creadoEn).toLocaleString('es-GT')}
+          {m.ultimaEdicion && ` · Editado: ${new Date(m.ultimaEdicion).toLocaleString('es-GT')}`}
+        </div>
+      )}
+      <AuditLog historial={m.historialEdiciones} />
+    </div>
+  );
+}
+
 function MovCard({ m, onEdit, onDelete }) {
   const [open, setOpen] = useState(false);
   const desc = m.descripcion || (
@@ -63,6 +112,11 @@ function MovCard({ m, onEdit, onDelete }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <Badge tipo={m.tipo} />
             <span style={{ fontSize: '.8rem', color: T.textMid }}>{fmtFecha(m.fecha)}</span>
+            {m.historialEdiciones?.length > 0 && (
+              <span style={{ fontSize: '.68rem', color: T.warn, fontWeight: 700 }}>
+                ✏️ editado
+              </span>
+            )}
           </div>
           <div style={{ fontSize: '.88rem', fontWeight: 600, color: T.textDark, marginTop: 4,
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -81,23 +135,15 @@ function MovCard({ m, onEdit, onDelete }) {
 
       {open && (
         <div style={{ background: T.bg, borderTop: `1px solid ${T.border}`, padding: '12px 14px' }}>
-          {m.tipo === 'recepcion' && (<>
-            {m.producto   && <div style={{ fontSize: '.82rem', color: T.textMid }}>Producto: <strong>{m.producto}</strong></div>}
-            {m.cantidad   && <div style={{ fontSize: '.82rem', color: T.textMid }}>Cantidad: <strong>{m.cantidad} {m.unidad}</strong></div>}
-            {m.precioUnit > 0 && <div style={{ fontSize: '.82rem', color: T.textMid }}>Precio/unidad: <strong>{fmtQ(m.precioUnit)}</strong></div>}
-            {m.factura    && <div style={{ fontSize: '.82rem', color: T.textMid }}>Factura: <strong>{m.factura}</strong></div>}
-          </>)}
-          {m.tipo === 'pago' && (<>
-            {m.metodoPago  && <div style={{ fontSize: '.82rem', color: T.textMid }}>Método: <strong>{m.metodoPago}</strong></div>}
-            {m.referencia  && <div style={{ fontSize: '.82rem', color: T.textMid }}>Referencia: <strong>{m.referencia}</strong></div>}
-          </>)}
-          {m.tipo === 'rechazo' && (<>
-            {m.resolucion  && <div style={{ fontSize: '.82rem', color: T.textMid }}>Resolución: <strong>{m.resolucion}</strong></div>}
-          </>)}
-          {m.notas && (
-            <div style={{ fontSize: '.82rem', color: T.textMid, marginTop: 4, fontStyle: 'italic' }}>{m.notas}</div>
-          )}
-          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+          <DetailRows m={m} />
+          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+            <button onClick={e => { e.stopPropagation(); onEdit(m); }} style={{
+              padding: '5px 14px', borderRadius: 6, border: `1px solid ${T.warn}`,
+              background: '#fff', color: T.warn, fontSize: '.78rem',
+              fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+            }}>
+              ✏️ Editar
+            </button>
             <button onClick={e => { e.stopPropagation(); onDelete(m.id); }} style={{
               padding: '5px 12px', borderRadius: 6, border: `1px solid ${T.danger}`,
               background: '#fff', color: T.danger, fontSize: '.78rem',
@@ -112,7 +158,78 @@ function MovCard({ m, onEdit, onDelete }) {
   );
 }
 
+function DesktopRow({ m, i, onEdit, onDelete }) {
+  const [open, setOpen] = useState(false);
+  const desc = m.descripcion || (
+    m.tipo === 'recepcion' ? m.producto :
+    m.tipo === 'pago'      ? `${m.metodoPago || ''} ${m.referencia || ''}`.trim() :
+    m.resolucion || '—'
+  ) || '—';
+  const tdSt = { padding: '10px 14px' };
+
+  return (
+    <>
+      <tr
+        onClick={() => setOpen(o => !o)}
+        style={{ borderBottom: open ? 'none' : `1px solid ${T.border}`,
+          background: i % 2 === 0 ? '#fff' : T.bg,
+          cursor: 'pointer' }}>
+        <td style={{ ...tdSt, whiteSpace: 'nowrap', color: T.textMid, fontSize: '.82rem' }}>
+          {fmtFecha(m.fecha)}
+          {m.historialEdiciones?.length > 0 && (
+            <span style={{ marginLeft: 6, fontSize: '.65rem', color: T.warn, fontWeight: 700 }}>✏️</span>
+          )}
+        </td>
+        <td style={tdSt}><Badge tipo={m.tipo} /></td>
+        <td style={{ ...tdSt, color: T.textMid, maxWidth: 220,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {desc}
+        </td>
+        <td style={{ ...tdSt, textAlign: 'right', fontWeight: 700,
+          color: m.cargo > 0 ? '#1565C0' : T.textMid }}>
+          {m.cargo > 0 ? fmtQ(m.cargo) : '—'}
+        </td>
+        <td style={{ ...tdSt, textAlign: 'right', fontWeight: 700,
+          color: m.abono > 0 ? T.primary : T.textMid }}>
+          {m.abono > 0 ? fmtQ(m.abono) : '—'}
+        </td>
+        <td style={{ ...tdSt, textAlign: 'right', fontWeight: 700,
+          color: m.saldoAcum > 0 ? T.warn : T.primary }}>
+          {fmtQ(m.saldoAcum)}
+        </td>
+        <td style={{ ...tdSt, textAlign: 'right' }}>
+          <span style={{ fontSize: '.72rem', color: T.textMid }}>{open ? '▲' : '▼'}</span>
+        </td>
+      </tr>
+      {open && (
+        <tr style={{ borderBottom: `1px solid ${T.border}` }}>
+          <td colSpan={7} style={{ padding: '12px 20px', background: T.bg }}>
+            <DetailRows m={m} />
+            <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+              <button onClick={e => { e.stopPropagation(); onEdit(m); }} style={{
+                padding: '5px 14px', borderRadius: 6, border: `1px solid ${T.warn}`,
+                background: '#fff', color: T.warn, fontSize: '.78rem',
+                fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+              }}>
+                ✏️ Editar
+              </button>
+              <button onClick={e => { e.stopPropagation(); onDelete(m.id); }} style={{
+                padding: '5px 12px', borderRadius: 6, border: `1px solid ${T.danger}`,
+                background: '#fff', color: T.danger, fontSize: '.78rem',
+                fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+              }}>
+                Eliminar
+              </button>
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
 export default function CuentasProveedores() {
+  const { user } = useAuth();
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   useEffect(() => {
     const h = () => setIsMobile(window.innerWidth < 768);
@@ -121,13 +238,14 @@ export default function CuentasProveedores() {
   }, []);
 
   const { proveedores, loading: loadingProv, cargar: cargarProv } = useProveedoresList();
-  const [provId,  setProvId]  = useState('');
-  const [desde,   setDesde]   = useState('');
-  const [hasta,   setHasta]   = useState('');
-  const [showForm,  setShowForm]  = useState(false);
+  const [provId,     setProvId]     = useState('');
+  const [desde,      setDesde]      = useState('');
+  const [hasta,      setHasta]      = useState('');
+  const [showForm,   setShowForm]   = useState(false);
+  const [editTarget, setEditTarget] = useState(null); // movimiento siendo editado
   const [showEstado, setShowEstado] = useState(false);
 
-  const { movimientos, resumen, loading, saving, error, cargar, agregar, eliminar } = useCuentaProveedor(provId);
+  const { movimientos, resumen, loading, saving, error, cargar, agregar, actualizar, eliminar } = useCuentaProveedor(provId);
 
   useEffect(() => { cargarProv(); }, [cargarProv]);
 
@@ -140,8 +258,21 @@ export default function CuentasProveedores() {
   useEffect(() => { recargar(); }, [recargar]);
 
   const handleGuardar = async (data) => {
-    await agregar({ ...data, proveedorId: provId });
+    const { motivoEdit, ...campos } = data;
+    await agregar({ ...campos, proveedorId: provId });
     setShowForm(false);
+    recargar();
+  };
+
+  const handleEditar = async (data) => {
+    if (!editTarget) return;
+    const { motivoEdit, ...campos } = data;
+    const auditEntry = {
+      por:    user?.nombre || user?.email || 'Usuario',
+      motivo: motivoEdit || '',
+    };
+    await actualizar(editTarget.id, campos, auditEntry);
+    setEditTarget(null);
     recargar();
   };
 
@@ -306,7 +437,7 @@ export default function CuentasProveedores() {
 
             {/* Mobile: cards */}
             {!loading && !error && isMobile && movimientos.map(m => (
-              <MovCard key={m.id} m={m} onDelete={handleEliminar} />
+              <MovCard key={m.id} m={m} onEdit={setEditTarget} onDelete={handleEliminar} />
             ))}
 
             {/* Desktop: tabla */}
@@ -325,49 +456,13 @@ export default function CuentasProveedores() {
                     </tr>
                   </thead>
                   <tbody>
-                    {movimientos.map((m, i) => {
-                      const desc = m.descripcion || (
-                        m.tipo === 'recepcion' ? m.producto :
-                        m.tipo === 'pago'      ? `${m.metodoPago || ''} ${m.referencia || ''}`.trim() :
-                        m.resolucion || '—'
-                      ) || '—';
-                      return (
-                        <tr key={m.id} style={{ borderBottom: `1px solid ${T.border}`,
-                          background: i % 2 === 0 ? '#fff' : T.bg }}>
-                          <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', color: T.textMid, fontSize: '.82rem' }}>
-                            {fmtFecha(m.fecha)}
-                          </td>
-                          <td style={{ padding: '10px 14px' }}>
-                            <Badge tipo={m.tipo} />
-                          </td>
-                          <td style={{ padding: '10px 14px', color: T.textMid, maxWidth: 200,
-                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {desc}
-                          </td>
-                          <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700,
-                            color: m.cargo > 0 ? '#1565C0' : T.textMid }}>
-                            {m.cargo > 0 ? fmtQ(m.cargo) : '—'}
-                          </td>
-                          <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700,
-                            color: m.abono > 0 ? T.primary : T.textMid }}>
-                            {m.abono > 0 ? fmtQ(m.abono) : '—'}
-                          </td>
-                          <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700,
-                            color: m.saldoAcum > 0 ? T.warn : T.primary }}>
-                            {fmtQ(m.saldoAcum)}
-                          </td>
-                          <td style={{ padding: '10px 14px', textAlign: 'right' }}>
-                            <button onClick={() => handleEliminar(m.id)} style={{
-                              padding: '3px 10px', borderRadius: 4, border: `1px solid ${T.border}`,
-                              background: '#fff', color: T.danger, fontSize: '.75rem',
-                              fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
-                            }}>
-                              ✕
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
+                    {movimientos.map((m, i) => (
+                      <DesktopRow key={m.id}
+                        m={m} i={i}
+                        onEdit={setEditTarget}
+                        onDelete={handleEliminar}
+                      />
+                    ))}
                   </tbody>
                 </table>
               </div>
@@ -395,13 +490,24 @@ export default function CuentasProveedores() {
         </button>
       )}
 
-      {/* Modal formulario */}
+      {/* Modal nuevo movimiento */}
       {showForm && (
         <MovimientoForm
           proveedorNombre={proveedor?.nombre || ''}
           movimientos={movimientos}
           onConfirm={handleGuardar}
           onCancel={() => setShowForm(false)}
+        />
+      )}
+
+      {/* Modal editar movimiento */}
+      {editTarget && (
+        <MovimientoForm
+          proveedorNombre={proveedor?.nombre || ''}
+          movimientos={movimientos}
+          initialData={editTarget}
+          onConfirm={handleEditar}
+          onCancel={() => setEditTarget(null)}
         />
       )}
 

@@ -42,31 +42,34 @@ const Textarea = ({ style, ...props }) => (
   }} />
 );
 
-export default function MovimientoForm({ proveedorNombre, movimientos = [], onConfirm, onCancel }) {
-  const today = new Date().toISOString().slice(0, 10);
+// initialData: cuando se edita un movimiento existente
+export default function MovimientoForm({ proveedorNombre, movimientos = [], initialData = null, onConfirm, onCancel }) {
+  const isEdit = !!initialData;
+  const today  = new Date().toISOString().slice(0, 10);
 
-  const [tipo,        setTipo]        = useState('recepcion');
-  const [fecha,       setFecha]       = useState(today);
-  const [descripcion, setDescripcion] = useState('');
-  const [notas,       setNotas]       = useState('');
+  const [tipo,        setTipo]        = useState(initialData?.tipo        || 'recepcion');
+  const [fecha,       setFecha]       = useState(initialData?.fecha       || today);
+  const [descripcion, setDescripcion] = useState(initialData?.descripcion || '');
+  const [notas,       setNotas]       = useState(initialData?.notas       || '');
+  const [motivoEdit,  setMotivoEdit]  = useState('');
 
   // Recepción
-  const [producto,    setProducto]    = useState('');
-  const [cantidad,    setCantidad]    = useState('');
-  const [unidad,      setUnidad]      = useState('lb');
-  const [precioUnit,  setPrecioUnit]  = useState('');
-  const [totalBruto,  setTotalBruto]  = useState('');
-  const [factura,     setFactura]     = useState('');
+  const [producto,    setProducto]    = useState(initialData?.producto    || '');
+  const [cantidad,    setCantidad]    = useState(initialData?.cantidad != null ? String(initialData.cantidad) : '');
+  const [unidad,      setUnidad]      = useState(initialData?.unidad      || 'lb');
+  const [precioUnit,  setPrecioUnit]  = useState(initialData?.precioUnit != null ? String(initialData.precioUnit) : '');
+  const [totalBruto,  setTotalBruto]  = useState(initialData?.totalBruto != null ? String(initialData.totalBruto) : '');
+  const [factura,     setFactura]     = useState(initialData?.factura     || '');
 
   // Pago
-  const [monto,       setMonto]       = useState('');
-  const [metodoPago,  setMetodoPago]  = useState('transferencia');
-  const [referencia,  setReferencia]  = useState('');
+  const [monto,       setMonto]       = useState(initialData?.monto != null ? String(initialData.monto) : '');
+  const [metodoPago,  setMetodoPago]  = useState(initialData?.metodoPago  || 'transferencia');
+  const [referencia,  setReferencia]  = useState(initialData?.referencia  || '');
 
   // Rechazo
-  const [recepcionId, setRecepcionId] = useState('');
-  const [valorRechazo,setValorRechazo]= useState('');
-  const [resolucion,  setResolucion]  = useState('devolucion');
+  const [recepcionId, setRecepcionId] = useState(initialData?.recepcionId || '');
+  const [valorRechazo,setValorRechazo]= useState(initialData?.valorRechazo != null ? String(initialData.valorRechazo) : '');
+  const [resolucion,  setResolucion]  = useState(initialData?.resolucion  || 'devolucion');
 
   // Auto-calcular totalBruto en recepción
   const calcTotal = (cant, precio) => {
@@ -78,6 +81,7 @@ export default function MovimientoForm({ proveedorNombre, movimientos = [], onCo
 
   const canConfirm = (() => {
     if (!fecha) return false;
+    if (isEdit && !motivoEdit.trim()) return false;
     if (tipo === 'recepcion') return producto.trim() && (Number(totalBruto) > 0 || Number(cantidad) > 0);
     if (tipo === 'pago')      return Number(monto) > 0;
     if (tipo === 'rechazo')   return Number(valorRechazo) > 0;
@@ -86,7 +90,7 @@ export default function MovimientoForm({ proveedorNombre, movimientos = [], onCo
 
   const handleConfirm = () => {
     if (!canConfirm) return;
-    const base = { tipo, fecha, descripcion: descripcion.trim(), notas: notas.trim() };
+    const base = { tipo, fecha, descripcion: descripcion.trim(), notas: notas.trim(), motivoEdit: motivoEdit.trim() };
 
     if (tipo === 'recepcion') {
       onConfirm({
@@ -123,23 +127,25 @@ export default function MovimientoForm({ proveedorNombre, movimientos = [], onCo
         boxShadow: '0 8px 32px rgba(0,0,0,.25)', overflow: 'hidden', margin: 'auto' }}>
 
         {/* Header */}
-        <div style={{ background: T.primary, padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: '1.3rem' }}>📒</span>
+        <div style={{ background: isEdit ? T.warn : T.primary, padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: '1.3rem' }}>{isEdit ? '✏️' : '📒'}</span>
           <div>
-            <div style={{ fontWeight: 800, fontSize: '1rem', color: '#fff' }}>Nuevo Movimiento</div>
+            <div style={{ fontWeight: 800, fontSize: '1rem', color: '#fff' }}>
+              {isEdit ? 'Editar Movimiento' : 'Nuevo Movimiento'}
+            </div>
             <div style={{ fontSize: '.82rem', color: 'rgba(255,255,255,.7)', marginTop: 1 }}>{proveedorNombre}</div>
           </div>
         </div>
 
         <div style={{ padding: '20px' }}>
 
-          {/* Selector tipo */}
+          {/* Selector tipo — deshabilitado en edición */}
           <Field label="Tipo de movimiento">
             <div style={{ display: 'flex', gap: 8 }}>
               {TIPOS.map(t => {
                 const active = tipo === t.key;
                 return (
-                  <button key={t.key} onClick={() => setTipo(t.key)} style={{
+                  <button key={t.key} onClick={() => !isEdit && setTipo(t.key)} style={{
                     flex: 1, padding: '9px 4px', borderRadius: 8,
                     border: `2px solid ${active ? t.color : T.border}`,
                     background: active ? t.bg : '#fff',
@@ -285,6 +291,24 @@ export default function MovimientoForm({ proveedorNombre, movimientos = [], onCo
             />
           </Field>
 
+          {/* Motivo edición — solo al editar */}
+          {isEdit && (
+            <Field label="Motivo de la edición *">
+              <Input
+                type="text"
+                placeholder="Ej: Error en el monto, corrección de fecha..."
+                value={motivoEdit}
+                onChange={e => setMotivoEdit(e.target.value)}
+                style={{ border: `1.5px solid ${motivoEdit.trim() ? T.border : T.warn}` }}
+              />
+              {!motivoEdit.trim() && (
+                <div style={{ fontSize: '.72rem', color: T.warn, marginTop: 3 }}>
+                  Requerido para guardar cambios
+                </div>
+              )}
+            </Field>
+          )}
+
           {/* Botones */}
           <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
             <button
@@ -292,11 +316,11 @@ export default function MovimientoForm({ proveedorNombre, movimientos = [], onCo
               disabled={!canConfirm}
               style={{
                 flex: 1, minHeight: 44, borderRadius: 8, border: 'none',
-                background: canConfirm ? T.primary : '#BDBDBD',
+                background: canConfirm ? (isEdit ? T.warn : T.primary) : '#BDBDBD',
                 color: '#fff', fontWeight: 700, fontSize: '.9rem',
                 cursor: canConfirm ? 'pointer' : 'not-allowed', fontFamily: 'inherit',
               }}>
-              Guardar movimiento
+              {isEdit ? 'Guardar cambios' : 'Guardar movimiento'}
             </button>
             <button onClick={onCancel} style={{
               minHeight: 44, padding: '0 16px', borderRadius: 8,

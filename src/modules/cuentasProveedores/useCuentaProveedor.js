@@ -1,6 +1,7 @@
 // useCuentaProveedor.js — lógica Firebase con getDocs (fetch manual)
 import { useState, useCallback } from 'react';
 import { db, collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, where } from '../../firebase';
+import { arrayUnion } from 'firebase/firestore';
 
 export function useCuentaProveedor(proveedorId) {
   const [movimientos, setMovimientos] = useState([]);
@@ -43,10 +44,18 @@ export function useCuentaProveedor(proveedorId) {
     } finally { setSaving(false); }
   }, []);
 
-  const actualizar = useCallback(async (id, data) => {
+  // actualizar — actualiza campos y agrega entrada de auditoría con arrayUnion
+  const actualizar = useCallback(async (id, data, auditEntry) => {
     setSaving(true);
     try {
-      await updateDoc(doc(db, 'cuentasProveedores', id), data);
+      const payload = {
+        ...data,
+        ultimaEdicion: new Date().toISOString(),
+      };
+      if (auditEntry) {
+        payload.historialEdiciones = arrayUnion({ ...auditEntry, ts: new Date().toISOString() });
+      }
+      await updateDoc(doc(db, 'cuentasProveedores', id), payload);
     } finally { setSaving(false); }
   }, []);
 
