@@ -32,21 +32,26 @@ import Proveedores from './modules/inventario/Proveedores';
 // Ventas
 import VentasGT from './modules/ventas/VentasGT';
 import VentasInt from './modules/ventas/VentasInt';
-import GastosSemanales from './modules/ventas/GastosSemanales';
-import Maquila from './modules/ventas/Maquila';
 import Walmart from './modules/walmart/Walmart';
 
 // Finanzas
-import Gastos from './modules/gastos/Gastos';
+import GastosUnificado from './modules/gastos/GastosUnificado';
+import RecepcionProducto from './modules/recepcion/RecepcionProducto';
 import AnticiposMX from './modules/finanzas/AnticiposMX';
 import CotizadorRapido from './modules/cotizador/CotizadorRapido';
 import Cotizador from './modules/cotizador/Cotizador';
+import CotizadorLista   from './modules/cotizador/CotizadorLista';
+import CotizadorNuevo   from './modules/cotizador/CotizadorNuevo';
+import CotizadorDetalle from './modules/cotizador/CotizadorDetalle';
 
 // Precios
 import Precios from './modules/precios/Precios';
 
 // Personal
 import Personal from './modules/personal/Personal';
+
+// Finanzas — Cuentas Proveedores
+import CuentasProveedores from './modules/cuentasProveedores/CuentasProveedores';
 
 // Sistema
 import Guatecompras from './modules/guatecompras/Guatecompras';
@@ -57,6 +62,14 @@ function RequireAuth({ children }) {
   const { user, loading } = useAuth();
   if (loading) return <LoadingSpinner />;
   if (!user) return <Navigate to="/login" replace />;
+  return children;
+}
+
+function RequireAdmin({ children }) {
+  const { user, loading, isAdmin } = useAuth();
+  if (loading) return <LoadingSpinner />;
+  if (!user) return <Navigate to="/login" replace />;
+  if (!isAdmin(user)) return <Navigate to="/dashboard" replace />;
   return children;
 }
 
@@ -97,6 +110,7 @@ export default function App() {
 
           {/* Inventario */}
           <Route path="stock"                  element={<StockVivo />} />
+          <Route path="recepcion"              element={<RecepcionProducto />} />
           <Route path="inventario/entrada"     element={<EntradaBodega />} />
           <Route path="inventario/salida"      element={<SalidaBodega />} />
           <Route path="inventario/proveedores" element={<Proveedores />} />
@@ -104,16 +118,21 @@ export default function App() {
           {/* Ventas */}
           <Route path="ventas/gt"              element={<VentasGT />} />
           <Route path="ventas/int"             element={<VentasInt />} />
-          <Route path="gastos/semanales"          element={<GastosSemanales />} />
-          <Route path="maquila"                  element={<Maquila />} />
           <Route path="walmart"                element={<Walmart />} />
 
           {/* Finanzas */}
-          <Route path="gastos"                 element={<Gastos />} />
+          <Route path="gastos"                 element={<GastosUnificado />} />
+          <Route path="gastos/semanales"       element={<Navigate to="/gastos" replace />} />
+          <Route path="maquila"                element={<Navigate to="/gastos" replace />} />
           <Route path="anticipos"              element={<AnticiposMX />} />
           <Route path="cotizador/rapido"       element={<CotizadorRapido />} />
-          <Route path="cotizador"              element={<Cotizador />} />
+          <Route path="cotizador"              element={<CotizadorLista />} />
+          <Route path="cotizador/nuevo"        element={<CotizadorNuevo />} />
+          <Route path="cotizador/:id"          element={<CotizadorDetalle />} />
           <Route path="precios"                element={<Precios />} />
+
+          {/* Cuentas Proveedores */}
+          <Route path="cuentas-proveedores"    element={<CuentasProveedores />} />
 
           {/* Personal */}
           <Route path="personal"               element={<Personal />} />
@@ -121,7 +140,7 @@ export default function App() {
           {/* Sistema */}
           <Route path="guatecompras"           element={<Guatecompras />} />
           <Route path="reportes"               element={<Reportes />} />
-          <Route path="admin"                  element={<Admin />} />
+          <Route path="admin"                  element={<RequireAdmin><Admin /></RequireAdmin>} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
