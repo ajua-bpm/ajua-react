@@ -20,8 +20,18 @@ const TIPO_COLOR = {
   rechazo:   '#C62828',
 };
 
-export default function EstadoCuenta({ proveedor, movimientos, resumen, desde, hasta, onClose }) {
+// titulo: descripción corta del filtro aplicado, ej. "REPOLLO · Recepciones" o undefined para total
+export default function EstadoCuenta({ proveedor, movimientos, resumen, desde, hasta, titulo, onClose }) {
   const hoy = new Date().toLocaleDateString('es-GT', { day: '2-digit', month: 'long', year: 'numeric' });
+
+  // Calcular resumen real a partir de los movimientos recibidos (pueden ser filtrados)
+  const resumenReal = movimientos.reduce((acc, m) => {
+    if (m.tipo === 'recepcion') acc.comprado  += Number(m.totalBruto   || 0);
+    if (m.tipo === 'rechazo')   acc.rechazos  += Number(m.valorRechazo || 0);
+    if (m.tipo === 'pago')      acc.pagado    += Number(m.monto        || 0);
+    return acc;
+  }, { comprado: 0, rechazos: 0, pagado: 0 });
+  resumenReal.saldo = resumenReal.comprado - resumenReal.rechazos - resumenReal.pagado;
 
   return (
     <>
@@ -77,7 +87,10 @@ export default function EstadoCuenta({ proveedor, movimientos, resumen, desde, h
             <div style={{ fontSize: '11px', color: T.textMid, marginTop: 2 }}>AGROINDUSTRIA AJÚA · Guatemala</div>
           </div>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontFamily: 'Arial, sans-serif', fontSize: '1.1rem', fontWeight: 700, color: T.textDark }}>ESTADO DE CUENTA</div>
+            <div style={{ fontFamily: 'Arial, sans-serif', fontSize: '1.1rem', fontWeight: 700, color: T.textDark }}>
+              {titulo ? 'ESTADO DE CUENTA — FILTRADO' : 'ESTADO DE CUENTA'}
+            </div>
+            {titulo && <div style={{ fontSize: '11px', color: T.warn, fontWeight: 700, marginTop: 2 }}>Filtro: {titulo}</div>}
             <div style={{ fontSize: '11px', color: T.textMid, marginTop: 2 }}>Emitido: {hoy}</div>
             {(desde || hasta) && (
               <div style={{ fontSize: '11px', color: T.textMid }}>
@@ -100,10 +113,10 @@ export default function EstadoCuenta({ proveedor, movimientos, resumen, desde, h
         {/* Resumen */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 28 }}>
           {[
-            { label: 'Total Comprado',  value: resumen.comprado,  color: '#1565C0' },
-            { label: 'Rechazos',        value: resumen.rechazos,  color: T.danger  },
-            { label: 'Total Pagado',    value: resumen.pagado,    color: T.primary },
-            { label: 'Saldo Pendiente', value: resumen.saldo,     color: resumen.saldo > 0 ? T.warn : T.primary, bold: true },
+            { label: 'Total Comprado',  value: resumenReal.comprado,  color: '#1565C0' },
+            { label: 'Rechazos',        value: resumenReal.rechazos,  color: T.danger  },
+            { label: 'Total Pagado',    value: resumenReal.pagado,    color: T.primary },
+            { label: 'Saldo Pendiente', value: resumenReal.saldo,     color: resumenReal.saldo > 0 ? T.warn : T.primary, bold: true },
           ].map(c => (
             <div key={c.label} style={{ border: `1px solid ${T.border}`, borderRadius: 6, padding: '10px 12px', textAlign: 'center' }}>
               <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '.08em', color: T.textMid, marginBottom: 4 }}>{c.label}</div>
@@ -120,8 +133,8 @@ export default function EstadoCuenta({ proveedor, movimientos, resumen, desde, h
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
             <thead>
               <tr style={{ background: '#F5F5F5', borderBottom: `2px solid ${T.border}` }}>
-                {['Fecha','Tipo','Descripción','Cargo','Abono','Saldo'].map(h => (
-                  <th key={h} style={{ padding: '7px 10px', textAlign: h === 'Cargo' || h === 'Abono' || h === 'Saldo' ? 'right' : 'left',
+                {['Fecha','Tipo','Descripción','Cantidad','Cargo','Abono','Saldo'].map(h => (
+                  <th key={h} style={{ padding: '7px 10px', textAlign: h === 'Cargo' || h === 'Abono' || h === 'Saldo' || h === 'Cantidad' ? 'right' : 'left',
                     fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: T.textMid }}>
                     {h}
                   </th>
@@ -130,37 +143,49 @@ export default function EstadoCuenta({ proveedor, movimientos, resumen, desde, h
             </thead>
             <tbody>
               {movimientos.length === 0 ? (
-                <tr><td colSpan={6} style={{ padding: '20px', textAlign: 'center', color: T.textMid }}>Sin movimientos en el período</td></tr>
-              ) : movimientos.map((m, i) => (
-                <tr key={m.id} style={{ borderBottom: `1px solid ${T.border}`, background: i % 2 === 0 ? '#fff' : '#FAFAFA' }}>
-                  <td style={{ padding: '7px 10px', whiteSpace: 'nowrap' }}>{fmtFecha(m.fecha)}</td>
-                  <td style={{ padding: '7px 10px' }}>
-                    <span style={{ fontWeight: 700, color: TIPO_COLOR[m.tipo] || T.textDark }}>
-                      {TIPO_LABEL[m.tipo] || m.tipo}
-                    </span>
-                  </td>
-                  <td style={{ padding: '7px 10px', color: T.textMid }}>
-                    {m.descripcion || (m.tipo === 'recepcion' ? m.producto : m.tipo === 'pago' ? `${m.metodoPago} ${m.referencia || ''}`.trim() : m.resolucion) || '—'}
-                  </td>
-                  <td style={{ padding: '7px 10px', textAlign: 'right', color: '#1565C0', fontWeight: m.cargo > 0 ? 700 : 400 }}>
-                    {m.cargo > 0 ? fmtQ(m.cargo) : '—'}
-                  </td>
-                  <td style={{ padding: '7px 10px', textAlign: 'right', color: T.primary, fontWeight: m.abono > 0 ? 700 : 400 }}>
-                    {m.abono > 0 ? fmtQ(m.abono) : '—'}
-                  </td>
-                  <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 700,
-                    color: m.saldoAcum > 0 ? T.warn : T.primary }}>
-                    {fmtQ(m.saldoAcum)}
-                  </td>
-                </tr>
-              ))}
+                <tr><td colSpan={7} style={{ padding: '20px', textAlign: 'center', color: T.textMid }}>Sin movimientos en el período</td></tr>
+              ) : movimientos.map((m, i) => {
+                const cantStr = m.tipo === 'recepcion' && m.cantidad
+                  ? `${m.cantidad} ${m.unidad || ''}`
+                  : m.tipo === 'pago' && m.monto
+                    ? fmtQ(m.monto)
+                    : m.tipo === 'rechazo' && m.valorRechazo
+                      ? fmtQ(m.valorRechazo)
+                      : '—';
+                return (
+                  <tr key={m.id} style={{ borderBottom: `1px solid ${T.border}`, background: i % 2 === 0 ? '#fff' : '#FAFAFA' }}>
+                    <td style={{ padding: '7px 10px', whiteSpace: 'nowrap' }}>{fmtFecha(m.fecha)}</td>
+                    <td style={{ padding: '7px 10px' }}>
+                      <span style={{ fontWeight: 700, color: TIPO_COLOR[m.tipo] || T.textDark }}>
+                        {TIPO_LABEL[m.tipo] || m.tipo}
+                      </span>
+                    </td>
+                    <td style={{ padding: '7px 10px', color: T.textMid }}>
+                      {m.descripcion || (m.tipo === 'recepcion' ? m.producto : m.tipo === 'pago' ? `${m.metodoPago} ${m.referencia || ''}`.trim() : m.resolucion) || '—'}
+                    </td>
+                    <td style={{ padding: '7px 10px', textAlign: 'right', color: T.textDark, fontSize: '11px' }}>
+                      {cantStr}
+                    </td>
+                    <td style={{ padding: '7px 10px', textAlign: 'right', color: '#1565C0', fontWeight: m.cargo > 0 ? 700 : 400 }}>
+                      {m.cargo > 0 ? fmtQ(m.cargo) : '—'}
+                    </td>
+                    <td style={{ padding: '7px 10px', textAlign: 'right', color: T.primary, fontWeight: m.abono > 0 ? 700 : 400 }}>
+                      {m.abono > 0 ? fmtQ(m.abono) : '—'}
+                    </td>
+                    <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 700,
+                      color: m.saldoAcum > 0 ? T.warn : T.primary }}>
+                      {fmtQ(m.saldoAcum)}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
             <tfoot>
               <tr style={{ borderTop: `2px solid ${T.primary}`, background: '#F9F9F7' }}>
-                <td colSpan={3} style={{ padding: '9px 10px', fontWeight: 700, fontSize: '12px' }}>TOTALES</td>
-                <td style={{ padding: '9px 10px', textAlign: 'right', fontWeight: 800, color: '#1565C0' }}>{fmtQ(resumen.comprado)}</td>
-                <td style={{ padding: '9px 10px', textAlign: 'right', fontWeight: 800, color: T.primary }}>{fmtQ(resumen.pagado + resumen.rechazos)}</td>
-                <td style={{ padding: '9px 10px', textAlign: 'right', fontWeight: 800, color: resumen.saldo > 0 ? T.warn : T.primary }}>{fmtQ(resumen.saldo)}</td>
+                <td colSpan={4} style={{ padding: '9px 10px', fontWeight: 700, fontSize: '12px' }}>TOTALES</td>
+                <td style={{ padding: '9px 10px', textAlign: 'right', fontWeight: 800, color: '#1565C0' }}>{fmtQ(resumenReal.comprado)}</td>
+                <td style={{ padding: '9px 10px', textAlign: 'right', fontWeight: 800, color: T.primary }}>{fmtQ(resumenReal.pagado + resumenReal.rechazos)}</td>
+                <td style={{ padding: '9px 10px', textAlign: 'right', fontWeight: 800, color: resumenReal.saldo > 0 ? T.warn : T.primary }}>{fmtQ(resumenReal.saldo)}</td>
               </tr>
             </tfoot>
           </table>

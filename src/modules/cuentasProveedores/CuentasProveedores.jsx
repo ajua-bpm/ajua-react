@@ -119,9 +119,14 @@ function MovCard({ m, onEdit, onDelete }) {
               </span>
             )}
           </div>
-          <div style={{ fontSize: '.88rem', fontWeight: 600, color: T.textDark, marginTop: 4,
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {desc}
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '.88rem', fontWeight: 600, color: T.textDark,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {desc}
+            </span>
+            <span style={{ fontSize: '.78rem', color: T.textMid, whiteSpace: 'nowrap', flexShrink: 0 }}>
+              {cantidadStr(m)}
+            </span>
           </div>
         </div>
         <div style={{ textAlign: 'right', flexShrink: 0 }}>
@@ -159,6 +164,13 @@ function MovCard({ m, onEdit, onDelete }) {
   );
 }
 
+function cantidadStr(m) {
+  if (m.tipo === 'recepcion' && m.cantidad) return `${m.cantidad} ${m.unidad || ''}`;
+  if (m.tipo === 'pago'      && m.monto)    return fmtQ(m.monto);
+  if (m.tipo === 'rechazo'   && m.valorRechazo) return fmtQ(m.valorRechazo);
+  return '—';
+}
+
 function DesktopRow({ m, i, onEdit, onDelete }) {
   const [open, setOpen] = useState(false);
   const desc = m.descripcion || (
@@ -182,9 +194,12 @@ function DesktopRow({ m, i, onEdit, onDelete }) {
           )}
         </td>
         <td style={tdSt}><Badge tipo={m.tipo} /></td>
-        <td style={{ ...tdSt, color: T.textMid, maxWidth: 220,
+        <td style={{ ...tdSt, color: T.textMid, maxWidth: 180,
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {desc}
+        </td>
+        <td style={{ ...tdSt, textAlign: 'right', fontSize: '.82rem', color: T.textDark, whiteSpace: 'nowrap' }}>
+          {cantidadStr(m)}
         </td>
         <td style={{ ...tdSt, textAlign: 'right', fontWeight: 700,
           color: m.cargo > 0 ? '#1565C0' : T.textMid }}>
@@ -204,7 +219,7 @@ function DesktopRow({ m, i, onEdit, onDelete }) {
       </tr>
       {open && (
         <tr style={{ borderBottom: `1px solid ${T.border}` }}>
-          <td colSpan={7} style={{ padding: '12px 20px', background: T.bg }}>
+          <td colSpan={8} style={{ padding: '12px 20px', background: T.bg }}>
             <DetailRows m={m} />
             <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
               <button onClick={e => { e.stopPropagation(); onEdit(m); }} style={{
@@ -246,6 +261,7 @@ export default function CuentasProveedores() {
   const [hasta,      setHasta]      = useState('');
   const [showForm,   setShowForm]   = useState(false);
   const [editTarget, setEditTarget] = useState(null);
+  // 'total' | 'filtered' | false
   const [showEstado, setShowEstado] = useState(false);
 
   // Filtros secundarios (client-side sobre movimientos ya cargados)
@@ -423,16 +439,27 @@ export default function CuentasProveedores() {
                 <div style={{ fontSize: '.8rem', color: T.textMid }}>NIT: {proveedor.nit}</div>
               )}
             </div>
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {filtrosActivos && movsFiltConSaldo.length > 0 && (
+                <button
+                  onClick={() => setShowEstado('filtered')}
+                  style={{ padding: '8px 14px', borderRadius: 6,
+                    border: `1.5px solid ${T.warn}`, background: '#fff',
+                    color: T.warn, fontWeight: 700, fontSize: '.82rem',
+                    cursor: 'pointer', fontFamily: 'inherit' }}>
+                  🖨️ PDF con filtros
+                </button>
+              )}
               <button
-                onClick={() => setShowEstado(true)}
+                onClick={() => setShowEstado('total')}
                 disabled={movimientos.length === 0}
                 style={{ padding: '8px 14px', borderRadius: 6,
                   border: `1.5px solid ${T.border}`, background: '#fff',
                   color: movimientos.length === 0 ? '#BDBDBD' : T.textDark,
-                  fontWeight: 600, fontSize: '.82rem', cursor: movimientos.length === 0 ? 'not-allowed' : 'pointer',
+                  fontWeight: 600, fontSize: '.82rem',
+                  cursor: movimientos.length === 0 ? 'not-allowed' : 'pointer',
                   fontFamily: 'inherit' }}>
-                🖨️ Ver Estado PDF
+                🖨️ PDF total
               </button>
             </div>
           </div>
@@ -604,8 +631,8 @@ export default function CuentasProveedores() {
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.85rem' }}>
                   <thead>
                     <tr style={{ background: T.bg, borderBottom: `2px solid ${T.border}` }}>
-                      {['Fecha','Tipo','Descripción','Cargo','Abono','Saldo Acum.',''].map(h => (
-                        <th key={h} style={{ padding: '10px 14px', textAlign: h === 'Cargo' || h === 'Abono' || h === 'Saldo Acum.' ? 'right' : 'left',
+                      {['Fecha','Tipo','Descripción','Cantidad','Cargo','Abono','Saldo Acum.',''].map(h => (
+                        <th key={h} style={{ padding: '10px 14px', textAlign: h === 'Cargo' || h === 'Abono' || h === 'Saldo Acum.' || h === 'Cantidad' ? 'right' : 'left',
                           fontSize: '.68rem', fontWeight: 700, textTransform: 'uppercase',
                           letterSpacing: '.08em', color: T.textMid }}>
                           {h}
@@ -670,16 +697,27 @@ export default function CuentasProveedores() {
       )}
 
       {/* Vista PDF */}
-      {showEstado && (
-        <EstadoCuenta
-          proveedor={proveedor}
-          movimientos={movimientos}
-          resumen={resumen}
-          desde={desde}
-          hasta={hasta}
-          onClose={() => setShowEstado(false)}
-        />
-      )}
+      {showEstado && (() => {
+        const esFiltrado = showEstado === 'filtered';
+        const movsPdf    = esFiltrado ? movsFiltConSaldo : movimientos;
+        const tituloChips = esFiltrado ? [
+          filtProd  && `📦 ${filtProd}`,
+          filtTipo  && TIPO_LABEL[filtTipo],
+          filtEstado === 'pendiente' && '⏳ Pendiente pago',
+          filtEstado === 'pagado'    && '✅ Pagado',
+        ].filter(Boolean).join(' · ') : undefined;
+        return (
+          <EstadoCuenta
+            proveedor={proveedor}
+            movimientos={movsPdf}
+            resumen={resumen}
+            desde={desde}
+            hasta={hasta}
+            titulo={tituloChips}
+            onClose={() => setShowEstado(false)}
+          />
+        );
+      })()}
     </div>
   );
 }
