@@ -1,28 +1,33 @@
 // useCuentaProveedor.js — lógica Firebase con getDocs (fetch manual)
 import { useState, useCallback } from 'react';
-import { db, collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, where, orderBy } from '../../firebase';
+import { db, collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, where } from '../../firebase';
 
 export function useCuentaProveedor(proveedorId) {
   const [movimientos, setMovimientos] = useState([]);
   const [loading,     setLoading]     = useState(false);
   const [saving,      setSaving]      = useState(false);
+  const [error,       setError]       = useState(null);
 
   const cargar = useCallback(async (desde, hasta) => {
     if (!proveedorId) return;
     setLoading(true);
+    setError(null);
     try {
+      // Sin orderBy para evitar índice compuesto en Firestore — se ordena en cliente
       const q = query(
         collection(db, 'cuentasProveedores'),
-        where('proveedorId', '==', proveedorId),
-        orderBy('fecha', 'asc')
+        where('proveedorId', '==', proveedorId)
       );
       const snap = await getDocs(q);
       let docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      // Ordenar por fecha ascendente en cliente
+      docs.sort((a, b) => (a.fecha || '') > (b.fecha || '') ? 1 : -1);
       if (desde) docs = docs.filter(m => (m.fecha || '') >= desde);
-      if (hasta) docs  = docs.filter(m => (m.fecha || '') <= hasta);
+      if (hasta) docs = docs.filter(m => (m.fecha || '') <= hasta);
       setMovimientos(docs);
     } catch (e) {
       console.error('useCuentaProveedor.cargar:', e);
+      setError(e.message || 'Error al cargar movimientos');
     }
     setLoading(false);
   }, [proveedorId]);
@@ -68,7 +73,7 @@ export function useCuentaProveedor(proveedorId) {
     return acc;
   }, []);
 
-  return { movimientos: movimientosConSaldo, resumen, loading, saving, cargar, agregar, actualizar, eliminar };
+  return { movimientos: movimientosConSaldo, resumen, loading, saving, error, cargar, agregar, actualizar, eliminar };
 }
 
 export function useProveedoresList() {

@@ -127,7 +127,7 @@ export default function CuentasProveedores() {
   const [showForm,  setShowForm]  = useState(false);
   const [showEstado, setShowEstado] = useState(false);
 
-  const { movimientos, resumen, loading, saving, cargar, agregar, eliminar } = useCuentaProveedor(provId);
+  const { movimientos, resumen, loading, saving, error, cargar, agregar, eliminar } = useCuentaProveedor(provId);
 
   useEffect(() => { cargarProv(); }, [cargarProv]);
 
@@ -290,7 +290,14 @@ export default function CuentasProveedores() {
               <div style={{ textAlign: 'center', padding: '32px', color: T.textMid }}>Cargando...</div>
             )}
 
-            {!loading && movimientos.length === 0 && (
+            {error && (
+              <div style={{ background: '#FFEBEE', border: `1px solid ${T.danger}`, borderRadius: 8,
+                padding: '12px 16px', marginBottom: 12, fontSize: '.85rem', color: T.danger }}>
+                ⚠️ Error: {error}
+              </div>
+            )}
+
+            {!loading && !error && movimientos.length === 0 && (
               <div style={{ background: '#fff', border: `1px solid ${T.border}`, borderRadius: 10,
                 padding: '32px', textAlign: 'center', color: T.textMid }}>
                 Sin movimientos registrados. Usa el botón + para agregar.
@@ -298,12 +305,12 @@ export default function CuentasProveedores() {
             )}
 
             {/* Mobile: cards */}
-            {!loading && isMobile && movimientos.map(m => (
+            {!loading && !error && isMobile && movimientos.map(m => (
               <MovCard key={m.id} m={m} onDelete={handleEliminar} />
             ))}
 
             {/* Desktop: tabla */}
-            {!loading && !isMobile && movimientos.length > 0 && (
+            {!loading && !error && !isMobile && movimientos.length > 0 && (
               <div style={{ background: '#fff', border: `1px solid ${T.border}`, borderRadius: 10, overflow: 'hidden' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.85rem' }}>
                   <thead>
