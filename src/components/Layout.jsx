@@ -30,7 +30,6 @@ const NAV = [
   { to: '/stock',                  mod: 'stock',             icon: '📦', label: 'Stock en Vivo' },
   { to: '/recepcion',              mod: 'recepcion',         icon: '🔬', label: 'Recepción Producto' },
   { to: '/inventario/entrada',     mod: 'entrada',           icon: '📥', label: 'Ingresos Bodega' },
-  { to: '/inventario/proveedores', mod: 'proveedores',       icon: '🏭', label: 'Proveedores' },
   { section: 'Walmart' },
   { to: '/walmart',                mod: 'walmart',           icon: '🏪', label: 'Pedidos Walmart' },
   { to: '/inventario/salida',      mod: 'salida',            icon: '💰', label: 'Ventas Walmart' },

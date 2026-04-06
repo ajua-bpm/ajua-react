@@ -1,6 +1,6 @@
-// useCuentaProveedor.js — lógica Firebase con getDocs (fetch manual)
-import { useState, useCallback } from 'react';
-import { db, collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, where } from '../../firebase';
+// useCuentaProveedor.js — lógica Firebase con onSnapshot (listener en tiempo real)
+import { useState, useEffect, useCallback } from 'react';
+import { db, collection, addDoc, updateDoc, deleteDoc, doc, query, where, onSnapshot } from '../../firebase';
 import { arrayUnion } from 'firebase/firestore';
 
 export function useCuentaProveedor(proveedorId) {
@@ -9,29 +9,45 @@ export function useCuentaProveedor(proveedorId) {
   const [saving,      setSaving]      = useState(false);
   const [error,       setError]       = useState(null);
 
-  const cargar = useCallback(async (desde, hasta) => {
-    if (!proveedorId) return;
+  // filtros de fecha — controlados desde afuera via cargar()
+  const [filtros, setFiltros] = useState({ desde: null, hasta: null });
+
+  // Listener en tiempo real filtrado por proveedorId (sin orderBy → sin índice compuesto)
+  useEffect(() => {
+    if (!proveedorId) { setMovimientos([]); return; }
     setLoading(true);
     setError(null);
-    try {
-      // Sin orderBy para evitar índice compuesto en Firestore — se ordena en cliente
-      const q = query(
-        collection(db, 'cuentasProveedores'),
-        where('proveedorId', '==', proveedorId)
-      );
-      const snap = await getDocs(q);
-      let docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      // Ordenar por fecha ascendente en cliente
-      docs.sort((a, b) => (a.fecha || '') > (b.fecha || '') ? 1 : -1);
-      if (desde) docs = docs.filter(m => (m.fecha || '') >= desde);
-      if (hasta) docs = docs.filter(m => (m.fecha || '') <= hasta);
-      setMovimientos(docs);
-    } catch (e) {
-      console.error('useCuentaProveedor.cargar:', e);
-      setError(e.message || 'Error al cargar movimientos');
-    }
-    setLoading(false);
-  }, [proveedorId]);
+
+    const q = query(
+      collection(db, 'cuentasProveedores'),
+      where('proveedorId', '==', proveedorId)
+    );
+
+    const unsub = onSnapshot(q,
+      snap => {
+        let docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        // Ordenar por fecha ascendente en cliente
+        docs.sort((a, b) => (a.fecha || '') > (b.fecha || '') ? 1 : -1);
+        // Aplicar filtros de fecha si están activos
+        if (filtros.desde) docs = docs.filter(m => (m.fecha || '') >= filtros.desde);
+        if (filtros.hasta) docs = docs.filter(m => (m.fecha || '') <= filtros.hasta);
+        setMovimientos(docs);
+        setLoading(false);
+      },
+      err => {
+        console.error('useCuentaProveedor:', err.message);
+        setError(err.message || 'Error al cargar movimientos');
+        setLoading(false);
+      }
+    );
+
+    return unsub;
+  }, [proveedorId, filtros.desde, filtros.hasta]);
+
+  // cargar() ahora solo actualiza los filtros de fecha — el listener se re-activa
+  const cargar = useCallback((desde, hasta) => {
+    setFiltros({ desde: desde || null, hasta: hasta || null });
+  }, []);
 
   const agregar = useCallback(async (data) => {
     setSaving(true);
@@ -87,18 +103,25 @@ export function useCuentaProveedor(proveedorId) {
 
 export function useProveedoresList() {
   const [proveedores, setProveedores] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading]         = useState(true);
 
-  const cargar = useCallback(async () => {
-    setLoading(true);
-    try {
-      const snap = await getDocs(collection(db, 'proveedores'));
-      const lista = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-        .sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
-      setProveedores(lista);
-    } catch { setProveedores([]); }
-    setLoading(false);
+  useEffect(() => {
+    const unsub = onSnapshot(
+      collection(db, 'proveedores'),
+      snap => {
+        const lista = snap.docs
+          .map(d => ({ id: d.id, ...d.data() }))
+          .sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
+        setProveedores(lista);
+        setLoading(false);
+      },
+      () => setLoading(false)
+    );
+    return unsub;
   }, []);
+
+  // cargar() mantenido para compatibilidad con código existente (ya no hace nada)
+  const cargar = useCallback(() => {}, []);
 
   return { proveedores, loading, cargar };
 }

@@ -27,7 +27,6 @@ import ControlTemperatura from './modules/bpm/ControlTemperatura';
 import StockVivo from './modules/stock/StockVivo';
 import EntradaBodega from './modules/inventario/EntradaBodega';
 import SalidaBodega from './modules/inventario/SalidaBodega';
-import Proveedores from './modules/inventario/Proveedores';
 
 // Ventas
 import VentasGT from './modules/ventas/VentasGT';
@@ -39,7 +38,6 @@ import GastosUnificado from './modules/gastos/GastosUnificado';
 import RecepcionProducto from './modules/recepcion/RecepcionProducto';
 import AnticiposMX from './modules/finanzas/AnticiposMX';
 import CotizadorRapido from './modules/cotizador/CotizadorRapido';
-import Cotizador from './modules/cotizador/Cotizador';
 import CotizadorLista   from './modules/cotizador/CotizadorLista';
 import CotizadorNuevo   from './modules/cotizador/CotizadorNuevo';
 import CotizadorDetalle from './modules/cotizador/CotizadorDetalle';
@@ -113,7 +111,7 @@ export default function App() {
           <Route path="recepcion"              element={<RecepcionProducto />} />
           <Route path="inventario/entrada"     element={<EntradaBodega />} />
           <Route path="inventario/salida"      element={<SalidaBodega />} />
-          <Route path="inventario/proveedores" element={<Proveedores />} />
+          <Route path="inventario/proveedores" element={<Navigate to="/admin" replace />} />
 
           {/* Ventas */}
           <Route path="ventas/gt"              element={<VentasGT />} />

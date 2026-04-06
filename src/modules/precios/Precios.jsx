@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import * as XLSX from 'xlsx';
 import { useCollection, useWrite } from '../../hooks/useFirestore';
 import LoadingSpinner from '../../components/LoadingSpinner';
@@ -157,15 +157,10 @@ function TabListaGeneral() {
   const toast = useToast();
   const { data: productos, loading: loadProd } = useCollection('iProductos', { orderField: 'nombre' });
   const { data: presentaciones, loading: loadPres } = useCollection('iPresentaciones', { orderField: 'codigo' });
-  const { add: addProd, update: updateProd } = useWrite('iProductos');
-  const { add: addPres, update: updatePres } = useWrite('iPresentaciones');
+  const { update: updatePres } = useWrite('iPresentaciones');
 
   const [editPrecioId, setEditPrecioId] = useState(null);
   const [editPrecioVal, setEditPrecioVal] = useState('');
-  const [showNewProd, setShowNewProd] = useState(false);
-  const [showNewPres, setShowNewPres] = useState(false);
-  const [newProd, setNewProd] = useState({ codigo: '', nombre: '', categoria: '', activo: true });
-  const [newPres, setNewPres] = useState({ codigo: '', productoId: '', descripcion: '', unidad: '', precioBase: '', activo: true });
   const [saving, setSaving] = useState(false);
 
   if (loadProd || loadPres) return <LoadingSpinner />;
@@ -176,10 +171,11 @@ function TabListaGeneral() {
     .filter(p => p.activo !== false)
     .map(p => ({
       ...p,
-      productoNombre: prodMap[p.productoId]?.nombre || '—',
+      productoNombre: prodMap[p.productoId]?.nombre || p.producto || '—',
       productoCategoria: prodMap[p.productoId]?.categoria || '',
+      displayDesc: p.descripcion || p.nombre || '—',
     }))
-    .sort((a, b) => (a.codigo || '').localeCompare(b.codigo || ''));
+    .sort((a, b) => (a.productoNombre || '').localeCompare(b.productoNombre || '', 'es'));
 
   const startEditPrecio = (row) => {
     setEditPrecioId(row.id);
@@ -198,34 +194,10 @@ function TabListaGeneral() {
     finally { setSaving(false); }
   };
 
-  const handleNewProd = async () => {
-    if (!newProd.nombre) { toast('⚠ Nombre requerido', 'error'); return; }
-    setSaving(true);
-    try {
-      await addProd({ ...newProd });
-      toast('✓ Producto agregado');
-      setNewProd({ codigo: '', nombre: '', categoria: '', activo: true });
-      setShowNewProd(false);
-    } catch (e) { toast('Error: ' + e.message, 'error'); }
-    finally { setSaving(false); }
-  };
-
-  const handleNewPres = async () => {
-    if (!newPres.descripcion || !newPres.productoId) { toast('⚠ Producto y descripción requeridos', 'error'); return; }
-    setSaving(true);
-    try {
-      await addPres({ ...newPres, precioBase: parseFloat(newPres.precioBase) || 0 });
-      toast('✓ Presentación agregada');
-      setNewPres({ codigo: '', productoId: '', descripcion: '', unidad: '', precioBase: '', activo: true });
-      setShowNewPres(false);
-    } catch (e) { toast('Error: ' + e.message, 'error'); }
-    finally { setSaving(false); }
-  };
-
   const excelRows = rows.map(r => ({
     codigo: r.codigo || '',
     producto: r.productoNombre,
-    presentacion: r.descripcion || '',
+    presentacion: r.displayDesc !== '—' ? r.displayDesc : '',
     unidad: r.unidad || '',
     precioBase: r.precioBase,
   }));
@@ -233,47 +205,9 @@ function TabListaGeneral() {
   return (
     <div>
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
-        <BtnPrimary onClick={() => setShowNewProd(v => !v)}>+ Producto</BtnPrimary>
-        <BtnPrimary onClick={() => setShowNewPres(v => !v)}>+ Presentación</BtnPrimary>
         <BtnSecondary onClick={() => exportListaGeneral(excelRows)}>⬇ Exportar Excel</BtnSecondary>
+        <span style={{ fontSize: '.78rem', color: C.gray, alignSelf: 'center' }}>Para agregar productos/presentaciones: Administración → Productos</span>
       </div>
-
-      {showNewProd && (
-        <Card style={{ marginBottom: 16 }}>
-          <div style={{ fontWeight: 700, color: C.green, marginBottom: 12 }}>Nuevo Producto</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 12, marginBottom: 12 }}>
-            <Inp label="Código" value={newProd.codigo} onChange={v => setNewProd(f => ({ ...f, codigo: v }))} />
-            <Inp label="Nombre *" value={newProd.nombre} onChange={v => setNewProd(f => ({ ...f, nombre: v }))} />
-            <Inp label="Categoría" value={newProd.categoria} onChange={v => setNewProd(f => ({ ...f, categoria: v }))} />
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <BtnPrimary onClick={handleNewProd} disabled={saving}>{saving ? 'Guardando...' : 'Guardar'}</BtnPrimary>
-            <BtnSecondary onClick={() => setShowNewProd(false)}>Cancelar</BtnSecondary>
-          </div>
-        </Card>
-      )}
-
-      {showNewPres && (
-        <Card style={{ marginBottom: 16 }}>
-          <div style={{ fontWeight: 700, color: C.green, marginBottom: 12 }}>Nueva Presentación</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 12, marginBottom: 12 }}>
-            <Inp label="Código" value={newPres.codigo} onChange={v => setNewPres(f => ({ ...f, codigo: v }))} />
-            <Sel label="Producto *" value={newPres.productoId} onChange={v => setNewPres(f => ({ ...f, productoId: v }))}>
-              <option value="">— Seleccionar —</option>
-              {productos.filter(p => p.activo !== false).map(p => (
-                <option key={p.id} value={p.id}>{p.nombre}</option>
-              ))}
-            </Sel>
-            <Inp label="Descripción *" value={newPres.descripcion} onChange={v => setNewPres(f => ({ ...f, descripcion: v }))} />
-            <Inp label="Unidad" value={newPres.unidad} onChange={v => setNewPres(f => ({ ...f, unidad: v }))} placeholder="kg, caja, unidad..." />
-            <Inp label="Precio Base Q" type="number" value={newPres.precioBase} onChange={v => setNewPres(f => ({ ...f, precioBase: v }))} />
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <BtnPrimary onClick={handleNewPres} disabled={saving}>{saving ? 'Guardando...' : 'Guardar'}</BtnPrimary>
-            <BtnSecondary onClick={() => setShowNewPres(false)}>Cancelar</BtnSecondary>
-          </div>
-        </Card>
-      )}
 
       <Card>
         <div style={{ fontWeight: 700, color: C.green, marginBottom: 12 }}>
@@ -295,7 +229,7 @@ function TabListaGeneral() {
                 <tr key={r.id} style={{ background: '#fff' }}>
                   <TD><span style={{ fontFamily: 'monospace', fontSize: '.78rem' }}>{r.codigo || '—'}</span></TD>
                   <TD style={{ fontWeight: 600 }}>{r.productoNombre}</TD>
-                  <TD>{r.descripcion || '—'}</TD>
+                  <TD>{r.displayDesc}</TD>
                   <TD>{r.unidad || '—'}</TD>
                   <TD>
                     {editPrecioId === r.id ? (
