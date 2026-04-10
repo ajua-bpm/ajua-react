@@ -11,17 +11,17 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const saved = sessionStorage.getItem('ajua_user');
+    const saved = localStorage.getItem('ajua_user');
     if (saved) { try { setUser(JSON.parse(saved)); } catch(e) {} }
     setLoading(false);
   }, []);
 
   const login = async (usuario, password) => {
-    // Fallback admin para configuración inicial — siempre disponible
+    // Superadmin hardcodeado — recuperación de emergencia, siempre disponible
     if (usuario === 'admin' && password === 'ajua2024') {
-      const u = { id: 'admin', nombre: 'Administrador', rol: 'admin', usuario: 'admin' };
+      const u = { id: 'admin', nombre: 'Administrador', rol: 'superadmin', usuario: 'admin' };
       setUser(u);
-      sessionStorage.setItem('ajua_user', JSON.stringify(u));
+      localStorage.setItem('ajua_user', JSON.stringify(u));
       return u;
     }
     // Buscar en DB.usuarios de Firestore
@@ -32,9 +32,9 @@ export function AuthProvider({ children }) {
         (u.usuario === usuario || u.email === usuario) && u.pass === password
       );
       if (!found) return null;
-      const u = { id: found.id, nombre: found.nombre, rol: found.rol || 'operario', usuario: found.usuario };
+      const u = { id: found.id, nombre: found.nombre, rol: found.rol || 'operario', usuario: found.usuario, modulos: found.modulos || [] };
       setUser(u);
-      sessionStorage.setItem('ajua_user', JSON.stringify(u));
+      localStorage.setItem('ajua_user', JSON.stringify(u));
       return u;
     } catch(e) {
       throw new Error('Error de conexión con Firebase');
@@ -43,11 +43,16 @@ export function AuthProvider({ children }) {
 
   const logout = () => {
     setUser(null);
-    sessionStorage.removeItem('ajua_user');
+    localStorage.removeItem('ajua_user');
+  };
+
+  const isAdmin = (u) => {
+    const r = (u || user)?.rol;
+    return r === 'admin' || r === 'superadmin';
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, loading }}>
+    <AuthContext.Provider value={{ user, login, logout, loading, isAdmin }}>
       {children}
     </AuthContext.Provider>
   );
