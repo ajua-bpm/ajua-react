@@ -3,7 +3,6 @@ import { useCollection, useWrite } from '../../hooks/useFirestore';
 import { useProductosCatalogo } from '../../hooks/useMainData';
 import { useToast } from '../../components/Toast';
 import Skeleton from '../../components/Skeleton';
-import RechazosDespacho from './RechazosDespacho';
 
 // ── Design tokens ─────────────────────────────────────────────────
 const T = {
@@ -101,19 +100,13 @@ function MetricCard({ label, value, accent }) {
   );
 }
 
-// ── Internal nav items ─────────────────────────────────────────────
-const NAV_ITEMS = [
-  { key: 'despachos', icon: '📦', label: 'Despachos Locales' },
-  { key: 'rechazos',  icon: '⚠️', label: 'Rechazos' },
-];
-
 // ── Main component ────────────────────────────────────────────────
 export default function VentasGT() {
   const toast = useToast();
-  const [section, setSection] = useState('despachos');
 
   const { data, loading }              = useCollection('vgtVentas', { orderField: 'fecha', orderDir: 'desc', limit: 300 });
   const { data: cotData }              = useCollection('cotizadorRapido', { orderField: 'fecha', orderDir: 'desc', limit: 200 });
+  const { data: clientesData }         = useCollection('clientes', { orderField: 'nombre', limit: 300 });
   const { productos: catalogo, loading: loadProd } = useProductosCatalogo();
   const { add, remove, saving }        = useWrite('vgtVentas');
 
@@ -209,40 +202,11 @@ export default function VentasGT() {
     <div style={{ fontFamily: 'inherit', maxWidth: 1100 }}>
       {/* Módulo header */}
       <div style={{ marginBottom: 20 }}>
-        <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, color: T.textDark }}>Despachos — Locales Guatemala</h2>
+        <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, color: T.textDark }}>Despachos GT</h2>
         <p style={{ margin: '4px 0 0', fontSize: '.83rem', color: T.textMid }}>
-          Mercado mayorista · distribuidores · restaurantes · rechazos
+          Registro de ventas — mercado mayorista · distribuidores · restaurantes
         </p>
       </div>
-
-      {/* Internal sidebar nav */}
-      <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
-        <nav style={{ flexShrink: 0, width: 180, background: '#fff', borderRadius: 10,
-          border: `1px solid ${T.border}`, padding: '8px 0', position: 'sticky', top: 70 }}>
-          {NAV_ITEMS.map(n => {
-            const active = section === n.key;
-            return (
-              <button key={n.key} onClick={() => setSection(n.key)} style={{
-                display: 'flex', alignItems: 'center', gap: 9,
-                width: '100%', padding: '10px 16px', border: 'none',
-                background: active ? 'rgba(27,94,32,.08)' : 'transparent',
-                borderLeft: `3px solid ${active ? T.primary : 'transparent'}`,
-                color: active ? T.primary : T.textMid,
-                fontWeight: active ? 700 : 500, fontSize: '.85rem',
-                cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
-                transition: 'all .12s',
-              }}>
-                <span>{n.icon}</span>
-                <span>{n.label}</span>
-              </button>
-            );
-          })}
-        </nav>
-
-        {/* Content */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          {section === 'rechazos' && <RechazosDespacho />}
-          {section === 'despachos' && (<>
 
       {/* Metrics */}
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 24 }}>
@@ -299,7 +263,12 @@ export default function VentasGT() {
         {/* Base fields */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 14, marginBottom: 14 }}>
           <label style={LS}>Fecha<input type="date" value={form.fecha} onChange={e => s('fecha', e.target.value)} style={IS} /></label>
-          <label style={LS}>Comprador / Negocio<input value={form.comprador} onChange={e => s('comprador', e.target.value)} placeholder="Nombre o mercado" style={IS} /></label>
+          <label style={LS}>Comprador / Negocio
+            <input list="clientes-gt-list" value={form.comprador} onChange={e => s('comprador', e.target.value)} placeholder="Nombre o mercado" style={IS} />
+            <datalist id="clientes-gt-list">
+              {(clientesData || []).map(c => <option key={c.id} value={c.nombre} />)}
+            </datalist>
+          </label>
           <label style={LS}>Telefono / Referencia<input value={form.tel} onChange={e => s('tel', e.target.value)} placeholder="Tel. o referencia" style={IS} /></label>
         </div>
 
@@ -470,9 +439,6 @@ export default function VentasGT() {
           </div>
         )}
       </div>
-          </>)}
-        </div>{/* /content */}
-      </div>{/* /flex layout */}
     </div>
   );
 }

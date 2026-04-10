@@ -39,7 +39,14 @@ export default function EstadoCuenta({ proveedor, movimientos, resumen, desde, h
       <style>{`
         @media print {
           .no-print { display: none !important; }
-          .print-page { margin: 0; padding: 0; box-shadow: none !important; }
+          .print-page {
+            position: static !important;
+            overflow: visible !important;
+            margin: 0 !important;
+            padding: 20px 32px !important;
+            box-shadow: none !important;
+            z-index: auto !important;
+          }
           body { background: white !important; }
         }
       `}</style>
@@ -162,6 +169,13 @@ export default function EstadoCuenta({ proveedor, movimientos, resumen, desde, h
                     </td>
                     <td style={{ padding: '7px 10px', color: T.textMid }}>
                       {m.descripcion || (m.tipo === 'recepcion' ? m.producto : m.tipo === 'pago' ? `${m.metodoPago} ${m.referencia || ''}`.trim() : m.resolucion) || '—'}
+                      {m.fotoUrl && (
+                        <a href={m.fotoUrl} target="_blank" rel="noreferrer">
+                          <img src={m.fotoUrl} alt="foto"
+                            style={{ display: 'block', marginTop: 4, maxWidth: 80, maxHeight: 60,
+                              objectFit: 'cover', borderRadius: 4, border: '1px solid #E0E0E0' }} />
+                        </a>
+                      )}
                     </td>
                     <td style={{ padding: '7px 10px', textAlign: 'right', color: T.textDark, fontSize: '11px' }}>
                       {cantStr}

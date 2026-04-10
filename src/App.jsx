@@ -35,7 +35,6 @@ import Walmart from './modules/walmart/Walmart';
 
 // Finanzas
 import GastosUnificado from './modules/gastos/GastosUnificado';
-import RecepcionProducto from './modules/recepcion/RecepcionProducto';
 import AnticiposMX from './modules/finanzas/AnticiposMX';
 import CotizadorRapido from './modules/cotizador/CotizadorRapido';
 import CotizadorLista   from './modules/cotizador/CotizadorLista';
@@ -50,6 +49,9 @@ import Personal from './modules/personal/Personal';
 
 // Finanzas — Cuentas Proveedores
 import CuentasProveedores from './modules/cuentasProveedores/CuentasProveedores';
+
+// CxC — Cuentas Clientes
+import CuentasClientes from './modules/cuentasClientes/CuentasClientes';
 
 // Sistema
 import Guatecompras from './modules/guatecompras/Guatecompras';
@@ -108,7 +110,7 @@ export default function App() {
 
           {/* Inventario */}
           <Route path="stock"                  element={<StockVivo />} />
-          <Route path="recepcion"              element={<RecepcionProducto />} />
+          <Route path="recepcion"              element={<Navigate to="/inventario/entrada" replace />} />
           <Route path="inventario/entrada"     element={<EntradaBodega />} />
           <Route path="inventario/salida"      element={<SalidaBodega />} />
           <Route path="inventario/proveedores" element={<Navigate to="/admin" replace />} />
@@ -131,6 +133,9 @@ export default function App() {
 
           {/* Cuentas Proveedores */}
           <Route path="cuentas-proveedores"    element={<CuentasProveedores />} />
+
+          {/* Cuentas Clientes CxC */}
+          <Route path="cuentas-clientes"       element={<CuentasClientes />} />
 
           {/* Personal */}
           <Route path="personal"               element={<Personal />} />

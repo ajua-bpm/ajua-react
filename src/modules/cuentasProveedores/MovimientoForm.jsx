@@ -1,6 +1,6 @@
 // MovimientoForm.jsx — Modal para registrar recepción / pago / rechazo en cuenta proveedor
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useProductosCatalogo } from '../../hooks/useMainData';
 
 const T = {
@@ -73,11 +73,27 @@ export default function MovimientoForm({ proveedorNombre, movimientos = [], init
   const [valorRechazo,setValorRechazo]= useState(initialData?.valorRechazo != null ? String(initialData.valorRechazo) : '');
   const [resolucion,  setResolucion]  = useState(initialData?.resolucion  || 'devolucion');
 
+  // Foto — file local + preview; fotoUrl = URL ya guardada (edición)
+  const [fotoFile,    setFotoFile]    = useState(null);          // File objeto nuevo
+  const [fotoPreview, setFotoPreview] = useState(initialData?.fotoUrl || null); // base64 o URL existente
+  const fotoRef = useRef(null);
+
   // Auto-calcular totalBruto en recepción
   const calcTotal = (cant, precio) => {
     const t = (Number(cant) || 0) * (Number(precio) || 0);
     setTotalBruto(t > 0 ? t.toFixed(2) : '');
   };
+
+  const handleFoto = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setFotoFile(file);
+    const reader = new FileReader();
+    reader.onload = ev => setFotoPreview(ev.target.result);
+    reader.readAsDataURL(file);
+  };
+
+  const quitarFoto = () => { setFotoFile(null); setFotoPreview(null); if (fotoRef.current) fotoRef.current.value = ''; };
 
   const recepciones = movimientos.filter(m => m.tipo === 'recepcion');
 
@@ -92,7 +108,7 @@ export default function MovimientoForm({ proveedorNombre, movimientos = [], init
 
   const handleConfirm = () => {
     if (!canConfirm) return;
-    const base = { tipo, fecha, descripcion: descripcion.trim(), notas: notas.trim(), motivoEdit: motivoEdit.trim() };
+    const base = { tipo, fecha, descripcion: descripcion.trim(), notas: notas.trim(), motivoEdit: motivoEdit.trim(), _fotoFile: fotoFile };
 
     if (tipo === 'recepcion') {
       onConfirm({
@@ -286,6 +302,54 @@ export default function MovimientoForm({ proveedorNombre, movimientos = [], init
               </select>
             </Field>
           </>)}
+
+          {/* ── FOTO (recepción y rechazo) ── */}
+          {(tipo === 'recepcion' || tipo === 'rechazo') && (
+            <Field label={tipo === 'recepcion' ? '📷 Foto de recepción (opcional)' : '📷 Foto de evidencia (opcional)'}>
+              {fotoPreview ? (
+                <div style={{ position: 'relative', display: 'inline-block' }}>
+                  <img
+                    src={fotoPreview}
+                    alt="Foto"
+                    style={{ width: '100%', maxHeight: 200, objectFit: 'cover',
+                      borderRadius: 8, border: `1.5px solid ${T.border}`, display: 'block' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={quitarFoto}
+                    style={{
+                      position: 'absolute', top: 6, right: 6,
+                      background: 'rgba(0,0,0,.55)', color: '#fff',
+                      border: 'none', borderRadius: '50%',
+                      width: 26, height: 26, cursor: 'pointer',
+                      fontWeight: 700, fontSize: '.8rem', lineHeight: 1,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>✕</button>
+                </div>
+              ) : (
+                <div
+                  onClick={() => fotoRef.current?.click()}
+                  style={{
+                    border: `2px dashed ${T.border}`, borderRadius: 8,
+                    padding: '24px 16px', textAlign: 'center',
+                    cursor: 'pointer', color: T.textMid, fontSize: '.85rem',
+                    background: '#FAFAFA',
+                  }}>
+                  <div style={{ fontSize: '2rem', marginBottom: 4 }}>📷</div>
+                  <div style={{ fontWeight: 600 }}>Toca para adjuntar foto</div>
+                  <div style={{ fontSize: '.75rem', marginTop: 2 }}>JPG, PNG, WebP · máx 10 MB</div>
+                </div>
+              )}
+              <input
+                ref={fotoRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={handleFoto}
+                style={{ display: 'none' }}
+              />
+            </Field>
+          )}
 
           {/* Descripción / notas */}
           <Field label="Descripción">

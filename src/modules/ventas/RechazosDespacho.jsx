@@ -1,7 +1,8 @@
 // RechazosDespacho.jsx — Gestión de rechazos de despachos locales
-// Bultos / cliente / precio estimado / comisiones / pago-crédito / PDF
+// Bultos / cliente / precio estimado / comisiones / pago-crédito / PDF / editar / reporte
 
 import { useState, useEffect, useMemo, useRef } from 'react';
+import html2canvas from 'html2canvas';
 import { useCollection, useWrite } from '../../hooks/useFirestore';
 import { useProductosCatalogo } from '../../hooks/useMainData';
 import { useToast } from '../../components/Toast';
@@ -33,7 +34,125 @@ const BLANK = {
   obs: '',
 };
 
-// ── PDF component ──────────────────────────────────────────────────────
+// ── Boleta compartible WhatsApp ───────────────────────────────────────
+function TarjetaRechazo({ rec }) {
+  const cliente  = rec.proveedorNombre || rec.clienteNuevo || '—';
+  const total    = (rec.productos || []).reduce((s, p) => s + (Number(p.bultos)||0)*(Number(p.precioEst)||0), 0);
+  const com1     = total * ((Number(rec.vendedor1Pct)||0)/100);
+  const com2     = total * ((Number(rec.vendedor2Pct)||0)/100);
+  const neto     = total - com1 - com2;
+  const fmtFechaLong = s => s ? new Date(s+'T12:00:00').toLocaleDateString('es-GT',{weekday:'long',day:'2-digit',month:'long',year:'numeric'}) : '—';
+
+  return (
+    <div style={{ width:360, background:'#fff', borderRadius:16, boxShadow:'0 4px 24px rgba(0,0,0,.18)', fontFamily:'Arial, sans-serif', overflow:'hidden', border:`2px solid ${T.warn}` }}>
+      {/* Header */}
+      <div style={{ background:'#1B5E20', padding:'14px 18px', display:'flex', alignItems:'center', gap:10 }}>
+        <div style={{ fontWeight:900, fontSize:'1.4rem', color:'#fff', letterSpacing:2 }}>AJÚA</div>
+        <div style={{ marginLeft:'auto' }}>
+          <span style={{ background:'#FFF3E0', color:T.warn, fontWeight:800, fontSize:'.75rem', padding:'3px 10px', borderRadius:99, letterSpacing:1 }}>
+            ⚠️ RECHAZO
+          </span>
+        </div>
+      </div>
+      {/* Cuerpo */}
+      <div style={{ padding:'16px 18px' }}>
+        <div style={{ fontSize:'.75rem', color:'#888', marginBottom:2, textTransform:'uppercase', letterSpacing:'.08em' }}>Cliente / Comprador</div>
+        <div style={{ fontWeight:800, fontSize:'1rem', color:'#1A1A18', marginBottom:12 }}>{cliente}</div>
+        <div style={{ fontSize:'.72rem', color:'#888', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:2 }}>Fecha</div>
+        <div style={{ fontWeight:700, color:'#1A1A18', marginBottom:14 }}>{fmtFechaLong(rec.fecha)}</div>
+
+        {/* Productos */}
+        <div style={{ background:'#F5F5F5', borderRadius:8, padding:'8px 12px', marginBottom:14 }}>
+          {(rec.productos||[]).filter(p=>p.producto).map((p,i) => {
+            const sub = (Number(p.bultos)||0)*(Number(p.precioEst)||0);
+            return (
+              <div key={i} style={{ display:'flex', justifyContent:'space-between', fontSize:'.8rem', padding:'3px 0', borderBottom:i<rec.productos.length-1?'1px solid #E0E0E0':'none' }}>
+                <span style={{ fontWeight:600, color:'#1A1A18' }}>{p.producto} <span style={{ fontWeight:400, color:'#888' }}>{p.bultos} {p.unidad}</span></span>
+                <span style={{ fontWeight:700, color:T.warn }}>{fmtQ(sub)}</span>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Comisiones si hay */}
+        {(rec.vendedor1Nombre||rec.vendedor2Nombre) && (
+          <div style={{ fontSize:'.78rem', color:'#888', marginBottom:10 }}>
+            {rec.vendedor1Nombre && <div>{rec.vendedor1Nombre} ({rec.vendedor1Pct}%): <strong style={{color:T.danger}}>{fmtQ(com1)}</strong></div>}
+            {rec.vendedor2Nombre && <div>{rec.vendedor2Nombre} ({rec.vendedor2Pct}%): <strong style={{color:T.danger}}>{fmtQ(com2)}</strong></div>}
+          </div>
+        )}
+
+        {/* Pago */}
+        {rec.formaPago && (
+          <div style={{ fontSize:'.78rem', color:'#888', marginBottom:14 }}>
+            Pago: <strong style={{ color:'#1A1A18' }}>{rec.formaPago}{rec.diasCredito>0?` (${rec.diasCredito} días)`:''}</strong>
+          </div>
+        )}
+
+        {/* Monto */}
+        <div style={{ paddingTop:14, borderTop:'1.5px solid #E0E0E0' }}>
+          {(com1+com2)>0 && (
+            <div style={{ display:'flex', justifyContent:'space-between', fontSize:'.82rem', color:'#888', marginBottom:4 }}>
+              <span>Total estimado</span><span style={{ fontWeight:700, color:T.warn }}>{fmtQ(total)}</span>
+            </div>
+          )}
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline' }}>
+            <span style={{ fontSize:'.68rem', color:'#888', textTransform:'uppercase', letterSpacing:'.08em' }}>Neto a recibir</span>
+            <span style={{ fontSize:'1.6rem', fontWeight:900, color:'#1B5E20' }}>{fmtQ(neto)}</span>
+          </div>
+        </div>
+      </div>
+      {/* Footer */}
+      <div style={{ background:'#F5F5F3', padding:'8px 18px', fontSize:'.7rem', color:'#AAA', textAlign:'center' }}>
+        AGROINDUSTRIA AJÚA · agroajua@gmail.com
+      </div>
+    </div>
+  );
+}
+
+function BtnCompartirRechazo({ rec }) {
+  const cardRef = useRef(null);
+  const [gen, setGen] = useState(false);
+
+  const compartir = async () => {
+    if (!cardRef.current) return;
+    setGen(true);
+    try {
+      const canvas = await html2canvas(cardRef.current, { scale:2, useCORS:true, backgroundColor:'#ffffff' });
+      canvas.toBlob(async (blob) => {
+        if (!blob) return;
+        const file = new File([blob], `rechazo_${rec.fecha}.png`, { type:'image/png' });
+        if (navigator.canShare && navigator.canShare({ files:[file] })) {
+          await navigator.share({ files:[file], title:`AJÚA — Rechazo ${rec.fecha}` });
+        } else {
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url; a.download = `rechazo_${rec.fecha}.png`; a.click();
+          URL.revokeObjectURL(url);
+        }
+        setGen(false);
+      }, 'image/png');
+    } catch { setGen(false); }
+  };
+
+  return (
+    <div>
+      <div style={{ position:'fixed', left:-9999, top:-9999, zIndex:-1 }}>
+        <div ref={cardRef}><TarjetaRechazo rec={rec} /></div>
+      </div>
+      <button onClick={compartir} disabled={gen} style={{
+        padding:'6px 14px', borderRadius:6, border:'1.5px solid #25D366',
+        background:'#fff', color:'#25D366', fontSize:'.78rem', fontWeight:700,
+        cursor: gen ? 'wait' : 'pointer', fontFamily:'inherit',
+        display:'flex', alignItems:'center', gap:5,
+      }}>
+        {gen ? '⏳...' : '📲 Compartir'}
+      </button>
+    </div>
+  );
+}
+
+// ── PDF individual ─────────────────────────────────────────────────────
 function PdfRechazo({ rec, onClose }) {
   const hoy = new Date().toLocaleDateString('es-GT', { day: '2-digit', month: 'long', year: 'numeric' });
   const total    = (rec.productos || []).reduce((s, p) => s + (Number(p.bultos) || 0) * (Number(p.precioEst) || 0), 0);
@@ -45,9 +164,7 @@ function PdfRechazo({ rec, onClose }) {
   return (
     <>
       <style>{`@media print { .no-print { display:none!important; } body { background:#fff!important; } }`}</style>
-      {/* Backdrop */}
       <div className="no-print" style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.55)', zIndex:3000 }} />
-      {/* Botones */}
       <div className="no-print" style={{ position:'fixed', top:16, right:16, display:'flex', gap:10, zIndex:3100 }}>
         <button onClick={() => window.print()} style={{ padding:'9px 18px', borderRadius:8, border:'none', background:T.primary, color:'#fff', fontWeight:700, fontSize:'.9rem', cursor:'pointer' }}>
           🖨️ Imprimir / PDF
@@ -56,10 +173,7 @@ function PdfRechazo({ rec, onClose }) {
           ✕ Cerrar
         </button>
       </div>
-      {/* Documento */}
       <div style={{ position:'fixed', inset:0, background:'#fff', zIndex:3050, overflowY:'auto', padding:'40px 48px', fontFamily:'Georgia, serif', color:T.textDark, fontSize:'13px', lineHeight:1.6 }}>
-
-        {/* Header */}
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:20, borderBottom:`3px solid ${T.warn}`, paddingBottom:14 }}>
           <div>
             <div style={{ fontFamily:'Arial', fontSize:'1.5rem', fontWeight:900, letterSpacing:3, color:T.primary }}>AJÚA</div>
@@ -71,23 +185,19 @@ function PdfRechazo({ rec, onClose }) {
             <div style={{ fontSize:'11px', color:T.textMid }}>Emitido: {hoy}</div>
           </div>
         </div>
-
-        {/* Cliente */}
         <div style={{ background:'#F9F9F7', border:`1px solid ${T.border}`, borderRadius:6, padding:'10px 16px', marginBottom:20, display:'grid', gridTemplateColumns:'1fr 1fr', gap:'4px 24px' }}>
           <div><span style={{ fontWeight:700, fontSize:'11px', color:T.textMid, textTransform:'uppercase' }}>Cliente / Comprador: </span>{cliente}</div>
           <div><span style={{ fontWeight:700, fontSize:'11px', color:T.textMid, textTransform:'uppercase' }}>Forma de pago: </span>{rec.formaPago}</div>
           {rec.diasCredito > 0 && <div><span style={{ fontWeight:700, fontSize:'11px', color:T.textMid, textTransform:'uppercase' }}>Crédito: </span>{rec.diasCredito} días</div>}
           {rec.obs && <div style={{ gridColumn:'1/-1' }}><span style={{ fontWeight:700, fontSize:'11px', color:T.textMid, textTransform:'uppercase' }}>Obs: </span>{rec.obs}</div>}
         </div>
-
-        {/* Tabla productos */}
         <div style={{ marginBottom:24 }}>
           <div style={{ fontFamily:'Arial', fontWeight:700, fontSize:'.75rem', textTransform:'uppercase', letterSpacing:'.1em', color:T.primary, marginBottom:8 }}>Detalle de Productos</div>
           <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'12px' }}>
             <thead>
               <tr style={{ background:'#F5F5F5', borderBottom:`2px solid ${T.border}` }}>
                 {['Producto','Bultos','Unidad','Precio Est.','Subtotal'].map(h => (
-                  <th key={h} style={{ padding:'7px 10px', textAlign: h === 'Bultos' || h === 'Precio Est.' || h === 'Subtotal' ? 'right' : 'left', fontSize:'10px', fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:T.textMid }}>{h}</th>
+                  <th key={h} style={{ padding:'7px 10px', textAlign: ['Bultos','Precio Est.','Subtotal'].includes(h) ? 'right' : 'left', fontSize:'10px', fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:T.textMid }}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -107,14 +217,12 @@ function PdfRechazo({ rec, onClose }) {
             </tbody>
           </table>
         </div>
-
-        {/* Resumen financiero */}
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:24, marginBottom:32 }}>
           <div style={{ border:`1px solid ${T.border}`, borderRadius:6, padding:'12px 16px' }}>
             <div style={{ fontWeight:700, fontSize:'11px', textTransform:'uppercase', color:T.textMid, marginBottom:8 }}>Comisiones</div>
             {rec.vendedor1Nombre && <div style={{ display:'flex', justifyContent:'space-between', fontSize:'12px', marginBottom:4 }}><span>{rec.vendedor1Nombre} ({rec.vendedor1Pct}%)</span><strong>{fmtQ(com1)}</strong></div>}
             {rec.vendedor2Nombre && <div style={{ display:'flex', justifyContent:'space-between', fontSize:'12px', marginBottom:4 }}><span>{rec.vendedor2Nombre} ({rec.vendedor2Pct}%)</span><strong>{fmtQ(com2)}</strong></div>}
-            {!rec.vendedor1Nombre && !rec.vendedor2Nombre && <div style={{ fontSize:'12px', color:T.textMid }}>Sin comisiones registradas</div>}
+            {!rec.vendedor1Nombre && !rec.vendedor2Nombre && <div style={{ fontSize:'12px', color:T.textMid }}>Sin comisiones</div>}
           </div>
           <div style={{ border:`1px solid ${T.border}`, borderRadius:6, padding:'12px 16px' }}>
             <div style={{ display:'flex', justifyContent:'space-between', fontSize:'12px', marginBottom:4 }}><span>Total estimado</span><strong>{fmtQ(total)}</strong></div>
@@ -124,8 +232,6 @@ function PdfRechazo({ rec, onClose }) {
             </div>
           </div>
         </div>
-
-        {/* Firmas */}
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:40, marginTop:48 }}>
           {['Elaborado / AJÚA', rec.vendedor1Nombre || 'Vendedor 1', cliente].map(l => (
             <div key={l} style={{ textAlign:'center' }}>
@@ -133,15 +239,163 @@ function PdfRechazo({ rec, onClose }) {
             </div>
           ))}
         </div>
-
-        {/* Botones dentro del doc */}
         <div className="no-print" style={{ marginTop:32, display:'flex', gap:10, justifyContent:'center' }}>
-          <button onClick={() => window.print()} style={{ padding:'10px 24px', borderRadius:8, border:'none', background:T.primary, color:'#fff', fontWeight:700, cursor:'pointer', fontFamily:'Arial' }}>
-            🖨️ Imprimir / PDF
-          </button>
-          <button onClick={onClose} style={{ padding:'10px 20px', borderRadius:8, border:`1.5px solid ${T.border}`, background:'#fff', color:T.textMid, fontWeight:600, cursor:'pointer', fontFamily:'Arial' }}>
-            ✕ Cerrar
-          </button>
+          <button onClick={() => window.print()} style={{ padding:'10px 24px', borderRadius:8, border:'none', background:T.primary, color:'#fff', fontWeight:700, cursor:'pointer', fontFamily:'Arial' }}>🖨️ Imprimir / PDF</button>
+          <button onClick={onClose} style={{ padding:'10px 20px', borderRadius:8, border:`1.5px solid ${T.border}`, background:'#fff', color:T.textMid, fontWeight:600, cursor:'pointer', fontFamily:'Arial' }}>✕ Cerrar</button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ── PDF reporte consolidado ────────────────────────────────────────────
+function PdfReporte({ rechazos, filtCliente, filtDesde, filtHasta, onClose }) {
+  const hoy = new Date().toLocaleDateString('es-GT', { day: '2-digit', month: 'long', year: 'numeric' });
+
+  const totEst      = rechazos.reduce((s, r) => s + (r.totalEst || 0), 0);
+  const totCom      = rechazos.reduce((s, r) => s + (r.comision1 || 0) + (r.comision2 || 0), 0);
+  const totNeto     = rechazos.reduce((s, r) => s + (r.neto || 0), 0);
+  const totPend     = rechazos.filter(r => r.estadoCobro === 'pendiente').reduce((s, r) => s + (r.neto || 0), 0);
+
+  const filtroDesc = [
+    filtCliente && `Cliente: ${filtCliente}`,
+    (filtDesde || filtHasta) && `Período: ${filtDesde || '—'} al ${filtHasta || '—'}`,
+  ].filter(Boolean).join(' · ');
+
+  return (
+    <>
+      <style>{`@media print { .no-print { display:none!important; } body { background:#fff!important; } }`}</style>
+      <div className="no-print" style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.55)', zIndex:3000 }} />
+      <div className="no-print" style={{ position:'fixed', top:16, right:16, display:'flex', gap:10, zIndex:3100 }}>
+        <button onClick={() => window.print()} style={{ padding:'9px 18px', borderRadius:8, border:'none', background:T.primary, color:'#fff', fontWeight:700, fontSize:'.9rem', cursor:'pointer' }}>🖨️ Imprimir / PDF</button>
+        <button onClick={onClose} style={{ padding:'9px 14px', borderRadius:8, border:`1.5px solid ${T.border}`, background:'#fff', color:T.textMid, fontWeight:600, fontSize:'.9rem', cursor:'pointer' }}>✕ Cerrar</button>
+      </div>
+      <div style={{ position:'fixed', inset:0, background:'#fff', zIndex:3050, overflowY:'auto', padding:'40px 48px', fontFamily:'Georgia, serif', color:T.textDark, fontSize:'12px', lineHeight:1.5 }}>
+
+        {/* Header */}
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:20, borderBottom:`3px solid ${T.primary}`, paddingBottom:14 }}>
+          <div>
+            <div style={{ fontFamily:'Arial', fontSize:'1.5rem', fontWeight:900, letterSpacing:3, color:T.primary }}>AJÚA</div>
+            <div style={{ fontSize:'11px', color:T.textMid }}>AGROINDUSTRIA AJÚA · Guatemala</div>
+          </div>
+          <div style={{ textAlign:'right' }}>
+            <div style={{ fontFamily:'Arial', fontSize:'1.1rem', fontWeight:700 }}>REPORTE DE RECHAZOS</div>
+            {filtroDesc && <div style={{ fontSize:'11px', color:T.warn, fontWeight:700, marginTop:2 }}>{filtroDesc}</div>}
+            <div style={{ fontSize:'11px', color:T.textMid, marginTop:2 }}>Emitido: {hoy}</div>
+            <div style={{ fontSize:'11px', color:T.textMid }}>{rechazos.length} registro(s)</div>
+          </div>
+        </div>
+
+        {/* Resumen métricas */}
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10, marginBottom:24 }}>
+          {[
+            { label:'Total Estimado',   value: totEst,  color:'#1565C0' },
+            { label:'Total Comisiones', value: totCom,  color: T.danger },
+            { label:'Total Neto',       value: totNeto, color: T.primary },
+            { label:'Pendiente Cobro',  value: totPend, color: T.warn, bold: true },
+          ].map(c => (
+            <div key={c.label} style={{ border:`1px solid ${T.border}`, borderRadius:6, padding:'10px 12px', textAlign:'center' }}>
+              <div style={{ fontSize:'10px', textTransform:'uppercase', letterSpacing:'.06em', color:T.textMid, marginBottom:4 }}>{c.label}</div>
+              <div style={{ fontWeight: c.bold ? 800 : 700, fontSize:'.95rem', color: c.color, fontFamily:'Arial' }}>{fmtQ(c.value)}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Tabla principal */}
+        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'11px', marginBottom:32 }}>
+          <thead>
+            <tr style={{ background:'#F5F5F5', borderBottom:`2px solid ${T.border}` }}>
+              {['Fecha','Cliente','Productos','Est. Q','Comis. Q','Neto Q','Pago','Estado'].map(h => (
+                <th key={h} style={{ padding:'7px 8px', textAlign: ['Est. Q','Comis. Q','Neto Q'].includes(h) ? 'right' : 'left', fontSize:'9px', fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:T.textMid }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rechazos.map((r, i) => {
+              const cliente  = r.proveedorNombre || r.clienteNuevo || '—';
+              const prodStr  = (r.productos || []).map(p => `${p.producto} ${p.bultos}${p.unidad}`).join(', ');
+              const comTotal = (r.comision1 || 0) + (r.comision2 || 0);
+              const isPend   = r.estadoCobro === 'pendiente';
+              return (
+                <tr key={r.id} style={{ borderBottom:`1px solid ${T.border}`, background: i%2===0?'#fff':'#FAFAFA' }}>
+                  <td style={{ padding:'6px 8px', whiteSpace:'nowrap' }}>{fmtDate(r.fecha)}</td>
+                  <td style={{ padding:'6px 8px', fontWeight:600 }}>{cliente}</td>
+                  <td style={{ padding:'6px 8px', color:T.textMid, maxWidth:180, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{prodStr}</td>
+                  <td style={{ padding:'6px 8px', textAlign:'right', color:'#1565C0', fontWeight:600 }}>{fmtQ(r.totalEst)}</td>
+                  <td style={{ padding:'6px 8px', textAlign:'right', color: comTotal > 0 ? T.danger : T.textMid }}>{comTotal > 0 ? fmtQ(comTotal) : '—'}</td>
+                  <td style={{ padding:'6px 8px', textAlign:'right', fontWeight:700, color: (r.neto || 0) >= 0 ? T.primary : T.danger }}>{fmtQ(r.neto)}</td>
+                  <td style={{ padding:'6px 8px' }}>{r.formaPago}{r.diasCredito > 0 ? ` ${r.diasCredito}d` : ''}</td>
+                  <td style={{ padding:'6px 8px' }}>
+                    <span style={{ padding:'2px 6px', borderRadius:99, fontSize:'9px', fontWeight:700,
+                      background: isPend ? '#FFF3E0' : r.estadoCobro === 'liquidado' ? '#E8F5E9' : '#F5F5F5',
+                      color: isPend ? T.warn : r.estadoCobro === 'liquidado' ? T.primary : T.textMid }}>
+                      {isPend ? 'Pendiente' : r.estadoCobro === 'liquidado' ? 'Liquidado' : r.estadoCobro === 'na' ? 'N/A' : r.estadoCobro}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+          <tfoot>
+            <tr style={{ borderTop:`2px solid ${T.primary}`, background:'#F9F9F7' }}>
+              <td colSpan={3} style={{ padding:'8px 8px', fontWeight:700, fontSize:'11px' }}>TOTALES ({rechazos.length} registros)</td>
+              <td style={{ padding:'8px 8px', textAlign:'right', fontWeight:800, color:'#1565C0' }}>{fmtQ(totEst)}</td>
+              <td style={{ padding:'8px 8px', textAlign:'right', fontWeight:800, color: T.danger }}>{fmtQ(totCom)}</td>
+              <td style={{ padding:'8px 8px', textAlign:'right', fontWeight:800, color: T.primary }}>{fmtQ(totNeto)}</td>
+              <td colSpan={2} style={{ padding:'8px 8px', fontSize:'10px', color:T.textMid }}>
+                Pendiente: <strong style={{ color:T.warn }}>{fmtQ(totPend)}</strong>
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+
+        {/* Detalle por registro (si hay pocos) */}
+        {rechazos.length <= 20 && (
+          <div>
+            <div style={{ fontFamily:'Arial', fontWeight:700, fontSize:'.75rem', textTransform:'uppercase', letterSpacing:'.08em', color:T.primary, marginBottom:12, borderBottom:`1px solid ${T.border}`, paddingBottom:6 }}>
+              Detalle por registro
+            </div>
+            {rechazos.map(r => {
+              const cliente = r.proveedorNombre || r.clienteNuevo || '—';
+              const com1v = (r.totalEst || 0) * ((Number(r.vendedor1Pct) || 0) / 100);
+              const com2v = (r.totalEst || 0) * ((Number(r.vendedor2Pct) || 0) / 100);
+              return (
+                <div key={r.id} style={{ marginBottom:16, pageBreakInside:'avoid' }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', background:'#F5F5F5', padding:'6px 10px', borderRadius:'4px 4px 0 0', borderBottom:`1px solid ${T.border}` }}>
+                    <span style={{ fontWeight:700, fontSize:'11px' }}>{fmtDate(r.fecha)} — {cliente}</span>
+                    <span style={{ fontWeight:700, color:T.primary }}>{fmtQ(r.neto)} neto</span>
+                  </div>
+                  <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'10px' }}>
+                    <tbody>
+                      {(r.productos || []).map((p, j) => (
+                        <tr key={j} style={{ borderBottom:`1px solid ${T.border}` }}>
+                          <td style={{ padding:'4px 10px', fontWeight:600 }}>{p.producto}</td>
+                          <td style={{ padding:'4px 10px', color:T.textMid }}>{p.bultos} {p.unidad}</td>
+                          <td style={{ padding:'4px 10px', color:T.textMid }}>{fmtQ(p.precioEst)}/u</td>
+                          <td style={{ padding:'4px 10px', textAlign:'right', fontWeight:700 }}>{fmtQ((Number(p.bultos)||0)*(Number(p.precioEst)||0))}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {(r.vendedor1Nombre || r.vendedor2Nombre) && (
+                    <div style={{ padding:'4px 10px', fontSize:'10px', color:T.textMid, background:'#FAFAFA', borderTop:`1px solid ${T.border}` }}>
+                      {r.vendedor1Nombre && <span style={{ marginRight:16 }}>{r.vendedor1Nombre} ({r.vendedor1Pct}%): {fmtQ(com1v)}</span>}
+                      {r.vendedor2Nombre && <span>{r.vendedor2Nombre} ({r.vendedor2Pct}%): {fmtQ(com2v)}</span>}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <div style={{ marginTop:32, borderTop:`1px solid ${T.border}`, paddingTop:12, fontSize:'10px', color:T.textMid, textAlign:'center' }}>
+          AGROINDUSTRIA AJÚA · agroajua@gmail.com · Reporte generado el {hoy}
+        </div>
+
+        <div className="no-print" style={{ marginTop:24, display:'flex', gap:10, justifyContent:'center' }}>
+          <button onClick={() => window.print()} style={{ padding:'10px 24px', borderRadius:8, border:'none', background:T.primary, color:'#fff', fontWeight:700, cursor:'pointer', fontFamily:'Arial' }}>🖨️ Imprimir / PDF</button>
+          <button onClick={onClose} style={{ padding:'10px 20px', borderRadius:8, border:`1.5px solid ${T.border}`, background:'#fff', color:T.textMid, fontWeight:600, cursor:'pointer', fontFamily:'Arial' }}>✕ Cerrar</button>
         </div>
       </div>
     </>
@@ -151,29 +405,35 @@ function PdfRechazo({ rec, onClose }) {
 // ── Main ──────────────────────────────────────────────────────────────
 export default function RechazosDespacho() {
   const toast = useToast();
+  const formRef = useRef(null);
   const { productos: catProductos } = useProductosCatalogo();
   const { data: rechazos, loading }  = useCollection('vgtRechazos', { orderField: 'fecha', orderDir: 'desc', limit: 300 });
   const { add, remove, update, saving } = useWrite('vgtRechazos');
 
   const [form, setForm]         = useState({ ...BLANK, productos: [{ ...BLANK_PROD }] });
+  const [editId, setEditId]     = useState(null); // null = nuevo, string = editando
   const [proveedores, setProv]  = useState([]);
   const [provSearch, setPS]     = useState('');
-  const [provSugs,   setProvSugs] = useState([]);
-  const [pdfTarget,  setPdf]    = useState(null);
-  const [filtEstado, setFE]     = useState('');   // '' | 'pendiente' | 'liquidado'
-  const [expandId,   setExp]    = useState(null);
+  const [provSugs, setProvSugs] = useState([]);
+  const [pdfTarget, setPdf]     = useState(null);
+  const [showReporte, setShowReporte] = useState(false);
+
+  // Filtros historial
+  const [filtEstado,  setFE]  = useState('');
+  const [filtCliente, setFC]  = useState('');
+  const [filtDesde,   setFD]  = useState('');
+  const [filtHasta,   setFH]  = useState('');
+  const [expandId,    setExp] = useState(null);
   const provRef = useRef(null);
 
   const s = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  // Cargar proveedores una vez
   useEffect(() => {
     getDocs(query(collection(db, 'proveedores'))).then(snap => {
       setProv(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '')));
     }).catch(() => {});
   }, []);
 
-  // Autocomplete proveedor/cliente
   useEffect(() => {
     const q = provSearch.toLowerCase();
     if (!q) { setProvSugs([]); return; }
@@ -196,13 +456,46 @@ export default function RechazosDespacho() {
   const totalEst = useMemo(() =>
     form.productos.reduce((s, p) => s + (Number(p.bultos) || 0) * (Number(p.precioEst) || 0), 0),
   [form.productos]);
-  const com1    = totalEst * ((Number(form.vendedor1Pct) || 0) / 100);
-  const com2    = totalEst * ((Number(form.vendedor2Pct) || 0) / 100);
-  const neto    = totalEst - com1 - com2;
+  const com1 = totalEst * ((Number(form.vendedor1Pct) || 0) / 100);
+  const com2 = totalEst * ((Number(form.vendedor2Pct) || 0) / 100);
+  const neto = totalEst - com1 - com2;
 
   const addProd    = () => s('productos', [...form.productos, { ...BLANK_PROD }]);
-  const removeProd = i => s('productos', form.productos.filter((_, j) => j !== i));
+  const removeProd = i  => s('productos', form.productos.filter((_, j) => j !== i));
   const setProd    = (i, k, v) => s('productos', form.productos.map((p, j) => j === i ? { ...p, [k]: v } : p));
+
+  // Cargar rechazo en formulario para editar
+  const startEdit = (r) => {
+    setForm({
+      fecha:           r.fecha           || today(),
+      proveedorId:     r.proveedorId     || '',
+      proveedorNombre: r.proveedorNombre || '',
+      clienteNuevo:    r.clienteNuevo    || '',
+      productos:       r.productos?.length ? r.productos.map(p => ({
+        producto: p.producto || '',
+        bultos:   p.bultos != null ? String(p.bultos) : '',
+        unidad:   p.unidad  || 'caja',
+        precioEst: p.precioEst != null ? String(p.precioEst) : '',
+      })) : [{ ...BLANK_PROD }],
+      vendedor1Nombre: r.vendedor1Nombre || '',
+      vendedor1Pct:    r.vendedor1Pct != null ? String(r.vendedor1Pct) : '',
+      vendedor2Nombre: r.vendedor2Nombre || '',
+      vendedor2Pct:    r.vendedor2Pct != null ? String(r.vendedor2Pct) : '',
+      formaPago:       r.formaPago   || 'efectivo',
+      diasCredito:     r.diasCredito != null ? String(r.diasCredito) : '',
+      estadoCobro:     r.estadoCobro || 'pendiente',
+      obs:             r.obs         || '',
+    });
+    setPS(r.proveedorNombre || r.clienteNuevo || '');
+    setEditId(r.id);
+    setExp(null);
+    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const cancelEdit = () => {
+    setForm({ ...BLANK, productos: [{ ...BLANK_PROD }] });
+    setPS(''); setProvSugs([]); setEditId(null);
+  };
 
   const handleSave = async () => {
     const cliente = form.proveedorNombre || form.clienteNuevo;
@@ -214,19 +507,22 @@ export default function RechazosDespacho() {
         ...p, bultos: Number(p.bultos) || 0, precioEst: Number(p.precioEst) || 0,
         subtotal: (Number(p.bultos) || 0) * (Number(p.precioEst) || 0),
       })),
-      totalEst: parseFloat(totalEst.toFixed(2)),
-      comision1: parseFloat(com1.toFixed(2)),
-      comision2: parseFloat(com2.toFixed(2)),
-      neto: parseFloat(neto.toFixed(2)),
+      totalEst:    parseFloat(totalEst.toFixed(2)),
+      comision1:   parseFloat(com1.toFixed(2)),
+      comision2:   parseFloat(com2.toFixed(2)),
+      neto:        parseFloat(neto.toFixed(2)),
       diasCredito: parseInt(form.diasCredito) || 0,
       estadoCobro: form.formaPago === 'credito' ? (form.estadoCobro || 'pendiente') : 'na',
-      creadoEn: new Date().toISOString(),
     };
     try {
-      await add(payload);
-      toast('Rechazo registrado');
-      setForm({ ...BLANK, productos: [{ ...BLANK_PROD }] });
-      setPS(''); setProvSugs([]);
+      if (editId) {
+        await update(editId, { ...payload, editadoEn: new Date().toISOString() });
+        toast('Rechazo actualizado');
+      } else {
+        await add({ ...payload, creadoEn: new Date().toISOString() });
+        toast('Rechazo registrado');
+      }
+      cancelEdit();
     } catch { toast('Error al guardar', 'error'); }
   };
 
@@ -237,27 +533,34 @@ export default function RechazosDespacho() {
 
   const handleDelete = async (id) => {
     if (!window.confirm('¿Eliminar este rechazo?')) return;
-    try { await remove(id); toast('Eliminado'); }
+    try { await remove(id); toast('Eliminado'); if (editId === id) cancelEdit(); }
     catch { toast('Error al eliminar', 'error'); }
   };
 
-  // Filtro historial
+  // Filtros historial
   const rechazosVis = useMemo(() => {
-    if (!filtEstado) return rechazos;
-    if (filtEstado === 'pendiente') return rechazos.filter(r => r.estadoCobro === 'pendiente');
-    if (filtEstado === 'liquidado') return rechazos.filter(r => r.estadoCobro === 'liquidado' || r.estadoCobro === 'na');
-    return rechazos;
-  }, [rechazos, filtEstado]);
+    let r = rechazos;
+    if (filtEstado === 'pendiente') r = r.filter(x => x.estadoCobro === 'pendiente');
+    else if (filtEstado === 'liquidado') r = r.filter(x => x.estadoCobro === 'liquidado' || x.estadoCobro === 'na');
+    if (filtCliente) {
+      const q = filtCliente.toLowerCase();
+      r = r.filter(x => (x.proveedorNombre || '').toLowerCase().includes(q) || (x.clienteNuevo || '').toLowerCase().includes(q));
+    }
+    if (filtDesde) r = r.filter(x => (x.fecha || '') >= filtDesde);
+    if (filtHasta) r = r.filter(x => (x.fecha || '') <= filtHasta);
+    return r;
+  }, [rechazos, filtEstado, filtCliente, filtDesde, filtHasta]);
 
   const totalPendiente = useMemo(() => rechazos.filter(r => r.estadoCobro === 'pendiente').reduce((s, r) => s + (r.neto || 0), 0), [rechazos]);
+  const hayFiltros = filtEstado || filtCliente || filtDesde || filtHasta;
 
   return (
     <div>
       {/* Métricas */}
       <div style={{ display:'flex', gap:12, flexWrap:'wrap', marginBottom:20 }}>
         {[
-          { label:'Total rechazos', value: rechazos.length, color: T.textMid },
-          { label:'Pendiente cobro', value: fmtQ(totalPendiente), color: T.warn },
+          { label:'Total rechazos',  value: rechazos.length,        color: T.textMid },
+          { label:'Pendiente cobro', value: fmtQ(totalPendiente),   color: T.warn    },
         ].map(m => (
           <div key={m.label} style={{ ...card, marginBottom:0, flex:'1 1 140px', borderTop:`3px solid ${m.color}`, padding:'14px 18px' }}>
             <div style={{ fontSize:'.7rem', fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:T.textMid, marginBottom:4 }}>{m.label}</div>
@@ -267,16 +570,19 @@ export default function RechazosDespacho() {
       </div>
 
       {/* Formulario */}
-      <div style={{ ...card, borderLeft:`4px solid ${T.warn}` }}>
-        <div style={{ fontWeight:700, fontSize:'.95rem', color:T.textDark, marginBottom:16, paddingBottom:12, borderBottom:`1px solid ${T.border}` }}>
-          Registrar Rechazo
+      <div ref={formRef} style={{ ...card, borderLeft:`4px solid ${editId ? T.info : T.warn}` }}>
+        <div style={{ fontWeight:700, fontSize:'.95rem', color:T.textDark, marginBottom:16, paddingBottom:12, borderBottom:`1px solid ${T.border}`, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+          <span>{editId ? '✏️ Editando rechazo' : 'Registrar Rechazo'}</span>
+          {editId && (
+            <button onClick={cancelEdit} style={{ padding:'5px 12px', borderRadius:6, border:`1.5px solid ${T.border}`, background:'#fff', color:T.textMid, fontWeight:600, fontSize:'.8rem', cursor:'pointer', fontFamily:'inherit' }}>
+              ✕ Cancelar edición
+            </button>
+          )}
         </div>
 
-        {/* Fecha */}
+        {/* Fecha + Cliente */}
         <div style={{ display:'grid', gridTemplateColumns:'160px 1fr', gap:14, marginBottom:14 }}>
           <label style={LS}>Fecha<input type="date" value={form.fecha} onChange={e => s('fecha', e.target.value)} style={IS} /></label>
-
-          {/* Buscar proveedor o cliente nuevo */}
           <div ref={provRef} style={{ position:'relative' }}>
             <label style={LS}>
               Cliente / Comprador
@@ -290,18 +596,13 @@ export default function RechazosDespacho() {
                     style={{ ...IS, borderColor: form.proveedorId ? T.primary : T.border }}
                   />
                   {form.proveedorId && (
-                    <button onClick={clearProv} style={{ position:'absolute', right:8, top:'50%', transform:'translateY(-50%)',
-                      background:'none', border:'none', cursor:'pointer', color:T.textMid, fontSize:'.9rem' }}>✕</button>
+                    <button onClick={clearProv} style={{ position:'absolute', right:8, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', color:T.textMid, fontSize:'.9rem' }}>✕</button>
                   )}
-                  {/* Sugerencias */}
                   {provSugs.length > 0 && (
-                    <div style={{ position:'absolute', top:'100%', left:0, right:0, background:'#fff',
-                      border:`1.5px solid ${T.primary}`, borderTop:'none', borderRadius:'0 0 6px 6px',
-                      boxShadow:'0 4px 12px rgba(0,0,0,.12)', zIndex:200, maxHeight:200, overflowY:'auto' }}>
+                    <div style={{ position:'absolute', top:'100%', left:0, right:0, background:'#fff', border:`1.5px solid ${T.primary}`, borderTop:'none', borderRadius:'0 0 6px 6px', boxShadow:'0 4px 12px rgba(0,0,0,.12)', zIndex:200, maxHeight:200, overflowY:'auto' }}>
                       {provSugs.map(p => (
                         <div key={p.id} onClick={() => selectProv(p)}
-                          style={{ padding:'9px 12px', cursor:'pointer', fontSize:'.88rem',
-                            borderBottom:`1px solid ${T.border}` }}
+                          style={{ padding:'9px 12px', cursor:'pointer', fontSize:'.88rem', borderBottom:`1px solid ${T.border}` }}
                           onMouseEnter={e => e.currentTarget.style.background = '#F5F5F5'}
                           onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
                           <strong>{p.nombre}</strong>
@@ -316,12 +617,8 @@ export default function RechazosDespacho() {
                   )}
                 </div>
               </div>
-              {form.proveedorId && (
-                <span style={{ fontSize:'.72rem', color:T.primary, fontWeight:700 }}>✓ Proveedor vinculado: {form.proveedorNombre}</span>
-              )}
-              {form.clienteNuevo && !form.proveedorId && (
-                <span style={{ fontSize:'.72rem', color:T.info }}>Cliente nuevo: {form.clienteNuevo}</span>
-              )}
+              {form.proveedorId && <span style={{ fontSize:'.72rem', color:T.primary, fontWeight:700 }}>✓ Proveedor vinculado: {form.proveedorNombre}</span>}
+              {form.clienteNuevo && !form.proveedorId && <span style={{ fontSize:'.72rem', color:T.info }}>Cliente nuevo: {form.clienteNuevo}</span>}
             </label>
           </div>
         </div>
@@ -331,16 +628,13 @@ export default function RechazosDespacho() {
           PRODUCTOS (precio estimado — va a mercado, editable)
         </div>
         <div style={{ border:`1px solid ${T.border}`, borderRadius:8, overflow:'hidden', marginBottom:14 }}>
-          <div style={{ display:'grid', gridTemplateColumns:'2fr 80px 80px 110px 90px 28px',
-            background:'#FFF3E0', padding:'8px 10px', fontSize:'.68rem', fontWeight:700,
-            color:T.warn, textTransform:'uppercase', letterSpacing:'.04em' }}>
+          <div style={{ display:'grid', gridTemplateColumns:'2fr 80px 90px 110px 90px 28px', background:'#FFF3E0', padding:'8px 10px', fontSize:'.68rem', fontWeight:700, color:T.warn, textTransform:'uppercase', letterSpacing:'.04em' }}>
             <span>Producto</span><span>Bultos</span><span>Unidad</span><span>Precio est. Q</span><span style={{ textAlign:'right' }}>Subtotal</span><span />
           </div>
           {form.productos.map((p, i) => {
             const sub = (Number(p.bultos) || 0) * (Number(p.precioEst) || 0);
             return (
-              <div key={i} style={{ display:'grid', gridTemplateColumns:'2fr 80px 80px 110px 90px 28px',
-                padding:'6px 10px', borderTop:'1px solid #F0F0F0', alignItems:'center', gap:5 }}>
+              <div key={i} style={{ display:'grid', gridTemplateColumns:'2fr 80px 90px 110px 90px 28px', padding:'6px 10px', borderTop:'1px solid #F0F0F0', alignItems:'center', gap:5 }}>
                 <input type="text" list="rech-prods" value={p.producto}
                   onChange={e => setProd(i, 'producto', e.target.value)}
                   placeholder="Producto..." style={{ ...IS, fontSize:'.82rem', padding:'5px 7px' }} />
@@ -356,7 +650,7 @@ export default function RechazosDespacho() {
                 </select>
                 <input type="number" min="0" step="0.01" value={p.precioEst}
                   onChange={e => setProd(i, 'precioEst', e.target.value)}
-                  placeholder="0.00" style={{ ...IS, fontSize:'.82rem', padding:'5px 7px' }} />
+                  placeholder="0.00" style={{ ...IS, fontSize:'.82rem', padding:'5px 7px', color: T.warn, fontWeight:700 }} />
                 <span style={{ fontSize:'.82rem', fontWeight:700, color:T.warn, textAlign:'right', paddingRight:4 }}>
                   Q {Number(sub).toLocaleString('es-GT', { minimumFractionDigits:0 })}
                 </span>
@@ -375,9 +669,7 @@ export default function RechazosDespacho() {
         </div>
 
         {/* Comisiones */}
-        <div style={{ fontSize:'.62rem', fontWeight:700, textTransform:'uppercase', color:T.primary, letterSpacing:'.08em', marginBottom:10 }}>
-          COMISIONES VENDEDORES
-        </div>
+        <div style={{ fontSize:'.62rem', fontWeight:700, textTransform:'uppercase', color:T.primary, letterSpacing:'.08em', marginBottom:10 }}>COMISIONES VENDEDORES</div>
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(200px, 1fr))', gap:12, marginBottom:14 }}>
           <div style={{ border:`1px solid ${T.border}`, borderRadius:8, padding:'12px 14px' }}>
             <div style={{ fontSize:'.72rem', fontWeight:700, color:T.textMid, marginBottom:8 }}>Vendedor 1</div>
@@ -397,22 +689,16 @@ export default function RechazosDespacho() {
           </div>
         </div>
 
-        {/* Resumen neto */}
         {totalEst > 0 && (
-          <div style={{ background:'#FFF3E0', border:`1px solid #FFCC80`, borderRadius:8, padding:'12px 16px', marginBottom:14,
-            display:'flex', gap:20, flexWrap:'wrap', fontSize:'.88rem' }}>
+          <div style={{ background:'#FFF3E0', border:`1px solid #FFCC80`, borderRadius:8, padding:'12px 16px', marginBottom:14, display:'flex', gap:20, flexWrap:'wrap', fontSize:'.88rem' }}>
             <span>Total estimado: <strong style={{ color:T.warn }}>{fmtQ(totalEst)}</strong></span>
             {(com1 + com2) > 0 && <span style={{ color:T.danger }}>− Comisiones: <strong>{fmtQ(com1 + com2)}</strong></span>}
-            <span style={{ fontWeight:800, color: neto >= 0 ? T.primary : T.danger }}>
-              NETO: <strong>{fmtQ(neto)}</strong>
-            </span>
+            <span style={{ fontWeight:800, color: neto >= 0 ? T.primary : T.danger }}>NETO: <strong>{fmtQ(neto)}</strong></span>
           </div>
         )}
 
-        {/* Pago / Crédito */}
-        <div style={{ fontSize:'.62rem', fontWeight:700, textTransform:'uppercase', color:T.primary, letterSpacing:'.08em', marginBottom:10 }}>
-          PAGO / CRÉDITO
-        </div>
+        {/* Pago */}
+        <div style={{ fontSize:'.62rem', fontWeight:700, textTransform:'uppercase', color:T.primary, letterSpacing:'.08em', marginBottom:10 }}>PAGO / CRÉDITO</div>
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(140px, 1fr))', gap:14, marginBottom:14 }}>
           <label style={LS}>
             Forma de pago
@@ -436,23 +722,29 @@ export default function RechazosDespacho() {
 
         <label style={{ ...LS, marginBottom:16 }}>
           Observaciones
-          <textarea value={form.obs} onChange={e => s('obs', e.target.value)} rows={2}
-            style={{ ...IS, resize:'vertical' }} placeholder="Notas del rechazo..." />
+          <textarea value={form.obs} onChange={e => s('obs', e.target.value)} rows={2} style={{ ...IS, resize:'vertical' }} placeholder="Notas del rechazo..." />
         </label>
 
-        <button onClick={handleSave} disabled={saving}
-          style={{ padding:'11px 28px', background: saving ? '#BDBDBD' : T.warn, color:'#fff', border:'none', borderRadius:6, fontWeight:700, fontSize:'.88rem', cursor: saving ? 'not-allowed' : 'pointer' }}>
-          {saving ? 'Guardando...' : '⚠️ Registrar Rechazo'}
-        </button>
+        <div style={{ display:'flex', gap:10 }}>
+          <button onClick={handleSave} disabled={saving}
+            style={{ padding:'11px 28px', background: saving ? '#BDBDBD' : editId ? T.info : T.warn, color:'#fff', border:'none', borderRadius:6, fontWeight:700, fontSize:'.88rem', cursor: saving ? 'not-allowed' : 'pointer' }}>
+            {saving ? 'Guardando...' : editId ? '💾 Guardar cambios' : '⚠️ Registrar Rechazo'}
+          </button>
+          {editId && (
+            <button onClick={cancelEdit} style={{ padding:'11px 20px', borderRadius:6, border:`1.5px solid ${T.border}`, background:'#fff', color:T.textMid, fontWeight:600, fontSize:'.88rem', cursor:'pointer', fontFamily:'inherit' }}>
+              Cancelar
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Historial */}
       <div style={card}>
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:10, marginBottom:16 }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:10, marginBottom:14 }}>
           <div style={{ fontWeight:700, fontSize:'.9rem', color:T.textDark }}>
-            Historial Rechazos ({rechazosVis.length})
+            Historial Rechazos ({rechazosVis.length}{hayFiltros ? ` de ${rechazos.length}` : ''})
           </div>
-          <div style={{ display:'flex', gap:8 }}>
+          <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
             {['','pendiente','liquidado'].map(v => (
               <button key={v} onClick={() => setFE(v)} style={{
                 padding:'5px 12px', borderRadius:6, fontSize:'.75rem', fontWeight:700, cursor:'pointer', border:'none',
@@ -465,29 +757,60 @@ export default function RechazosDespacho() {
           </div>
         </div>
 
+        {/* Filtros avanzados */}
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 130px 130px auto', gap:10, marginBottom:16, alignItems:'flex-end' }}>
+          <label style={LS}>
+            Filtrar por cliente
+            <input value={filtCliente} onChange={e => setFC(e.target.value)} placeholder="Nombre cliente o proveedor..." style={{ ...IS, fontSize:'.83rem' }} />
+          </label>
+          <label style={LS}>
+            Desde
+            <input type="date" value={filtDesde} onChange={e => setFD(e.target.value)} style={IS} />
+          </label>
+          <label style={LS}>
+            Hasta
+            <input type="date" value={filtHasta} onChange={e => setFH(e.target.value)} style={IS} />
+          </label>
+          <div style={{ display:'flex', gap:8 }}>
+            {hayFiltros && (
+              <button onClick={() => { setFC(''); setFD(''); setFH(''); setFE(''); }}
+                style={{ padding:'8px 12px', borderRadius:6, border:`1.5px solid ${T.border}`, background:'#fff', color:T.textMid, fontWeight:600, fontSize:'.78rem', cursor:'pointer', whiteSpace:'nowrap' }}>
+                ✕ Limpiar
+              </button>
+            )}
+            <button
+              onClick={() => rechazosVis.length > 0 && setShowReporte(true)}
+              disabled={rechazosVis.length === 0}
+              style={{ padding:'8px 14px', borderRadius:6, border:'none', background: rechazosVis.length > 0 ? T.primary : '#BDBDBD', color:'#fff', fontWeight:700, fontSize:'.78rem', cursor: rechazosVis.length > 0 ? 'pointer' : 'not-allowed', whiteSpace:'nowrap' }}>
+              📄 Reporte PDF
+            </button>
+          </div>
+        </div>
+
         {loading ? (
           <div style={{ textAlign:'center', padding:'32px', color:T.textMid }}>Cargando...</div>
         ) : rechazosVis.length === 0 ? (
-          <div style={{ textAlign:'center', padding:'40px', color:T.textMid, fontSize:'.88rem' }}>Sin rechazos registrados.</div>
+          <div style={{ textAlign:'center', padding:'40px', color:T.textMid, fontSize:'.88rem' }}>Sin rechazos para los filtros seleccionados.</div>
         ) : rechazosVis.map((r, i) => {
           const open    = expandId === r.id;
           const cliente = r.proveedorNombre || r.clienteNuevo || '—';
           const prodStr = (r.productos || []).map(p => `${p.producto} (${p.bultos} ${p.unidad})`).join(', ');
           const isPend  = r.estadoCobro === 'pendiente';
+          const isEditing = editId === r.id;
 
           return (
-            <div key={r.id} style={{ border:`1px solid ${T.border}`, borderRadius:10, marginBottom:8, overflow:'hidden' }}>
-              {/* Fila principal */}
+            <div key={r.id} style={{ border:`1.5px solid ${isEditing ? T.info : T.border}`, borderRadius:10, marginBottom:8, overflow:'hidden' }}>
               <div onClick={() => setExp(open ? null : r.id)} style={{
                 padding:'11px 14px', display:'flex', alignItems:'center', gap:10,
-                cursor:'pointer', background: i%2===0 ? '#fff' : T.bg,
+                cursor:'pointer', background: isEditing ? '#E3F2FD' : i%2===0 ? '#fff' : T.bg,
               }}>
                 <div style={{ flex:1, minWidth:0 }}>
                   <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
                     <span style={{ fontSize:'.78rem', color:T.textMid, whiteSpace:'nowrap' }}>{fmtDate(r.fecha)}</span>
                     <span style={{ fontWeight:700, fontSize:'.85rem', color:T.textDark }}>{cliente}</span>
-                    {isPend && <span style={{ background:'#FFF3E0', color:T.warn, borderRadius:99, padding:'1px 8px', fontSize:'.68rem', fontWeight:700 }}>⏳ Pendiente</span>}
-                    {r.estadoCobro === 'liquidado' && <span style={{ background:'#E8F5E9', color:T.primary, borderRadius:99, padding:'1px 8px', fontSize:'.68rem', fontWeight:700 }}>✅ Liquidado</span>}
+                    {isEditing && <span style={{ background:'#E3F2FD', color:T.info, borderRadius:99, padding:'1px 8px', fontSize:'.68rem', fontWeight:700 }}>✏️ Editando</span>}
+                    {!isEditing && isPend && <span style={{ background:'#FFF3E0', color:T.warn, borderRadius:99, padding:'1px 8px', fontSize:'.68rem', fontWeight:700 }}>⏳ Pendiente</span>}
+                    {!isEditing && r.estadoCobro === 'liquidado' && <span style={{ background:'#E8F5E9', color:T.primary, borderRadius:99, padding:'1px 8px', fontSize:'.68rem', fontWeight:700 }}>✅ Liquidado</span>}
                   </div>
                   <div style={{ fontSize:'.75rem', color:T.textMid, marginTop:2, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{prodStr}</div>
                 </div>
@@ -498,7 +821,6 @@ export default function RechazosDespacho() {
                 <span style={{ color:T.textMid, fontSize:'.8rem' }}>{open ? '▲' : '▼'}</span>
               </div>
 
-              {/* Detalle expandido */}
               {open && (
                 <div style={{ background:T.bg, borderTop:`1px solid ${T.border}`, padding:'14px 16px' }}>
                   <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(180px, 1fr))', gap:'6px 20px', fontSize:'.82rem', color:T.textMid, marginBottom:12 }}>
@@ -510,21 +832,24 @@ export default function RechazosDespacho() {
                     {r.obs && <div style={{ gridColumn:'1/-1' }}>Obs: <em>{r.obs}</em></div>}
                   </div>
 
-                  {/* Productos detalle */}
                   <div style={{ marginBottom:12 }}>
                     {(r.productos || []).map((p, j) => (
                       <div key={j} style={{ display:'flex', gap:12, fontSize:'.8rem', padding:'4px 0', borderBottom:`1px solid ${T.border}` }}>
                         <span style={{ flex:2, fontWeight:600, color:T.textDark }}>{p.producto}</span>
                         <span style={{ flex:1 }}>{p.bultos} {p.unidad}</span>
-                        <span style={{ flex:1 }}>{fmtQ(p.precioEst)}/u</span>
+                        <span style={{ flex:1, color:T.warn, fontWeight:700 }}>{fmtQ(p.precioEst)}/u</span>
                         <span style={{ flex:1, fontWeight:700, color:T.warn, textAlign:'right' }}>{fmtQ(p.subtotal || (p.bultos * p.precioEst))}</span>
                       </div>
                     ))}
                   </div>
 
                   <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-                    <button onClick={() => setPdf(r)} style={{ padding:'6px 14px', borderRadius:6, border:`1px solid ${T.primary}`, background:'#fff', color:T.primary, fontSize:'.78rem', fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>
+                    <BtnCompartirRechazo rec={r} />
+                    <button onClick={() => setPdf(r)} style={{ padding:'6px 14px', borderRadius:6, border:`1px solid ${T.primary}`, background:'#fff', color:T.primary, fontSize:'.78rem', fontWeight:600, cursor:'pointer', fontFamily:'inherit' }}>
                       🖨️ PDF
+                    </button>
+                    <button onClick={() => startEdit(r)} style={{ padding:'6px 14px', borderRadius:6, border:`1px solid ${T.info}`, background: isEditing ? T.info : '#fff', color: isEditing ? '#fff' : T.info, fontSize:'.78rem', fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>
+                      ✏️ {isEditing ? 'Editando...' : 'Editar'}
                     </button>
                     {isPend && (
                       <button onClick={() => handleLiquidar(r.id)} style={{ padding:'6px 14px', borderRadius:6, border:`1px solid ${T.primary}`, background:T.primary, color:'#fff', fontSize:'.78rem', fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>
@@ -542,8 +867,19 @@ export default function RechazosDespacho() {
         })}
       </div>
 
-      {/* PDF modal */}
+      {/* PDF individual */}
       {pdfTarget && <PdfRechazo rec={pdfTarget} onClose={() => setPdf(null)} />}
+
+      {/* PDF reporte consolidado */}
+      {showReporte && (
+        <PdfReporte
+          rechazos={rechazosVis}
+          filtCliente={filtCliente}
+          filtDesde={filtDesde}
+          filtHasta={filtHasta}
+          onClose={() => setShowReporte(false)}
+        />
+      )}
     </div>
   );
 }

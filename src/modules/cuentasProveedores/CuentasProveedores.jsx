@@ -1,6 +1,10 @@
 // CuentasProveedores.jsx — Estado de cuenta por proveedor
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import * as XLSX from 'xlsx';
+import html2canvas from 'html2canvas';
+import { storage } from '../../firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useAuth } from '../../hooks/useAuth';
 import { useProductosCatalogo } from '../../hooks/useMainData';
 import { useCuentaProveedor, useProveedoresList } from './useCuentaProveedor';
@@ -67,6 +71,159 @@ function AuditLog({ historial }) {
   );
 }
 
+// ── Tarjeta imprimible para compartir por WhatsApp ──────────────────
+function TarjetaMovimiento({ m, proveedorNombre }) {
+  const fmtFechaLong = s => s ? new Date(s + 'T12:00:00').toLocaleDateString('es-GT', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' }) : '—';
+  const tipoLabel = { recepcion: 'RECEPCIÓN', pago: 'PAGO', rechazo: 'RECHAZO' };
+  const tipoColor = { recepcion: '#1565C0', pago: '#2E7D32', rechazo: '#C62828' };
+  const tipoBg    = { recepcion: '#E3F2FD', pago: '#E8F5E9', rechazo: '#FFEBEE' };
+  const color     = tipoColor[m.tipo] || '#333';
+  const bg        = tipoBg[m.tipo]    || '#F5F5F5';
+
+  return (
+    <div style={{
+      width: 360, background: '#fff', borderRadius: 16,
+      boxShadow: '0 4px 24px rgba(0,0,0,.18)',
+      fontFamily: 'Arial, sans-serif', overflow: 'hidden',
+      border: `2px solid ${color}`,
+    }}>
+      {/* Header verde AJÚA */}
+      <div style={{ background: '#1B5E20', padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ fontWeight: 900, fontSize: '1.4rem', color: '#fff', letterSpacing: 2 }}>AJÚA</div>
+        <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
+          <span style={{ background: bg, color, fontWeight: 800, fontSize: '.75rem',
+            padding: '3px 10px', borderRadius: 99, letterSpacing: 1 }}>
+            {tipoLabel[m.tipo] || m.tipo}
+          </span>
+        </div>
+      </div>
+
+      {/* Cuerpo */}
+      <div style={{ padding: '16px 18px' }}>
+        <div style={{ fontSize: '.75rem', color: '#888', marginBottom: 2, textTransform: 'uppercase', letterSpacing: '.08em' }}>Proveedor</div>
+        <div style={{ fontWeight: 800, fontSize: '1rem', color: '#1A1A18', marginBottom: 14 }}>{proveedorNombre}</div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 12px', fontSize: '.82rem' }}>
+          <div>
+            <div style={{ color: '#888', fontSize: '.68rem', textTransform: 'uppercase', letterSpacing: '.06em' }}>Fecha</div>
+            <div style={{ fontWeight: 700, color: '#1A1A18' }}>{fmtFechaLong(m.fecha)}</div>
+          </div>
+          {m.tipo === 'recepcion' && (<>
+            {m.producto && <div>
+              <div style={{ color: '#888', fontSize: '.68rem', textTransform: 'uppercase', letterSpacing: '.06em' }}>Producto</div>
+              <div style={{ fontWeight: 700, color: '#1A1A18' }}>{m.producto}</div>
+            </div>}
+            {m.cantidad > 0 && <div>
+              <div style={{ color: '#888', fontSize: '.68rem', textTransform: 'uppercase', letterSpacing: '.06em' }}>Cantidad</div>
+              <div style={{ fontWeight: 700, color: '#1A1A18' }}>{m.cantidad} {m.unidad}</div>
+            </div>}
+            {m.precioUnit > 0 && <div>
+              <div style={{ color: '#888', fontSize: '.68rem', textTransform: 'uppercase', letterSpacing: '.06em' }}>Precio/unidad</div>
+              <div style={{ fontWeight: 700, color: '#1A1A18' }}>{fmtQ(m.precioUnit)}</div>
+            </div>}
+            {m.factura && <div>
+              <div style={{ color: '#888', fontSize: '.68rem', textTransform: 'uppercase', letterSpacing: '.06em' }}>Factura</div>
+              <div style={{ fontWeight: 700, color: '#1A1A18' }}>{m.factura}</div>
+            </div>}
+          </>)}
+          {m.tipo === 'pago' && (<>
+            {m.metodoPago && <div>
+              <div style={{ color: '#888', fontSize: '.68rem', textTransform: 'uppercase', letterSpacing: '.06em' }}>Método</div>
+              <div style={{ fontWeight: 700, color: '#1A1A18' }}>{m.metodoPago}</div>
+            </div>}
+            {m.referencia && <div>
+              <div style={{ color: '#888', fontSize: '.68rem', textTransform: 'uppercase', letterSpacing: '.06em' }}>Referencia</div>
+              <div style={{ fontWeight: 700, color: '#1A1A18' }}>{m.referencia}</div>
+            </div>}
+          </>)}
+          {m.tipo === 'rechazo' && (<>
+            {m.resolucion && <div>
+              <div style={{ color: '#888', fontSize: '.68rem', textTransform: 'uppercase', letterSpacing: '.06em' }}>Resolución</div>
+              <div style={{ fontWeight: 700, color: '#1A1A18' }}>{m.resolucion}</div>
+            </div>}
+          </>)}
+        </div>
+
+        {m.descripcion && (
+          <div style={{ marginTop: 10, fontSize: '.8rem', color: '#555', fontStyle: 'italic' }}>{m.descripcion}</div>
+        )}
+        {m.notas && (
+          <div style={{ marginTop: 4, fontSize: '.78rem', color: '#888' }}>Nota: {m.notas}</div>
+        )}
+
+        {/* Monto grande */}
+        <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1.5px solid #E0E0E0', textAlign: 'right' }}>
+          <div style={{ fontSize: '.68rem', color: '#888', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 2 }}>
+            {m.tipo === 'recepcion' ? 'Total bruto' : m.tipo === 'pago' ? 'Monto pagado' : 'Valor rechazo'}
+          </div>
+          <div style={{ fontSize: '1.6rem', fontWeight: 900, color }}>
+            {m.tipo === 'recepcion' ? fmtQ(m.totalBruto) : m.tipo === 'pago' ? fmtQ(m.monto) : fmtQ(m.valorRechazo)}
+          </div>
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div style={{ background: '#F5F5F3', padding: '8px 18px', fontSize: '.7rem', color: '#AAA', textAlign: 'center' }}>
+        AGROINDUSTRIA AJÚA · agroajua@gmail.com
+      </div>
+    </div>
+  );
+}
+
+function BtnCompartir({ m, proveedorNombre }) {
+  const cardRef = useRef(null);
+  const [generando, setGenerando] = useState(false);
+
+  const compartir = async () => {
+    if (!cardRef.current) return;
+    setGenerando(true);
+    try {
+      const canvas = await html2canvas(cardRef.current, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+      canvas.toBlob(async (blob) => {
+        if (!blob) return;
+        const file = new File([blob], `recibo_${m.tipo}_${m.fecha}.png`, { type: 'image/png' });
+        // Web Share API — funciona en móvil (Chrome Android, Safari iOS)
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file], title: `AJÚA — ${m.tipo} ${m.fecha}` });
+        } else {
+          // Fallback: descargar imagen
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `recibo_${m.tipo}_${m.fecha}.png`;
+          a.click();
+          URL.revokeObjectURL(url);
+        }
+        setGenerando(false);
+      }, 'image/png');
+    } catch { setGenerando(false); }
+  };
+
+  return (
+    <div>
+      {/* Tarjeta oculta fuera de pantalla para renderizar */}
+      <div style={{ position: 'fixed', left: -9999, top: -9999, zIndex: -1 }}>
+        <div ref={cardRef}>
+          <TarjetaMovimiento m={m} proveedorNombre={proveedorNombre} />
+        </div>
+      </div>
+      <button
+        onClick={compartir}
+        disabled={generando}
+        style={{
+          padding: '5px 14px', borderRadius: 6,
+          border: '1.5px solid #25D366',
+          background: '#fff', color: '#25D366',
+          fontSize: '.78rem', fontWeight: 700,
+          cursor: generando ? 'wait' : 'pointer',
+          fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 5,
+        }}>
+        {generando ? '⏳ Generando...' : '📲 Compartir'}
+      </button>
+    </div>
+  );
+}
+
 function DetailRows({ m }) {
   return (
     <div style={{ fontSize: '.82rem', color: T.textMid, lineHeight: 1.8 }}>
@@ -84,6 +241,22 @@ function DetailRows({ m }) {
         {m.resolucion  && <div>Resolución: <strong style={{ color: T.textDark }}>{m.resolucion}</strong></div>}
       </>)}
       {m.notas && <div style={{ fontStyle: 'italic', marginTop: 2 }}>{m.notas}</div>}
+      {m.fotoUrl && (
+        <div style={{ marginTop: 10 }}>
+          <a href={m.fotoUrl} target="_blank" rel="noreferrer">
+            <img
+              src={m.fotoUrl}
+              alt="Evidencia"
+              style={{ maxWidth: '100%', maxHeight: 220, borderRadius: 8,
+                border: `1.5px solid ${T.border}`, display: 'block', objectFit: 'cover' }}
+            />
+          </a>
+          <div style={{ fontSize: '.72rem', color: T.textMid, marginTop: 3 }}>
+            📷 Foto adjunta · <a href={m.fotoUrl} target="_blank" rel="noreferrer"
+              style={{ color: T.primary }}>ver completa</a>
+          </div>
+        </div>
+      )}
       {m.creadoEn && (
         <div style={{ marginTop: 4, fontSize: '.72rem', color: '#AEAEAE' }}>
           Creado: {new Date(m.creadoEn).toLocaleString('es-GT')}
@@ -95,7 +268,7 @@ function DetailRows({ m }) {
   );
 }
 
-function MovCard({ m, onEdit, onDelete }) {
+function MovCard({ m, proveedorNombre, onEdit, onDelete }) {
   const [open, setOpen] = useState(false);
   const desc = m.descripcion || (
     m.tipo === 'recepcion' ? m.producto :
@@ -142,7 +315,8 @@ function MovCard({ m, onEdit, onDelete }) {
       {open && (
         <div style={{ background: T.bg, borderTop: `1px solid ${T.border}`, padding: '12px 14px' }}>
           <DetailRows m={m} />
-          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+          <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+            <BtnCompartir m={m} proveedorNombre={proveedorNombre} />
             <button onClick={e => { e.stopPropagation(); onEdit(m); }} style={{
               padding: '5px 14px', borderRadius: 6, border: `1px solid ${T.warn}`,
               background: '#fff', color: T.warn, fontSize: '.78rem',
@@ -171,7 +345,7 @@ function cantidadStr(m) {
   return '—';
 }
 
-function DesktopRow({ m, i, onEdit, onDelete }) {
+function DesktopRow({ m, i, proveedorNombre, onEdit, onDelete }) {
   const [open, setOpen] = useState(false);
   const desc = m.descripcion || (
     m.tipo === 'recepcion' ? m.producto :
@@ -221,7 +395,8 @@ function DesktopRow({ m, i, onEdit, onDelete }) {
         <tr style={{ borderBottom: `1px solid ${T.border}` }}>
           <td colSpan={8} style={{ padding: '12px 20px', background: T.bg }}>
             <DetailRows m={m} />
-            <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+            <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+              <BtnCompartir m={m} proveedorNombre={proveedorNombre} />
               <button onClick={e => { e.stopPropagation(); onEdit(m); }} style={{
                 padding: '5px 14px', borderRadius: 6, border: `1px solid ${T.warn}`,
                 background: '#fff', color: T.warn, fontSize: '.78rem',
@@ -269,7 +444,7 @@ export default function CuentasProveedores() {
   const [filtTipo,   setFiltTipo]   = useState('');   // 'recepcion'|'pago'|'rechazo'|''
   const [filtEstado, setFiltEstado] = useState('');   // 'pendiente'|'pagado'|''
 
-  const { movimientos, resumen, loading, saving, error, cargar, agregar, actualizar, eliminar } = useCuentaProveedor(provId);
+  const { movimientos, resumen, loading, error, cargar, agregar, actualizar, eliminar } = useCuentaProveedor(provId);
 
   useEffect(() => { cargarProv(); }, [cargarProv]);
 
@@ -313,20 +488,36 @@ export default function CuentasProveedores() {
 
   useEffect(() => { recargar(); }, [recargar]);
 
+  const uploadFoto = useCallback(async (file, id) => {
+    const ext = file.name.split('.').pop() || 'jpg';
+    const path = `cuentasProveedores/${provId}/${id}_${Date.now()}.${ext}`;
+    const storageRef = ref(storage, path);
+    await uploadBytes(storageRef, file);
+    return getDownloadURL(storageRef);
+  }, [provId]);
+
   const handleGuardar = async (data) => {
-    const { motivoEdit, ...campos } = data;
-    await agregar({ ...campos, proveedorId: provId });
+    const { motivoEdit, _fotoFile, ...campos } = data;
+    const docId = await agregar({ ...campos, proveedorId: provId });
+    if (_fotoFile && docId) {
+      const url = await uploadFoto(_fotoFile, docId);
+      await actualizar(docId, { fotoUrl: url }, null);
+    }
     setShowForm(false);
     recargar();
   };
 
   const handleEditar = async (data) => {
     if (!editTarget) return;
-    const { motivoEdit, ...campos } = data;
+    const { motivoEdit, _fotoFile, ...campos } = data;
     const auditEntry = {
       por:    user?.nombre || user?.email || 'Usuario',
       motivo: motivoEdit || '',
     };
+    if (_fotoFile) {
+      const url = await uploadFoto(_fotoFile, editTarget.id);
+      campos.fotoUrl = url;
+    }
     await actualizar(editTarget.id, campos, auditEntry);
     setEditTarget(null);
     recargar();
@@ -337,6 +528,41 @@ export default function CuentasProveedores() {
     await eliminar(id);
     recargar();
   };
+
+  const exportExcel = useCallback((movs, label) => {
+    const nombre = proveedor?.nombre || 'Proveedor';
+    const filas = movs.map(m => ({
+      'Fecha':       m.fecha || '',
+      'Tipo':        m.tipo === 'recepcion' ? 'Recepción' : m.tipo === 'pago' ? 'Pago' : 'Rechazo',
+      'Descripción': m.descripcion || (m.tipo === 'recepcion' ? m.producto : m.tipo === 'pago' ? `${m.metodoPago || ''} ${m.referencia || ''}`.trim() : m.resolucion) || '',
+      'Producto':    m.producto || '',
+      'Cantidad':    m.cantidad || '',
+      'Unidad':      m.unidad  || '',
+      'Precio Unit': m.precioUnit || '',
+      'Factura':     m.factura   || '',
+      'Método Pago': m.metodoPago || '',
+      'Referencia':  m.referencia || '',
+      'Cargo Q':     m.cargo  > 0 ? m.cargo  : '',
+      'Abono Q':     m.abono  > 0 ? m.abono  : '',
+      'Saldo Acum Q':m.saldoAcum,
+      'Notas':       m.notas || '',
+    }));
+    // Fila de totales
+    const res = movs.reduce((a, m) => {
+      if (m.tipo === 'recepcion') a.comprado  += Number(m.totalBruto   || 0);
+      if (m.tipo === 'rechazo')   a.rechazos  += Number(m.valorRechazo || 0);
+      if (m.tipo === 'pago')      a.pagado    += Number(m.monto        || 0);
+      return a;
+    }, { comprado: 0, rechazos: 0, pagado: 0 });
+    filas.push({});
+    filas.push({ 'Fecha': 'TOTALES', 'Cargo Q': res.comprado, 'Abono Q': res.rechazos + res.pagado, 'Saldo Acum Q': res.comprado - res.rechazos - res.pagado });
+
+    const ws = XLSX.utils.json_to_sheet(filas);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Estado de Cuenta');
+    const periodoStr = (desde || hasta) ? `_${desde || ''}_${hasta || ''}` : '';
+    XLSX.writeFile(wb, `CuentaProveedor_${nombre.replace(/\s+/g,'_')}${periodoStr}_${label}.xlsx`);
+  }, [proveedor, desde, hasta]);
 
   const noProvSelected = !provId;
 
@@ -440,16 +666,24 @@ export default function CuentasProveedores() {
               )}
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {filtrosActivos && movsFiltConSaldo.length > 0 && (
+              {filtrosActivos && movsFiltConSaldo.length > 0 && (<>
                 <button
                   onClick={() => setShowEstado('filtered')}
                   style={{ padding: '8px 14px', borderRadius: 6,
                     border: `1.5px solid ${T.warn}`, background: '#fff',
                     color: T.warn, fontWeight: 700, fontSize: '.82rem',
                     cursor: 'pointer', fontFamily: 'inherit' }}>
-                  🖨️ PDF con filtros
+                  🖨️ PDF filtrado
                 </button>
-              )}
+                <button
+                  onClick={() => exportExcel(movsFiltConSaldo, 'filtrado')}
+                  style={{ padding: '8px 14px', borderRadius: 6,
+                    border: '1.5px solid #2E7D32', background: '#fff',
+                    color: '#2E7D32', fontWeight: 700, fontSize: '.82rem',
+                    cursor: 'pointer', fontFamily: 'inherit' }}>
+                  📊 Excel filtrado
+                </button>
+              </>)}
               <button
                 onClick={() => setShowEstado('total')}
                 disabled={movimientos.length === 0}
@@ -460,6 +694,18 @@ export default function CuentasProveedores() {
                   cursor: movimientos.length === 0 ? 'not-allowed' : 'pointer',
                   fontFamily: 'inherit' }}>
                 🖨️ PDF total
+              </button>
+              <button
+                onClick={() => exportExcel(movimientos, 'total')}
+                disabled={movimientos.length === 0}
+                style={{ padding: '8px 14px', borderRadius: 6,
+                  border: movimientos.length === 0 ? `1.5px solid ${T.border}` : '1.5px solid #2E7D32',
+                  background: '#fff',
+                  color: movimientos.length === 0 ? '#BDBDBD' : '#2E7D32',
+                  fontWeight: 600, fontSize: '.82rem',
+                  cursor: movimientos.length === 0 ? 'not-allowed' : 'pointer',
+                  fontFamily: 'inherit' }}>
+                📊 Excel total
               </button>
             </div>
           </div>
@@ -622,7 +868,7 @@ export default function CuentasProveedores() {
 
             {/* Mobile: cards */}
             {!loading && !error && isMobile && movsFiltConSaldo.map(m => (
-              <MovCard key={m.id} m={m} onEdit={setEditTarget} onDelete={handleEliminar} />
+              <MovCard key={m.id} m={m} proveedorNombre={proveedor?.nombre || ''} onEdit={setEditTarget} onDelete={handleEliminar} />
             ))}
 
             {/* Desktop: tabla */}
@@ -644,6 +890,7 @@ export default function CuentasProveedores() {
                     {movsFiltConSaldo.map((m, i) => (
                       <DesktopRow key={m.id}
                         m={m} i={i}
+                        proveedorNombre={proveedor?.nombre || ''}
                         onEdit={setEditTarget}
                         onDelete={handleEliminar}
                       />

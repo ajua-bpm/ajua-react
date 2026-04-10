@@ -3,6 +3,7 @@ import { useCollection, useWrite } from '../../hooks/useFirestore';
 import { useProductosCatalogo, useMainData } from '../../hooks/useMainData';
 import { useToast } from '../../components/Toast';
 import Skeleton from '../../components/Skeleton';
+import RecepcionProducto from '../recepcion/RecepcionProducto';
 
 // ── Design tokens ────────────────────────────────────────────────
 const T = {
@@ -127,17 +128,39 @@ export default function EntradaBodega() {
 
   const loadingAll = loading || lp || lm;
 
+  const [tab, setTab] = useState('ingresos');
+
   return (
-    <div style={{ padding: '24px 28px', fontFamily: 'inherit', maxWidth: 1100 }}>
+    <div style={{ fontFamily: 'inherit', maxWidth: 1100 }}>
       {/* Header */}
-      <div style={{ marginBottom: 24 }}>
+      <div style={{ marginBottom: 20 }}>
         <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, color: T.textDark }}>
-          Ingresos a Bodega
+          Ingresos Bodega
         </h2>
         <p style={{ margin: '4px 0 0', fontSize: '.83rem', color: T.textMid }}>
-          Registro de entradas de producto desde proveedores / campo
+          Entradas de producto e inspección de calidad en recepción de importaciones
         </p>
       </div>
+
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: 4, marginBottom: 24, borderBottom: `2px solid ${T.border}` }}>
+        {[
+          { key: 'ingresos',   label: '📥 Ingresos Bodega' },
+          { key: 'recepcion',  label: '🔬 Recepción / Calidad' },
+        ].map(t => (
+          <button key={t.key} onClick={() => setTab(t.key)} style={{
+            padding: '9px 18px', border: 'none', background: 'none', cursor: 'pointer',
+            fontFamily: 'inherit', fontSize: '.88rem', fontWeight: tab === t.key ? 700 : 500,
+            color: tab === t.key ? T.primary : T.textMid,
+            borderBottom: `3px solid ${tab === t.key ? T.primary : 'transparent'}`,
+            marginBottom: -2, transition: 'all .12s',
+          }}>{t.label}</button>
+        ))}
+      </div>
+
+      {tab === 'recepcion' && <RecepcionProducto />}
+
+      {tab === 'ingresos' && <div style={{ padding: '0 0 48px' }}>
 
       {/* Metrics */}
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 24 }}>
@@ -309,6 +332,7 @@ export default function EntradaBodega() {
           </div>
         )}
       </div>
+      </div>}{/* /tab ingresos */}
     </div>
   );
 }
