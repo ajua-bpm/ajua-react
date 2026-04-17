@@ -6,9 +6,13 @@ import Skeleton from '../../components/Skeleton';
 import WalmartCard from './WalmartCard';
 
 // ── Apps Script URL — stored in localStorage ──────────────────────
-const LS_KEY = 'ajua_walmart_gas_url';
-const getGasUrl = () => localStorage.getItem(LS_KEY) || '';
-const setGasUrl = (url) => localStorage.setItem(LS_KEY, url.trim());
+const LS_KEY        = 'ajua_walmart_gas_url';
+const LS_AUTOSYNC   = 'ajua_walmart_autosync';
+const LS_INTERVAL   = 'ajua_walmart_interval';
+const getGasUrl     = () => localStorage.getItem(LS_KEY) || '';
+const setGasUrl     = (url) => localStorage.setItem(LS_KEY, url.trim());
+const getAutoSync   = () => localStorage.getItem(LS_AUTOSYNC) === 'true';
+const getIntervalMs = () => parseInt(localStorage.getItem(LS_INTERVAL) || '900000'); // 15min default
 
 // ── Design tokens ─────────────────────────────────────────────────
 const T = {
@@ -1305,6 +1309,11 @@ function TabGmail({ data, add }) {
   const [gasUrl,     setGasUrlState] = useState(getGasUrl);
   const [urlDraft,   setUrlDraft]   = useState(getGasUrl);
   const [showConfig, setShowConfig] = useState(!getGasUrl());
+  const [autoSync,   setAutoSync]   = useState(getAutoSync);
+  const [intervalMin,setIntervalMin]= useState(() => Math.round(getIntervalMs() / 60000));
+  const [lastSync,   setLastSync]   = useState(null);
+  const dataRef = useRef(data);
+  useEffect(() => { dataRef.current = data; }, [data]);
 
   const gmailPedidos = useMemo(
     () => data.filter(r => r.fuente === 'gmail').slice(0, 10),
@@ -1318,21 +1327,21 @@ function TabGmail({ data, add }) {
     toast('URL guardada');
   };
 
-  const handleRevisar = async () => {
+  const handleRevisar = async (silent = false) => {
     const url = getGasUrl();
-    if (!url) { toast('Configura la URL del Apps Script primero', 'error'); return; }
+    if (!url) { if (!silent) toast('Configura la URL del Apps Script primero', 'error'); return; }
     setLoading(true);
-    setResult(null);
+    if (!silent) setResult(null);
     try {
       const res = await fetch(url, { method: 'GET' });
       const json = await res.json();
-      setResult(json);
+      if (!silent) setResult(json);
+      setLastSync(new Date());
       // Auto-import new pedidos found
       if (json.pedidos && Array.isArray(json.pedidos)) {
         let nuevos = 0;
         for (const p of json.pedidos) {
-          // Skip if OC already exists
-          const existe = data.some(r => r.numOC && r.numOC === p.numOC);
+          const existe = dataRef.current.some(r => r.numOC && r.numOC === p.numOC);
           if (existe) continue;
           await add({
             fecha:        p.fechaEntrega || today(),
@@ -1358,16 +1367,26 @@ function TabGmail({ data, add }) {
           });
           nuevos++;
         }
-        toast(nuevos > 0 ? `${nuevos} pedido${nuevos>1?'s':''} importado${nuevos>1?'s':''}` : 'Sin pedidos nuevos en Gmail');
-      } else {
+        if (nuevos > 0 || !silent)
+          toast(nuevos > 0 ? `${nuevos} pedido${nuevos>1?'s':''} importado${nuevos>1?'s':''}` : 'Sin pedidos nuevos en Gmail');
+      } else if (!silent) {
         toast('Correos revisados — sin pedidos nuevos');
       }
     } catch {
-      toast('Error al conectar con Apps Script. Verifica la URL.', 'error');
+      if (!silent) toast('Error al conectar con Apps Script. Verifica la URL.', 'error');
     } finally {
       setLoading(false);
     }
   };
+
+  // Auto-sync: ejecutar en intervalo mientras el tab esté abierto
+  useEffect(() => {
+    if (!autoSync || !getGasUrl()) return;
+    const ms = intervalMin * 60 * 1000;
+    handleRevisar(true); // primera ejecución inmediata
+    const id = setInterval(() => handleRevisar(true), ms);
+    return () => clearInterval(id);
+  }, [autoSync, intervalMin]); // eslint-disable-line
 
   return (
     <div>
@@ -1411,14 +1430,45 @@ function TabGmail({ data, add }) {
             ⚠️ Configura la URL del Apps Script (botón arriba) para usar esta función.
           </div>
         ) : (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-            <button onClick={handleRevisar} disabled={loading}
-              style={{ padding: '9px 22px', background: loading ? T.border : T.info, color: WHITE, border: 'none', borderRadius: 6, fontWeight: 600, fontSize: '.88rem', cursor: loading ? 'not-allowed' : 'pointer' }}>
-              {loading ? 'Revisando Gmail…' : '🔄 Revisar correos Walmart'}
-            </button>
-            <span style={{ fontSize: '.75rem', color: T.textMid }}>
-              Apps Script configurado ✓
-            </span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <button onClick={() => handleRevisar(false)} disabled={loading}
+                style={{ padding: '9px 22px', background: loading ? T.border : T.info, color: WHITE, border: 'none', borderRadius: 6, fontWeight: 600, fontSize: '.88rem', cursor: loading ? 'not-allowed' : 'pointer' }}>
+                {loading ? 'Revisando Gmail…' : '🔄 Revisar correos ahora'}
+              </button>
+              {lastSync && (
+                <span style={{ fontSize: '.75rem', color: T.textMid }}>
+                  Última sync: {lastSync.toLocaleTimeString('es-GT', { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              )}
+            </div>
+            {/* Auto-sync toggle */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: autoSync ? '#E8F5E9' : '#F5F5F5', border: `1px solid ${autoSync ? '#A5D6A7' : T.border}`, borderRadius: 8, flexWrap: 'wrap' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '.84rem', fontWeight: 600, color: autoSync ? T.secondary : T.textMid }}>
+                <input type="checkbox" checked={autoSync} onChange={e => {
+                  setAutoSync(e.target.checked);
+                  localStorage.setItem(LS_AUTOSYNC, e.target.checked);
+                }} style={{ accentColor: T.primary, width: 16, height: 16 }} />
+                🔁 Sync automático
+              </label>
+              {autoSync && (
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.82rem', color: T.textMid }}>
+                  Cada
+                  <select value={intervalMin} onChange={e => {
+                    const v = Number(e.target.value);
+                    setIntervalMin(v);
+                    localStorage.setItem(LS_INTERVAL, v * 60000);
+                  }} style={{ padding: '3px 8px', border: `1px solid ${T.border}`, borderRadius: 4, fontSize: '.82rem', fontFamily: 'inherit' }}>
+                    <option value={5}>5 min</option>
+                    <option value={10}>10 min</option>
+                    <option value={15}>15 min</option>
+                    <option value={30}>30 min</option>
+                    <option value={60}>1 hora</option>
+                  </select>
+                  <span style={{ fontSize: '.75rem', color: T.textMid }}>(mientras la app esté abierta)</span>
+                </label>
+              )}
+            </div>
           </div>
         )}
 
