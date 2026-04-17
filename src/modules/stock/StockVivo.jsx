@@ -28,12 +28,13 @@ const fmtDate = d => {
 const fmtN = (n, dec = 1) => (n || 0).toLocaleString('es-GT', { minimumFractionDigits: dec, maximumFractionDigits: dec });
 const lbsToKg = n => ((n || 0) / 2.205).toFixed(1);
 
-function canalBadge(canal) {
+function canalBadge(tipo, canal) {
   const c = (canal || '').toLowerCase();
-  if (c.includes('walmart'))                       return { label: 'Walmart',  bg: '#FFEBEE', color: '#C62828' };
-  if (c.includes('gt') || c.includes('local'))     return { label: 'Local GT', bg: '#E8F5E9', color: '#1B5E20' };
-  if (c.includes('int') || c.includes('export'))   return { label: 'Export',   bg: '#E3F2FD', color: '#1565C0' };
-  return { label: 'Entrada', bg: '#E8F5E9', color: '#2E7D32' };
+  if (c.includes('walmart'))                     return { label: 'Walmart',  bg: '#FFEBEE', color: '#C62828' };
+  if (c.includes('gt') || c.includes('local'))   return { label: 'Local GT', bg: '#E8F5E9', color: '#1B5E20' };
+  if (c.includes('int') || c.includes('export')) return { label: 'Export',   bg: '#E3F2FD', color: '#1565C0' };
+  if (tipo === 'salida')                          return { label: 'Salida',   bg: '#FFF3E0', color: '#E65100' };
+  return { label: 'Entrada', bg: '#E3F2FD', color: '#1565C0' };
 }
 
 // Resolve productoId / nombre to canonical catalog key (mirrors bpm.html resolveId logic)
@@ -401,7 +402,7 @@ export default function StockVivo() {
         ) : isMobile ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {filtMvs.slice(0, 400).map((mv, i) => {
-              const badge  = canalBadge(mv.canal);
+              const badge  = canalBadge(mv.tipo, mv.canal);
               const sColor = mv.stockBodega >= 0 ? T.secondary : T.danger;
               const qty    = mv.esPorUnidad ? mv.unid : mv.lbs;
               const unit   = mv.esPorUnidad ? 'unid' : 'lbs';
@@ -443,7 +444,7 @@ export default function StockVivo() {
               </thead>
               <tbody>
                 {filtMvs.slice(0, 400).map((mv, i) => {
-                  const badge  = canalBadge(mv.canal);
+                  const badge  = canalBadge(mv.tipo, mv.canal);
                   const sColor = mv.stockBodega >= 0 ? T.secondary : T.danger;
                   const qty    = mv.esPorUnidad ? mv.unid : mv.lbs;
                   const unit   = mv.esPorUnidad ? 'unid' : 'lbs';

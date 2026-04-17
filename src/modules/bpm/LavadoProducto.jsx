@@ -68,6 +68,7 @@ const initTank = () => ({
   tratamiento: 'Agua-Cloro 150PPM',
   concentracion: '',
   resultado: 'cumple',
+  usado: true,
   obs: '',
 });
 
@@ -84,20 +85,40 @@ const initForm = () => ({
 
 // ─── Tank Card ────────────────────────────────────────────────────────────────
 function TankCard({ tankKey, label, data, onChange }) {
+  const usado    = data.usado !== false; // default true para registros viejos
   const isCumple = data.resultado === 'cumple';
   const showPPM  = data.tratamiento === 'Agua-Cloro 150PPM';
 
   return (
     <div style={{
-      border: `2px solid ${isCumple ? T.secondary : T.danger}`,
+      border: `2px solid ${!usado ? T.border : isCumple ? T.secondary : T.danger}`,
       borderRadius: 10, padding: 18,
-      background: isCumple ? T.bgGreen : '#FFF8F8',
+      background: !usado ? '#F5F5F5' : isCumple ? T.bgGreen : '#FFF8F8',
+      opacity: !usado ? 0.7 : 1,
     }}>
       {/* Tank header */}
-      <div style={{ fontSize: '.75rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.1em', color: T.primary, marginBottom: 14 }}>
-        {label}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+        <div style={{ fontSize: '.75rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.1em', color: T.primary }}>
+          {label}
+        </div>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: '.72rem', fontWeight: 600, color: usado ? T.secondary : T.textMid }}>
+          <input
+            type="checkbox"
+            checked={usado}
+            onChange={e => onChange(tankKey, 'usado', e.target.checked)}
+            style={{ accentColor: T.primary, width: 15, height: 15 }}
+          />
+          {usado ? 'En uso' : 'No usado'}
+        </label>
       </div>
 
+      {!usado && (
+        <div style={{ textAlign: 'center', padding: '12px 0', fontSize: '.82rem', color: T.textMid, fontStyle: 'italic' }}>
+          Tanque no utilizado en esta jornada
+        </div>
+      )}
+
+      {usado && <>
       {/* Tratamiento */}
       <div style={{ marginBottom: 12 }}>
         <Lbl text="Tratamiento">
@@ -168,6 +189,7 @@ function TankCard({ tankKey, label, data, onChange }) {
           />
         </Lbl>
       </div>
+      </>}
     </div>
   );
 }
