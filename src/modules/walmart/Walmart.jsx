@@ -1,9 +1,10 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useCollection, useWrite } from '../../hooks/useFirestore';
 import { useMainData, useProductosCatalogo } from '../../hooks/useMainData';
 import { useToast } from '../../components/Toast';
 import Skeleton from '../../components/Skeleton';
 import WalmartCard from './WalmartCard';
+import { db, doc, getDoc, updateDoc } from '../../firebase';
 
 // ── Apps Script URL — stored in localStorage ──────────────────────
 const LS_KEY        = 'ajua_walmart_gas_url';
@@ -1300,18 +1301,13 @@ function TabCalendario({ data }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// TAB 4 — Gmail
+// TAB 4 — Gmail  (lee desde Firestore ajua_bpm/walmart_queue)
 // ═══════════════════════════════════════════════════════════════════
 function TabGmail({ data, add }) {
-  const toast = useToast();
-  const [loading,    setLoading]    = useState(false);
-  const [result,     setResult]     = useState(null);
-  const [gasUrl,     setGasUrlState] = useState(getGasUrl);
-  const [urlDraft,   setUrlDraft]   = useState(getGasUrl);
-  const [showConfig, setShowConfig] = useState(!getGasUrl());
-  const [autoSync,   setAutoSync]   = useState(getAutoSync);
-  const [intervalMin,setIntervalMin]= useState(() => Math.round(getIntervalMs() / 60000));
-  const [lastSync,   setLastSync]   = useState(null);
+  const toast    = useToast();
+  const [loading,  setLoading]  = useState(false);
+  const [lastSync, setLastSync] = useState(null);
+  const [lastInfo, setLastInfo] = useState(null); // { nuevos, total }
   const dataRef = useRef(data);
   useEffect(() => { dataRef.current = data; }, [data]);
 
@@ -1320,163 +1316,141 @@ function TabGmail({ data, add }) {
     [data]
   );
 
-  const handleSaveUrl = () => {
-    setGasUrl(urlDraft);
-    setGasUrlState(urlDraft.trim());
-    setShowConfig(false);
-    toast('URL guardada');
-  };
-
-  const handleRevisar = async (silent = false) => {
-    const url = getGasUrl();
-    if (!url) { if (!silent) toast('Configura la URL del Apps Script primero', 'error'); return; }
+  const checkQueue = useCallback(async (silent = false) => {
     setLoading(true);
-    if (!silent) setResult(null);
     try {
-      const res = await fetch(url, { method: 'GET' });
-      const json = await res.json();
-      if (!silent) setResult(json);
-      setLastSync(new Date());
-      // Auto-import new pedidos found
-      if (json.pedidos && Array.isArray(json.pedidos)) {
-        let nuevos = 0;
-        for (const p of json.pedidos) {
-          const existe = dataRef.current.some(r => r.numOC && r.numOC === p.numOC);
-          if (existe) continue;
-          await add({
-            fecha:        p.fechaEntrega || today(),
-            fechaEntrega: p.fechaEntrega || today(),
-            cliente:      'Walmart',
-            numOC:        p.numOC        || '',
-            numAtlas:     '',
-            rampa:        p.rampa        || '',
-            horaEntrega:  p.horaEntrega  || '',
-            descripcion:  p.descripcion  || p.asunto || '',
-            productos:    [],
-            totalCajas:   parseFloat(p.totalCajas) || 0,
-            total:        0,
-            estado:       'pendiente',
-            fuente:       'gmail',
-            numFel:       '',
-            montoFactura: 0,
-            fechaFactura: '',
-            estadoCobro:  'pendiente',
-            gmailData:    { subject: p.asunto || '', from: p.from || '', date: p.fechaEmail || '' },
-            obs:          '',
-            creadoEn:     new Date().toISOString(),
-          });
-          nuevos++;
-        }
-        if (nuevos > 0 || !silent)
-          toast(nuevos > 0 ? `${nuevos} pedido${nuevos>1?'s':''} importado${nuevos>1?'s':''}` : 'Sin pedidos nuevos en Gmail');
-      } else if (!silent) {
-        toast('Correos revisados — sin pedidos nuevos');
+      const snap = await getDoc(doc(db, 'ajua_bpm', 'walmart_queue'));
+      if (!snap.exists()) {
+        if (!silent) toast('Cola vacía — sin pedidos pendientes');
+        setLastSync(new Date());
+        setLastInfo({ nuevos: 0, total: 0 });
+        return;
       }
-    } catch {
-      if (!silent) toast('Error al conectar con Apps Script. Verifica la URL.', 'error');
+      const queueData = snap.data();
+      const queue = Array.isArray(queueData.queue) ? queueData.queue : [];
+      const pendientes = queue.filter(p => !p._importado);
+
+      if (!pendientes.length) {
+        if (!silent) toast('Sin pedidos nuevos en la cola');
+        setLastSync(new Date());
+        setLastInfo({ nuevos: 0, total: queue.length });
+        return;
+      }
+
+      let nuevos = 0;
+      const queueActualizada = [...queue];
+
+      for (const p of pendientes) {
+        // Dedup por correlativo o por walmartQueueId
+        const existe = dataRef.current.some(r =>
+          (p.correlativo && r.correlativo === p.correlativo) ||
+          (p.id && r.walmartQueueId === p.id)
+        );
+        if (existe) {
+          // Marcar como importado aunque no lo hayamos creado (ya existía)
+          const idx = queueActualizada.findIndex(q => q.id === p.id);
+          if (idx >= 0) queueActualizada[idx] = { ...queueActualizada[idx], _importado: true };
+          continue;
+        }
+
+        const totalCajas = (p.rubros || []).reduce((s, r) => s + (r.cajas || 0), 0);
+        await add({
+          fecha:          p.fechaEntrega || today(),
+          fechaEntrega:   p.fechaEntrega || today(),
+          cliente:        'Walmart',
+          correlativo:    p.correlativo  || '',
+          walmartQueueId: p.id           || '',
+          numOC:          '',
+          numAtlas:       '',
+          rampa:          p.rampa        || '',
+          horaEntrega:    p.horaEntrega  || '16:00',
+          descripcion:    p.emailAsunto  || p.nota || '',
+          rubros:         p.rubros       || [],
+          productos:      [],
+          totalCajas,
+          total:          0,
+          estado:         'pendiente',
+          fuente:         'gmail',
+          solicitante:    p.solicitante  || '',
+          numFel:         '',
+          montoFactura:   0,
+          fechaFactura:   '',
+          estadoCobro:    'pendiente',
+          gmailData: {
+            subject: p.emailAsunto      || '',
+            from:    p.solicitanteEmail || '',
+            date:    p.emailFecha       || '',
+          },
+          obs:      '',
+          creadoEn: new Date().toISOString(),
+        });
+        nuevos++;
+
+        const idx = queueActualizada.findIndex(q => q.id === p.id);
+        if (idx >= 0) queueActualizada[idx] = { ...queueActualizada[idx], _importado: true };
+      }
+
+      // Actualizar cola en Firestore marcando importados
+      await updateDoc(doc(db, 'ajua_bpm', 'walmart_queue'), {
+        queue: queueActualizada,
+        lastImported: new Date().toISOString(),
+      });
+
+      setLastSync(new Date());
+      setLastInfo({ nuevos, total: queue.length });
+
+      if (nuevos > 0) {
+        toast(`${nuevos} pedido${nuevos > 1 ? 's' : ''} importado${nuevos > 1 ? 's' : ''} desde Gmail`);
+        if ('Notification' in window && Notification.permission === 'granted') {
+          new Notification('AJÚA — Pedido Walmart', {
+            body: `${nuevos} pedido${nuevos > 1 ? 's' : ''} nuevo${nuevos > 1 ? 's' : ''} de Walmart`,
+            icon: '/favicon.ico',
+          });
+        }
+      } else if (!silent) {
+        toast('Sin pedidos nuevos');
+      }
+    } catch (e) {
+      console.error('checkQueue:', e);
+      if (!silent) toast('Error al revisar cola: ' + e.message, 'error');
     } finally {
       setLoading(false);
     }
-  };
+  }, [add, toast]);
 
-  // Auto-sync: ejecutar en intervalo mientras el tab esté abierto
+  // Auto-check al montar + cada 5 minutos
   useEffect(() => {
-    if (!autoSync || !getGasUrl()) return;
-    const ms = intervalMin * 60 * 1000;
-    handleRevisar(true); // primera ejecución inmediata
-    const id = setInterval(() => handleRevisar(true), ms);
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+    checkQueue(true);
+    const id = setInterval(() => checkQueue(true), 5 * 60 * 1000);
     return () => clearInterval(id);
-  }, [autoSync, intervalMin]); // eslint-disable-line
+  }, [checkQueue]);
 
   return (
     <div>
-      {/* ── Configuración Apps Script URL ── */}
       <div style={card}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <div style={{ fontWeight: 700, fontSize: '.95rem', color: T.textDark }}>📧 Importar desde Gmail</div>
-          <button onClick={() => setShowConfig(o => !o)} style={{ fontSize: '.78rem', color: T.info, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
-            {showConfig ? 'Ocultar config' : '⚙️ Configurar URL'}
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {lastSync && (
+              <span style={{ fontSize: '.75rem', color: T.textMid }}>
+                Última revisión: {lastSync.toLocaleTimeString('es-GT', { hour: '2-digit', minute: '2-digit' })}
+                {lastInfo && ` · ${lastInfo.total} en cola`}
+              </span>
+            )}
+            <button onClick={() => checkQueue(false)} disabled={loading}
+              style={{ padding: '8px 18px', background: loading ? T.border : T.info, color: WHITE, border: 'none', borderRadius: 6, fontWeight: 600, fontSize: '.84rem', cursor: loading ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap' }}>
+              {loading ? 'Revisando…' : '🔄 Revisar ahora'}
+            </button>
+          </div>
         </div>
 
-        {showConfig && (
-          <div style={{ marginBottom: 14, padding: 14, background: '#F0F4FF', border: `1px solid #BBDEFB`, borderRadius: 8 }}>
-            <div style={{ fontSize: '.78rem', fontWeight: 700, color: T.info, marginBottom: 8 }}>
-              URL del Apps Script de Gmail
-            </div>
-            <div style={{ fontSize: '.75rem', color: T.textMid, marginBottom: 10, lineHeight: 1.5 }}>
-              Despliega el script <code>apps-script-walmart.gs</code> en Google Apps Script y pega la URL aquí.
-              Se guarda localmente en este navegador.
-            </div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <input
-                value={urlDraft} onChange={e => setUrlDraft(e.target.value)}
-                placeholder="https://script.google.com/macros/s/AKfycb.../exec"
-                style={{ ...IS, flex: '1 1 300px', fontSize: '.82rem' }}
-              />
-              <button onClick={handleSaveUrl} style={{ padding: '9px 18px', background: T.info, color: WHITE, border: 'none', borderRadius: 6, fontWeight: 600, fontSize: '.82rem', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                Guardar URL
-              </button>
-            </div>
-          </div>
-        )}
-
-        <p style={{ fontSize: '.85rem', color: T.textMid, margin: '0 0 14px' }}>
-          Conecta con Gmail para detectar correos de Walmart e importar pedidos automáticamente.
+        <p style={{ fontSize: '.84rem', color: T.textMid, margin: 0 }}>
+          Los pedidos que llegan por correo a <b>gerenciaajua@gmail.com</b> se detectan automáticamente
+          cada 30 min por el Apps Script y se importan aquí al abrir esta página (polling cada 5 min).
         </p>
-
-        {!gasUrl ? (
-          <div style={{ padding: '12px 16px', background: '#FFF3E0', border: `1px solid #FFB74D`, borderRadius: 8, fontSize: '.84rem', color: '#E65100' }}>
-            ⚠️ Configura la URL del Apps Script (botón arriba) para usar esta función.
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              <button onClick={() => handleRevisar(false)} disabled={loading}
-                style={{ padding: '9px 22px', background: loading ? T.border : T.info, color: WHITE, border: 'none', borderRadius: 6, fontWeight: 600, fontSize: '.88rem', cursor: loading ? 'not-allowed' : 'pointer' }}>
-                {loading ? 'Revisando Gmail…' : '🔄 Revisar correos ahora'}
-              </button>
-              {lastSync && (
-                <span style={{ fontSize: '.75rem', color: T.textMid }}>
-                  Última sync: {lastSync.toLocaleTimeString('es-GT', { hour: '2-digit', minute: '2-digit' })}
-                </span>
-              )}
-            </div>
-            {/* Auto-sync toggle */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: autoSync ? '#E8F5E9' : '#F5F5F5', border: `1px solid ${autoSync ? '#A5D6A7' : T.border}`, borderRadius: 8, flexWrap: 'wrap' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '.84rem', fontWeight: 600, color: autoSync ? T.secondary : T.textMid }}>
-                <input type="checkbox" checked={autoSync} onChange={e => {
-                  setAutoSync(e.target.checked);
-                  localStorage.setItem(LS_AUTOSYNC, e.target.checked);
-                }} style={{ accentColor: T.primary, width: 16, height: 16 }} />
-                🔁 Sync automático
-              </label>
-              {autoSync && (
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.82rem', color: T.textMid }}>
-                  Cada
-                  <select value={intervalMin} onChange={e => {
-                    const v = Number(e.target.value);
-                    setIntervalMin(v);
-                    localStorage.setItem(LS_INTERVAL, v * 60000);
-                  }} style={{ padding: '3px 8px', border: `1px solid ${T.border}`, borderRadius: 4, fontSize: '.82rem', fontFamily: 'inherit' }}>
-                    <option value={5}>5 min</option>
-                    <option value={10}>10 min</option>
-                    <option value={15}>15 min</option>
-                    <option value={30}>30 min</option>
-                    <option value={60}>1 hora</option>
-                  </select>
-                  <span style={{ fontSize: '.75rem', color: T.textMid }}>(mientras la app esté abierta)</span>
-                </label>
-              )}
-            </div>
-          </div>
-        )}
-
-        {result && (
-          <div style={{ marginTop: 14, padding: 12, background: '#F0FFF4', border: `1px solid #C8E6C9`, borderRadius: 8, fontSize: '.83rem', color: T.secondary }}>
-            <b>Respuesta:</b> {typeof result === 'object' ? JSON.stringify(result, null, 2) : result}
-          </div>
-        )}
       </div>
 
       {/* Recently imported */}
@@ -1491,7 +1465,7 @@ function TabGmail({ data, add }) {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: T.primary }}>
-                  {['Fecha', 'Asunto (Gmail)', 'OC', 'Estado'].map(h => (
+                  {['Correlativo', 'Fecha entrega', 'Solicitante', 'Cajas', 'Estado'].map(h => (
                     <th key={h} style={thSt}>{h}</th>
                   ))}
                 </tr>
@@ -1499,9 +1473,10 @@ function TabGmail({ data, add }) {
               <tbody>
                 {gmailPedidos.map((r, i) => (
                   <tr key={r.id} style={{ background: i % 2 === 1 ? '#F9FBF9' : WHITE }}>
+                    <td style={{ ...tdSt, fontFamily: 'monospace', fontSize: '.8rem', fontWeight: 600 }}>{r.correlativo || '—'}</td>
                     <td style={{ ...tdSt, fontWeight: 600 }}>{r.fechaEntrega || r.fecha || '—'}</td>
-                    <td style={{ ...tdSt, fontSize: '.8rem' }}>{r.gmailData?.subject || r.descripcion || '—'}</td>
-                    <td style={{ ...tdSt, fontFamily: 'monospace', fontSize: '.8rem' }}>{r.numOC || '—'}</td>
+                    <td style={{ ...tdSt, fontSize: '.8rem' }}>{r.solicitante || r.gmailData?.from || '—'}</td>
+                    <td style={tdSt}>{r.totalCajas || '—'}</td>
                     <td style={tdSt}><Badge cfg={ESTADO_CFG} value={r.estado} /></td>
                   </tr>
                 ))}
@@ -1511,7 +1486,7 @@ function TabGmail({ data, add }) {
         )}
       </div>
 
-      {/* Manual import — usar el botón "Desde correo" en la pestaña Pedidos */}
+      {/* Manual import */}
       <div style={{ ...card, background: '#F9FBF9' }}>
         <div style={{ fontSize: '.84rem', color: T.textMid }}>
           Para importar manualmente un correo, usa el botón <b>📧 Desde correo</b> en la pestaña <b>Pedidos</b>.
