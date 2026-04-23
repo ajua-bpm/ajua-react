@@ -44,6 +44,8 @@ const NAV = [
   { to: '/cotizador',              mod: 'cotizador',         icon: '🚢', label: 'Cotizador Contenedor' },
   { section: 'Precios' },
   { to: '/precios',                mod: 'precios',           icon: '💲', label: 'Lista de Precios' },
+  { section: 'Equipo' },
+  { to: '/pendientes',             mod: 'pendientes',        icon: '✅', label: 'Pendientes Equipo' },
   { section: 'Personal' },
   { to: '/personal',               mod: 'personal',          icon: '👥', label: 'Personal' },
   { section: 'Sistema' },

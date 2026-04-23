@@ -49,9 +49,13 @@ import Personal from './modules/personal/Personal';
 
 // Finanzas — Cuentas Proveedores
 import CuentasProveedores from './modules/cuentasProveedores/CuentasProveedores';
+import Liquidacion        from './modules/cuentasProveedores/Liquidacion';
 
 // CxC — Cuentas Clientes
 import CuentasClientes from './modules/cuentasClientes/CuentasClientes';
+
+// Equipo
+import Pendientes from './modules/pendientes/Pendientes';
 
 // Sistema
 import Guatecompras from './modules/guatecompras/Guatecompras';
@@ -132,10 +136,14 @@ export default function App() {
           <Route path="precios"                element={<Precios />} />
 
           {/* Cuentas Proveedores */}
-          <Route path="cuentas-proveedores"    element={<CuentasProveedores />} />
+          <Route path="cuentas-proveedores"                          element={<CuentasProveedores />} />
+          <Route path="cuentas-proveedores/liquidacion/:recepcionId" element={<Liquidacion />} />
 
           {/* Cuentas Clientes CxC */}
           <Route path="cuentas-clientes"       element={<CuentasClientes />} />
+
+          {/* Equipo */}
+          <Route path="pendientes"             element={<Pendientes />} />
 
           {/* Personal */}
           <Route path="personal"               element={<Personal />} />
