@@ -1,6 +1,7 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../components/Toast';
+import { notificar, useNotifications } from '../../hooks/useNotifications';
 import { db, doc, getDoc, collection, addDoc, updateDoc, deleteDoc, onSnapshot } from '../../firebase';
 import { arrayUnion } from 'firebase/firestore';
 
@@ -369,6 +370,7 @@ export default function Pendientes() {
   const { user, isAdmin: checkAdmin } = useAuth();
   const isAdmin  = checkAdmin();
   const toast    = useToast();
+  const { permission, requestPermission } = useNotifications();
 
   const [tareas,   setTareas]   = useState([]);
   const [usuarios, setUsuarios] = useState([]);
@@ -377,7 +379,8 @@ export default function Pendientes() {
   const [showForm, setShowForm] = useState(false);
   const [filtro,   setFiltro]   = useState('pendiente'); // 'pendiente' | 'completado' | 'todas'
 
-  const userId = user?.id || user?.usuario;
+  const userId       = user?.id || user?.usuario;
+  const prevTareas   = useRef(null); // para detectar cambios nuevos
 
   // ── Cargar usuarios ────────────────────────────────────────────
   useEffect(() => {
@@ -386,13 +389,12 @@ export default function Pendientes() {
     }).catch(() => {});
   }, []);
 
-  // ── Listener tareas en tiempo real ─────────────────────────────
+  // ── Listener tareas en tiempo real + detección de cambios ──────
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'pendientesEquipo'),
       snap => {
         const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         docs.sort((a, b) => {
-          // Urgentes primero, luego por fecha límite, luego por creación
           if (a.prioridad === 'alta' && b.prioridad !== 'alta') return -1;
           if (b.prioridad === 'alta' && a.prioridad !== 'alta') return 1;
           const fa = a.fechaLimite || '9999';
@@ -400,13 +402,52 @@ export default function Pendientes() {
           if (fa !== fb) return fa < fb ? -1 : 1;
           return (a.creadoEn || '') < (b.creadoEn || '') ? 1 : -1;
         });
+
+        // Notificar cambios después de la carga inicial
+        if (prevTareas.current !== null) {
+          const prev = prevTareas.current;
+          docs.forEach(t => {
+            const esAsignado = (t.asignadoA || []).includes(userId);
+            if (!esAsignado && !isAdmin) return;
+
+            const anterior = prev.find(p => p.id === t.id);
+
+            // Tarea nueva asignada a mí
+            if (!anterior && esAsignado) {
+              notificar('Nueva tarea asignada', t.titulo);
+              return;
+            }
+
+            if (!anterior) return;
+
+            // Comentario nuevo
+            const comentariosAntes = anterior.comentarios?.length || 0;
+            const comentariosAhora = t.comentarios?.length || 0;
+            if (comentariosAhora > comentariosAntes) {
+              const ultimo = t.comentarios[t.comentarios.length - 1];
+              if (ultimo?.autorId !== userId) {
+                notificar(
+                  `Comentario en: ${t.titulo}`,
+                  `${ultimo?.autorNombre || 'Alguien'}: ${ultimo?.texto || ''}`
+                );
+              }
+            }
+
+            // Tarea completada (notificar al creador si es admin)
+            if (anterior.estado !== 'completado' && t.estado === 'completado' && isAdmin) {
+              notificar(`Tarea completada`, `${t.titulo} — por ${t.completadoPor}`);
+            }
+          });
+        }
+
+        prevTareas.current = docs;
         setTareas(docs);
         setLoading(false);
       },
       () => setLoading(false)
     );
     return unsub;
-  }, []);
+  }, [userId, isAdmin]); // eslint-disable-line
 
   // ── Filtrar según rol ──────────────────────────────────────────
   const tareasFiltradas = useMemo(() => {
@@ -477,6 +518,16 @@ export default function Pendientes() {
         </div>
         <button onClick={() => setShowForm(true)} style={btn(T.primary)}>+ Nueva tarea</button>
       </div>
+
+      {/* Banner activar notificaciones */}
+      {permission === 'default' && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', background: '#FFF8E1', border: `1px solid #FFE082`, borderRadius: 8, marginBottom: 16, fontSize: '.84rem', color: '#5D4037' }}>
+          <span>🔔 Activa las notificaciones para recibir alertas de nuevas tareas y comentarios.</span>
+          <button onClick={async () => { const ok = await requestPermission(); if (ok) toast('Notificaciones activadas'); }} style={{ ...btn(T.warn), padding: '5px 14px', flexShrink: 0 }}>
+            Activar
+          </button>
+        </div>
+      )}
 
       {/* Filtros */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 20, background: '#F5F5F5', borderRadius: 8, padding: 4, width: 'fit-content' }}>

@@ -257,26 +257,23 @@ export default function Layout() {
             {new Date().toLocaleDateString('es-GT', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
           </span>
 
-          {/* Bell — solo si soportado */}
-          {supported && (
+          {/* Bell — activar notificaciones del browser */}
+          {supported && permission !== 'denied' && (
             <button
-              onClick={permission === 'granted' ? () => navigate('/walmart') : requestPermission}
-              title={permission === 'granted' ? 'Ir a pedidos Walmart' : 'Activar notificaciones'}
+              onClick={async () => {
+                if (permission === 'granted') { navigate('/pendientes'); return; }
+                await requestPermission();
+              }}
+              title={permission === 'granted' ? 'Notificaciones activas' : 'Activar notificaciones'}
               style={{
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                padding: '4px 6px',
-                borderRadius: 4,
-                fontSize: '1.1rem',
-                lineHeight: 1,
-                position: 'relative',
+                background: 'none', border: 'none', cursor: 'pointer',
+                padding: '4px 6px', borderRadius: 4, fontSize: '1.1rem',
+                lineHeight: 1, position: 'relative',
                 color: permission === 'granted' ? 'var(--forest)' : 'var(--ink-light)',
-                opacity: permission === 'denied' ? 0.35 : 1,
               }}
             >
               🔔
-              {permission !== 'granted' && permission !== 'denied' && (
+              {permission !== 'granted' && (
                 <span style={{
                   position: 'absolute', top: 1, right: 1,
                   width: 7, height: 7, borderRadius: '50%',
