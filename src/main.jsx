@@ -7,6 +7,13 @@ import { MainDataProvider } from './hooks/useMainData';
 import App from './App.jsx';
 import './index.css';
 
+// Registrar Service Worker para PWA (cacheo offline + notificaciones background)
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: { staleTime: 1000 * 60 * 5 },
