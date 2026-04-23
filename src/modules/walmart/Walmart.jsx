@@ -1341,11 +1341,19 @@ function TabGmail({ data, add }) {
       const queueActualizada = [...queue];
 
       for (const p of pendientes) {
-        // Dedup por correlativo o por walmartQueueId
-        const existe = dataRef.current.some(r =>
-          (p.correlativo && r.correlativo === p.correlativo) ||
-          (p.id && r.walmartQueueId === p.id)
-        );
+        // Dedup: correlativo exacto, walmartQueueId, o misma fechaEntrega+rampa+cantidad de rubros
+        const nRubros = (p.rubros || []).length;
+        const existe = dataRef.current.some(r => {
+          if (p.correlativo && r.correlativo === p.correlativo) return true;
+          if (p.id && r.walmartQueueId === p.id) return true;
+          // Mismo día + rampa + cantidad de líneas = mismo pedido
+          if (
+            p.fechaEntrega && r.fechaEntrega === p.fechaEntrega &&
+            r.rampa === (p.rampa || '') &&
+            (r.rubros?.length || 0) === nRubros
+          ) return true;
+          return false;
+        });
         if (existe) {
           // Marcar como importado aunque no lo hayamos creado (ya existía)
           const idx = queueActualizada.findIndex(q => q.id === p.id);
@@ -1448,7 +1456,7 @@ function TabGmail({ data, add }) {
         </div>
 
         <p style={{ fontSize: '.84rem', color: T.textMid, margin: 0 }}>
-          Los pedidos que llegan por correo a <b>gerenciaajua@gmail.com</b> se detectan automáticamente
+          Los pedidos que llegan por correo a <b>agroajua@gmail.com</b> se detectan automáticamente
           cada 30 min por el Apps Script y se importan aquí al abrir esta página (polling cada 5 min).
         </p>
       </div>
