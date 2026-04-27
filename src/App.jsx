@@ -36,6 +36,7 @@ import Walmart from './modules/walmart/Walmart';
 // Finanzas
 import GastosUnificado from './modules/gastos/GastosUnificado';
 import AnticiposMX from './modules/finanzas/AnticiposMX';
+import FinanzasModule from './modules/finanzas/Finanzas';
 import CotizadorRapido from './modules/cotizador/CotizadorRapido';
 import CotizadorLista   from './modules/cotizador/CotizadorLista';
 import CotizadorNuevo   from './modules/cotizador/CotizadorNuevo';
@@ -125,6 +126,7 @@ export default function App() {
           <Route path="walmart"                element={<Walmart />} />
 
           {/* Finanzas */}
+          <Route path="finanzas"               element={<FinanzasModule />} />
           <Route path="gastos"                 element={<GastosUnificado />} />
           <Route path="gastos/semanales"       element={<Navigate to="/gastos" replace />} />
           <Route path="maquila"                element={<Navigate to="/gastos" replace />} />
