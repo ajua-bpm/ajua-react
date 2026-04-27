@@ -1,9 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useMovimientosBanco, useFacturasFEL, calcPnL } from './useFinanzas';
-import ClasificadorDiario from './ClasificadorDiario';
-import ImportadorBanco    from './ImportadorBanco';
-import ImportadorFEL      from './ImportadorFEL';
-import PnL                from './PnL';
+import { useMovimientosBanco, useFacturasFEL, useGastosFijos, calcPnL } from './useFinanzas';
+import ClasificadorDiario  from './ClasificadorDiario';
+import ImportadorBanco     from './ImportadorBanco';
+import ImportadorFEL       from './ImportadorFEL';
+import PnL                 from './PnL';
+import GastosFijosConfig   from './GastosFijosConfig';
 
 const T = { primary:'#1B5E20', danger:'#C62828', warn:'#E65100', border:'#E0E0E0', mid:'#6B6B60', dark:'#1A1A18' };
 const WHITE = '#FFFFFF';
@@ -41,6 +42,10 @@ export default function Finanzas() {
 
   const banco = useMovimientosBanco();
   const fel   = useFacturasFEL();
+  const fijos = useGastosFijos();
+
+  // Cargar fijos al montar (son estáticos, no dependen del período)
+  useEffect(() => { fijos.cargar(); }, []); // eslint-disable-line
 
   // Aplicar período
   useEffect(() => {
@@ -52,7 +57,7 @@ export default function Finanzas() {
   useEffect(() => { banco.cargar(desde, hasta); }, [desde, hasta]); // eslint-disable-line
   useEffect(() => { fel.cargar(desde, hasta);   }, [desde, hasta]); // eslint-disable-line
 
-  const pnl = useMemo(() => calcPnL(banco.data, fel.data), [banco.data, fel.data]);
+  const pnl = useMemo(() => calcPnL(banco.data, fel.data, fijos.data), [banco.data, fel.data, fijos.data]);
 
   const TABS = [
     { id:'clasificar', label:'⚡ Clasificar', badge: pnl.sinClasificar||0 },
@@ -60,6 +65,7 @@ export default function Finanzas() {
     { id:'banco',      label:'🏦 Banco' },
     { id:'fel',        label:'📄 FEL' },
     { id:'importar',   label:'⬆️ Importar' },
+    { id:'fijos',      label:'⚙️ Fijos' },
   ];
 
   return (
@@ -171,6 +177,7 @@ export default function Finanzas() {
           </div>
         </div>
       )}
+      {tab==='fijos'    && <GastosFijosConfig />}
       {tab==='importar' && (
         <div>
           <ImportadorBanco onImportado={()=>banco.cargar(desde,hasta)} />

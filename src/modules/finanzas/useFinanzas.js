@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { db, collection, doc, getDocs, addDoc, updateDoc, query, where } from '../../firebase';
+import { db, collection, doc, getDocs, addDoc, updateDoc, deleteDoc, query, where } from '../../firebase';
 
 // ── Categorías ─────────────────────────────────────────────────────
 export const CATEGORIAS = [
@@ -89,32 +89,72 @@ export function useFacturasFEL() {
   return { data, loading, cargar, importar };
 }
 
+// ── Hook gastos fijos configurados ─────────────────────────────────
+export function useGastosFijos() {
+  const [data,    setData]    = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  const cargar = useCallback(async () => {
+    setLoading(true);
+    try {
+      const snap = await getDocs(collection(db, 'gastosFijosConfig'));
+      setData(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b)=>(a.concepto||'').localeCompare(b.concepto||'')));
+    } finally { setLoading(false); }
+  }, []);
+
+  const agregar = useCallback(async (item) => {
+    const ref = await addDoc(collection(db, 'gastosFijosConfig'), { ...item, creadoEn: new Date().toISOString() });
+    const nuevo = { id: ref.id, ...item };
+    setData(prev => [...prev, nuevo].sort((a,b)=>(a.concepto||'').localeCompare(b.concepto||'')));
+  }, []);
+
+  const actualizar = useCallback(async (id, item) => {
+    await updateDoc(doc(db, 'gastosFijosConfig', id), item);
+    setData(prev => prev.map(d => d.id === id ? { ...d, ...item } : d));
+  }, []);
+
+  const eliminar = useCallback(async (id) => {
+    await deleteDoc(doc(db, 'gastosFijosConfig', id));
+    setData(prev => prev.filter(d => d.id !== id));
+  }, []);
+
+  // Total mensual: mensual=monto, quincenal=monto×2
+  const totalMensual = data.filter(d=>d.activo!==false).reduce((s,d) =>
+    s + (d.frecuencia === 'quincenal' ? (d.monto||0)*2 : (d.monto||0)), 0);
+
+  return { data, loading, cargar, agregar, actualizar, eliminar, totalMensual };
+}
+
 // ── Cálculo P&L ────────────────────────────────────────────────────
-export function calcPnL(movimientos, facturas) {
-  const sum = (arr, cat) => arr.filter(m => m.categoria === cat && m.clasificado).reduce((s, m) => s + (m.credito || 0) - (m.debito || 0), 0);
+export function calcPnL(movimientos, facturas, gastosFijosConfig = []) {
   const sumCat = (tipo) => CATEGORIAS.filter(c => c.tipo === tipo).reduce((s, c) => {
-    const movs = movimientos.filter(m => m.categoria === c.id && m.clasificado);
-    return s + movs.reduce((a, m) => a + (m.debito || 0), 0);
+    return s + movimientos.filter(m => m.categoria === c.id && m.clasificado).reduce((a, m) => a + (m.debito || 0), 0);
   }, 0);
 
   const ingresosBanco = ['venta_walmart', 'venta_cliente', 'recuperacion'].reduce((s, cat) =>
     s + movimientos.filter(m => m.categoria === cat && m.clasificado).reduce((a, m) => a + (m.credito || 0), 0), 0);
 
-  const felEmitidas = facturas.filter(f => f.tipoFEL === 'emitida').reduce((s, f) => s + (f.montoNeto || 0), 0);
-  const notasCredito = facturas.filter(f => f.tipoFEL === 'emitida').reduce((s, f) => s + (f.notaCredito || 0), 0);
-  const ivaRetenido  = facturas.filter(f => f.tipoFEL === 'emitida').reduce((s, f) => s + (f.ivaRetenido || 0), 0);
+  const felEmitidas  = facturas.filter(f => f.tipoFEL === 'emitida').reduce((s, f) => s + (f.montoNeto  || 0), 0);
+  const notasCredito = facturas.filter(f => f.tipoFEL === 'emitida').reduce((s, f) => s + (f.notaCredito|| 0), 0);
+  const ivaRetenido  = facturas.filter(f => f.tipoFEL === 'emitida').reduce((s, f) => s + (f.ivaRetenido|| 0), 0);
 
-  const ingresoNeto   = ingresosBanco + felEmitidas;
+  const ingresoNeto    = ingresosBanco + felEmitidas;
   const costosProducto = sumCat('costo');
   const utilidadBruta  = ingresoNeto - costosProducto;
   const margenBruto    = ingresoNeto > 0 ? (utilidadBruta / ingresoNeto) * 100 : 0;
-  const gastosFijos    = sumCat('fijo');
-  const gastosVariables = sumCat('variable');
-  const utilidadNeta   = utilidadBruta - gastosFijos - gastosVariables;
-  const margenNeto     = ingresoNeto > 0 ? (utilidadNeta / ingresoNeto) * 100 : 0;
-  const puntoEquilibrio = margenBruto > 0 ? (gastosFijos / (margenBruto / 100)) : 0;
-  const pctEq          = puntoEquilibrio > 0 ? Math.min(200, (ingresoNeto / puntoEquilibrio) * 100) : 0;
-  const sinClasificar  = movimientos.filter(m => !m.clasificado).length;
 
-  return { ingresosBanco, felEmitidas, notasCredito, ivaRetenido, ingresoNeto, costosProducto, utilidadBruta, margenBruto, gastosFijos, gastosVariables, utilidadNeta, margenNeto, puntoEquilibrio, pctEq, sinClasificar };
+  // Gastos fijos: usar configurados si existen, si no usar movimientos clasificados
+  const fijosConfig   = gastosFijosConfig.filter(d => d.activo !== false)
+    .reduce((s, d) => s + (d.frecuencia === 'quincenal' ? (d.monto||0)*2 : (d.monto||0)), 0);
+  const fijosBanco    = sumCat('fijo');
+  const gastosFijos   = fijosConfig > 0 ? fijosConfig : fijosBanco;
+
+  const gastosVariables = sumCat('variable');
+  const utilidadNeta    = utilidadBruta - gastosFijos - gastosVariables;
+  const margenNeto      = ingresoNeto > 0 ? (utilidadNeta / ingresoNeto) * 100 : 0;
+  const puntoEquilibrio = margenBruto > 0 ? (gastosFijos / (margenBruto / 100)) : 0;
+  const pctEq           = puntoEquilibrio > 0 ? Math.min(200, (ingresoNeto / puntoEquilibrio) * 100) : 0;
+  const sinClasificar   = movimientos.filter(m => !m.clasificado).length;
+
+  return { ingresosBanco, felEmitidas, notasCredito, ivaRetenido, ingresoNeto, costosProducto, utilidadBruta, margenBruto, gastosFijos, fijosConfig, fijosBanco, gastosVariables, utilidadNeta, margenNeto, puntoEquilibrio, pctEq, sinClasificar };
 }
