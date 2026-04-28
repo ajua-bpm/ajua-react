@@ -89,6 +89,62 @@ export function useFacturasFEL() {
   return { data, loading, cargar, importar };
 }
 
+// ── Hook productos (análisis de margen) ───────────────────────────
+export function useProductosMargen() {
+  const [productos, setProductos] = useState([]);
+  const [ventas,    setVentas]    = useState([]);
+  const [loading,   setLoading]   = useState(false);
+
+  const cargar = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [pSnap, vSnap] = await Promise.all([
+        getDocs(collection(db, 'productosMargen')),
+        getDocs(collection(db, 'ventasSemanales')),
+      ]);
+      setProductos(pSnap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>((a.orden||0)-(b.orden||0))));
+      setVentas(vSnap.docs.map(d=>({id:d.id,...d.data()})));
+    } finally { setLoading(false); }
+  }, []);
+
+  const guardarProducto = useCallback(async (item) => {
+    if (item.id) {
+      await updateDoc(doc(db,'productosMargen',item.id), item);
+      setProductos(prev=>prev.map(p=>p.id===item.id?{...p,...item}:p));
+    } else {
+      const ref = await addDoc(collection(db,'productosMargen'),{...item,creadoEn:new Date().toISOString()});
+      setProductos(prev=>[...prev,{id:ref.id,...item}]);
+    }
+  }, []);
+
+  const eliminarProducto = useCallback(async (id) => {
+    await deleteDoc(doc(db,'productosMargen',id));
+    setProductos(prev=>prev.filter(p=>p.id!==id));
+  }, []);
+
+  const guardarVenta = useCallback(async (semana, productoId, lbs, cajas) => {
+    const existe = ventas.find(v=>v.semana===semana&&v.productoId===productoId);
+    if (existe) {
+      await updateDoc(doc(db,'ventasSemanales',existe.id),{lbs,cajas,actualizadoEn:new Date().toISOString()});
+      setVentas(prev=>prev.map(v=>v.id===existe.id?{...v,lbs,cajas}:v));
+    } else {
+      const ref = await addDoc(collection(db,'ventasSemanales'),{semana,productoId,lbs,cajas,registradoEn:new Date().toISOString()});
+      setVentas(prev=>[...prev,{id:ref.id,semana,productoId,lbs,cajas}]);
+    }
+  }, [ventas]);
+
+  // Calcular libre_lb para un producto
+  const calcLibre = (p) => {
+    const iva        = (p.precioVenta||0) / 1.12 * 0.12;
+    const ivaRet     = iva * ((p.ivaRetPct||0) / 100);
+    const descuento  = (p.precioVenta||0) * ((p.descuentoPct||0) / 100);
+    const neto       = (p.precioVenta||0) - ivaRet - descuento;
+    return { neto, libre: neto - (p.costo||0), ivaRet, descuento };
+  };
+
+  return { productos, ventas, loading, cargar, guardarProducto, eliminarProducto, guardarVenta, calcLibre };
+}
+
 // ── Hook gastos fijos configurados ─────────────────────────────────
 export function useGastosFijos() {
   const [data,    setData]    = useState([]);

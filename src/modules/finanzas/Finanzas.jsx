@@ -5,6 +5,7 @@ import ImportadorBanco     from './ImportadorBanco';
 import ImportadorFEL       from './ImportadorFEL';
 import PnL                 from './PnL';
 import GastosFijosConfig   from './GastosFijosConfig';
+import MargenProductos     from './MargenProductos';
 
 const T = { primary:'#1B5E20', danger:'#C62828', warn:'#E65100', border:'#E0E0E0', mid:'#6B6B60', dark:'#1A1A18' };
 const WHITE = '#FFFFFF';
@@ -66,6 +67,7 @@ export default function Finanzas() {
     { id:'fel',        label:'📄 FEL' },
     { id:'importar',   label:'⬆️ Importar' },
     { id:'fijos',      label:'⚙️ Fijos' },
+    { id:'margen',     label:'📦 Margen' },
   ];
 
   return (
@@ -178,6 +180,7 @@ export default function Finanzas() {
         </div>
       )}
       {tab==='fijos'    && <GastosFijosConfig />}
+      {tab==='margen'   && <MargenProductos />}
       {tab==='importar' && (
         <div>
           <ImportadorBanco onImportado={()=>banco.cargar(desde,hasta)} />
