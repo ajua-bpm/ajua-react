@@ -45,6 +45,8 @@ const MODULOS = [
   { id:'cuentas-proveedores', label:'Cuentas Proveedores' },
   { id:'cuentas-clientes',    label:'Cuentas Clientes (CxC)' },
   { id:'pendientes',          label:'Pendientes Equipo' },
+  { id:'proyeccion-semanal',  label:'Proyección Semanal' },
+  { id:'finanzas',            label:'Finanzas (P&L)' },
 ];
 
 const LS = { display:'flex',flexDirection:'column',gap:3,fontSize:'.7rem',fontWeight:700,textTransform:'uppercase',color:'#4A9E6A',letterSpacing:'.06em' };

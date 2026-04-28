@@ -33,6 +33,9 @@ import VentasGT from './modules/ventas/VentasGT';
 import VentasInt from './modules/ventas/VentasInt';
 import Walmart from './modules/walmart/Walmart';
 
+// Proyección Semanal
+import ProyeccionSemanal from './modules/proyeccion/ProyeccionSemanal';
+
 // Finanzas
 import GastosUnificado from './modules/gastos/GastosUnificado';
 import AnticiposMX from './modules/finanzas/AnticiposMX';
@@ -126,6 +129,7 @@ export default function App() {
           <Route path="walmart"                element={<Walmart />} />
 
           {/* Finanzas */}
+          <Route path="proyeccion-semanal"     element={<ProyeccionSemanal />} />
           <Route path="finanzas"               element={<FinanzasModule />} />
           <Route path="gastos"                 element={<GastosUnificado />} />
           <Route path="gastos/semanales"       element={<Navigate to="/gastos" replace />} />

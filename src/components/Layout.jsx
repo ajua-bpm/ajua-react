@@ -36,6 +36,7 @@ const NAV = [
   { to: '/ventas/gt',              mod: 'ventas-gt',         icon: '🇬🇹', label: 'Despachos GT' },
   { to: '/ventas/int',             mod: 'ventas-int',        icon: '✈️', label: 'Exportación' },
   { section: 'Finanzas' },
+  { to: '/proyeccion-semanal',     mod: 'proyeccion-semanal', icon: '📊', label: 'Proyección Semanal' },
   { to: '/finanzas',               mod: 'finanzas',          icon: '💰', label: 'Finanzas' },
   { to: '/gastos',                 mod: 'gastos',            icon: '💸', label: 'Gastos' },
   { to: '/cuentas-proveedores',    mod: 'cuentas-proveedores', icon: '🏪', label: 'Cuentas Proveedores' },

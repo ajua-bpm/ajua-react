@@ -89,6 +89,15 @@ export function useFacturasFEL() {
   return { data, loading, cargar, importar };
 }
 
+// ── Fórmula libre/lb — exportada para reusar en otros módulos ─────
+export const calcLibreStd = (p) => {
+  const iva       = (p.precioVenta||0) / 1.12 * 0.12;
+  const ivaRet    = iva * ((p.ivaRetPct||0) / 100);
+  const descuento = (p.precioVenta||0) * ((p.descuentoPct||0) / 100);
+  const neto      = (p.precioVenta||0) - ivaRet - descuento;
+  return { neto, libre: neto - (p.costo||0), ivaRet, descuento };
+};
+
 // ── Hook productos (análisis de margen) ───────────────────────────
 export function useProductosMargen() {
   const [productos, setProductos] = useState([]);
@@ -133,14 +142,7 @@ export function useProductosMargen() {
     }
   }, [ventas]);
 
-  // Calcular libre_lb para un producto
-  const calcLibre = (p) => {
-    const iva        = (p.precioVenta||0) / 1.12 * 0.12;
-    const ivaRet     = iva * ((p.ivaRetPct||0) / 100);
-    const descuento  = (p.precioVenta||0) * ((p.descuentoPct||0) / 100);
-    const neto       = (p.precioVenta||0) - ivaRet - descuento;
-    return { neto, libre: neto - (p.costo||0), ivaRet, descuento };
-  };
+  const calcLibre = calcLibreStd;
 
   return { productos, ventas, loading, cargar, guardarProducto, eliminarProducto, guardarVenta, calcLibre };
 }
