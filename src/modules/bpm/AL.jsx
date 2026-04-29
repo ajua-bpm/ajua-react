@@ -150,10 +150,11 @@ export default function AL() {
       });
     });
     const tabla = Object.values(diasPorEmp).map(entry => {
-      const emp = empleados.find(e => e.nombre === entry.nombre);
-      const sd  = emp?.salarioDia || (emp?.salario ? emp.salario / 30 : 0);
-      const dias = entry.dias.size;
-      return { nombre: entry.nombre, dias, salarioDia: sd, total: dias * sd };
+      const emp   = empleados.find(e => e.nombre === entry.nombre);
+      const sd    = emp?.salarioDia || (emp?.salario ? emp.salario / 30 : 0);
+      const dias  = entry.dias.size;
+      const fechas = [...entry.dias].sort();
+      return { nombre: entry.nombre, dias, fechas, salarioDia: sd, total: dias * sd };
     });
     setNomResult(tabla);
   };
@@ -355,20 +356,32 @@ export default function AL() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: T.primary }}>
-                  {['Empleado', 'Días', 'Salario/Día', 'Total'].map(h => (
+                  {['Empleado', 'Días · Fechas trabajadas', 'Salario/Día', 'Total'].map(h => (
                     <th key={h} style={{ padding: '10px 14px', textAlign: 'left', color: '#fff', fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {nomResult.map((row, i) => (
+                {nomResult.map((row, i) => {
+                  const fmtF = f => { const d = new Date(f + 'T12:00:00Z'); return d.toLocaleDateString('es-GT', { weekday:'short', day:'2-digit', month:'short', timeZone:'UTC' }); };
+                  return (
                   <tr key={row.nombre} style={{ background: i % 2 === 0 ? '#fff' : '#F9FBF9' }}>
-                    <td style={TD}>{row.nombre}</td>
-                    <td style={{ ...TD, textAlign: 'center', fontWeight: 700, color: T.accent }}>{row.dias}</td>
+                    <td style={{ ...TD, fontWeight: 600 }}>{row.nombre}</td>
+                    <td style={{ ...TD, verticalAlign: 'top' }}>
+                      <div style={{ fontWeight: 800, fontSize: '1.1rem', color: T.accent, marginBottom: 5 }}>{row.dias}</div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                        {(row.fechas || []).map(f => (
+                          <span key={f} style={{ background: '#E8F5E9', color: '#1B5E20', border: '1px solid #A5D6A7', borderRadius: 4, padding: '2px 7px', fontSize: '.7rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                            {fmtF(f)}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
                     <td style={TD}>{row.salarioDia > 0 ? `Q${Number(row.salarioDia).toFixed(2)}` : '—'}</td>
                     <td style={{ ...TD, fontWeight: 700, color: T.primary }}>{row.salarioDia > 0 ? `Q${Number(row.total).toFixed(2)}` : '—'}</td>
                   </tr>
-                ))}
+                  );
+                })}
                 {nomResult.length > 0 && (
                   <tr style={{ background: '#E8F5E9' }}>
                     <td colSpan={3} style={{ padding: '10px 14px', fontSize: '.83rem', fontWeight: 700, textAlign: 'right', color: T.primary }}>Total del período:</td>
