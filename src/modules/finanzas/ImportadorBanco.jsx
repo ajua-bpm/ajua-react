@@ -8,12 +8,17 @@ const fmtQ  = n => 'Q ' + Number(n||0).toLocaleString('es-GT',{minimumFractionDi
 
 const BANCOS = ['BAM','GYT','INDUSTRIAL'];
 
-// Convierte DD/MM/YYYY, DD-MM-YYYY o YYYY-MM-DD a ISO
+// Convierte DD/MM/YYYY, DD/MM/YY, MM/DD/YYYY o YYYY-MM-DD a ISO
 function parseDate(raw) {
   const s = String(raw || '').trim();
-  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);            // ya es ISO
-  const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
-  if (m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`; // DD/MM/YYYY
+  // ISO: 2026-04-29 o 2026-04-29 00:00:00
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  // DD/MM/YYYY o DD-MM-YYYY
+  const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+  if (m) {
+    const y = m[3].length === 2 ? '20' + m[3] : m[3];
+    return `${y}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+  }
   return '';
 }
 
@@ -21,26 +26,38 @@ function parseMonto(raw) {
   return parseFloat(String(raw || '').replace(/[Q\s,]/g, '')) || 0;
 }
 
-function parseBAM(rows) {
-  // Buscar fila de encabezados (puede estar en fila 0..10)
-  let hiIdx = rows.findIndex(r => r.some(c => /fecha/i.test(String(c || ''))));
-  const dataRows = hiIdx >= 0 ? rows.slice(hiIdx + 1) : rows;
-  return dataRows.map(r => ({
-    fecha:       parseDate(r[0]),
-    descripcion: String(r[1] || '').trim(),
-    referencia:  String(r[2] || '').trim(),
-    debito:      parseMonto(r[3]),
-    credito:     parseMonto(r[4]),
-    saldo:       parseMonto(r[5]),
-  })).filter(r => r.fecha.match(/^\d{4}-\d{2}-\d{2}$/) && (r.debito || r.credito));
-}
+// Parser universal: busca fila de encabezados y extrae columnas por nombre
+function parseUniversal(rows, banco) {
+  // Buscar fila de encabezados buscando "fecha" o "date" en cualquier celda
+  let hiIdx = rows.findIndex(r =>
+    r.some(c => /^fecha$|^date$/i.test(String(c || '').trim()))
+  );
+  // Fallback: buscar fila que contenga "fecha" como substring
+  if (hiIdx < 0) hiIdx = rows.findIndex(r =>
+    r.some(c => /fecha/i.test(String(c || '')))
+  );
 
-function parseAutoDetect(rows) {
-  let hiIdx = rows.findIndex(r => r.some(c => /fecha/i.test(String(c || ''))));
-  if (hiIdx < 0) hiIdx = 0;
+  if (hiIdx < 0) {
+    // Sin encabezado — asumir columnas fijas por banco
+    return rows.map(r => ({
+      fecha:       parseDate(r[0]),
+      descripcion: String(r[1] || '').trim(),
+      referencia:  String(r[2] || '').trim(),
+      debito:      parseMonto(r[3]),
+      credito:     parseMonto(r[4]),
+      saldo:       parseMonto(r[5]),
+    })).filter(r => r.fecha.match(/^\d{4}-\d{2}-\d{2}$/) && (r.debito || r.credito));
+  }
+
   const headers = rows[hiIdx].map(c => String(c || '').toLowerCase().trim());
-  const idx = k => headers.findIndex(h => h.includes(k));
-  const fi=idx('fecha'), di=idx('deb'), ci=idx('cred'), ri=idx('ref'), ni=idx('desc'), si=idx('saldo');
+  const idx = (keys) => headers.findIndex(h => keys.some(k => h.includes(k)));
+  const fi = idx(['fecha','date']);
+  const ni = idx(['desc','concepto','detalle','narr']);
+  const ri = idx(['ref','doc','num']);
+  const di = idx(['deb','cargo','retiro','salida']);
+  const ci = idx(['cred','abono','entrada','deposito','depósito']);
+  const si = idx(['saldo','balance']);
+
   return rows.slice(hiIdx + 1).map(r => ({
     fecha:       parseDate(r[fi > -1 ? fi : 0]),
     descripcion: String(r[ni > -1 ? ni : 1] || '').trim(),
@@ -50,6 +67,9 @@ function parseAutoDetect(rows) {
     saldo:       si > -1 ? parseMonto(r[si]) : 0,
   })).filter(r => r.fecha.match(/^\d{4}-\d{2}-\d{2}$/) && (r.debito || r.credito));
 }
+
+function parseBAM(rows)          { return parseUniversal(rows, 'BAM'); }
+function parseAutoDetect(rows)   { return parseUniversal(rows, 'AUTO'); }
 
 export default function ImportadorBanco({ onImportado }) {
   const [banco,    setBanco]    = useState('BAM');
@@ -71,8 +91,11 @@ export default function ImportadorBanco({ onImportado }) {
         const rows = XLSX.utils.sheet_to_json(ws, { header:1, raw:false, dateNF:'yyyy-mm-dd' });
         const movs = banco==='BAM' ? parseBAM(rows) : parseAutoDetect(rows);
         if (!movs.length) {
-          const sample = rows.slice(0,4).map(r=>r.join(' | ')).join('\n');
-          setError(`No se encontraron movimientos. Primeras filas del archivo:\n${sample}`);
+          const hiIdx = rows.findIndex(r => r.some(c => /fecha/i.test(String(c||''))));
+          const sample = rows.slice(0, 10).map((r, i) =>
+            `[${i}]${i===hiIdx?' ← HEADER':''} ${r.filter(c=>c!=null&&c!=='').join(' | ')}`
+          ).join('\n');
+          setError(`No se encontraron movimientos (header en fila ${hiIdx}).\n\n${sample}`);
           return;
         }
         setPreview({ movs: movs.slice(0,200), archivo: file.name });
