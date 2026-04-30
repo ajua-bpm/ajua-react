@@ -80,7 +80,14 @@ export function useMovimientosBanco() {
     return { total: movimientos.length, importados: nuevos.length, duplicados: movimientos.length - nuevos.length };
   }, []);
 
-  return { data, loading, cargar, clasificar, importar };
+  const borrarPorBanco = useCallback(async (banco) => {
+    const snap = await getDocs(query(collection(db, 'movimientosBanco'), where('banco', '==', banco)));
+    for (const d of snap.docs) await deleteDoc(doc(db, 'movimientosBanco', d.id));
+    setData(prev => prev.filter(d => d.banco !== banco));
+    return snap.docs.length;
+  }, []);
+
+  return { data, loading, cargar, clasificar, importar, borrarPorBanco };
 }
 
 // ── Hook facturas FEL ──────────────────────────────────────────────

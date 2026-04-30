@@ -162,9 +162,20 @@ export default function Finanzas() {
       )}
       {tab==='banco'      && (
         <div>
-          <div style={{ display:'flex', justifyContent:'space-between', marginBottom:12 }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12, flexWrap:'wrap', gap:8 }}>
             <span style={{ fontWeight:700, color:T.dark }}>{banco.data.length} movimientos</span>
-            <button onClick={()=>banco.cargar(desde,hasta)} style={{ padding:'6px 14px', background:T.primary, color:WHITE, border:'none', borderRadius:6, fontSize:'.82rem', fontWeight:600, cursor:'pointer' }}>🔄 Recargar</button>
+            <div style={{ display:'flex', gap:8 }}>
+              {['BAM','GYT','INDUSTRIAL'].map(b => (
+                <button key={b} onClick={async () => {
+                  if (!window.confirm(`¿Borrar TODOS los movimientos de ${b}? Esta acción no se puede deshacer.`)) return;
+                  const n = await banco.borrarPorBanco(b);
+                  alert(`${n} movimientos de ${b} eliminados.`);
+                }} style={{ padding:'5px 12px', background:'none', border:`1.5px solid ${T.danger}`, color:T.danger, borderRadius:6, fontSize:'.76rem', fontWeight:600, cursor:'pointer' }}>
+                  🗑 {b}
+                </button>
+              ))}
+              <button onClick={()=>banco.cargar(desde,hasta)} style={{ padding:'6px 14px', background:T.primary, color:WHITE, border:'none', borderRadius:6, fontSize:'.82rem', fontWeight:600, cursor:'pointer' }}>🔄 Recargar</button>
+            </div>
           </div>
           <div style={{ overflowX:'auto' }}>
             <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'.82rem' }}>
