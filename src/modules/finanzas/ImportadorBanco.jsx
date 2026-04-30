@@ -26,6 +26,12 @@ function parseMonto(raw) {
   return parseFloat(String(raw || '').replace(/[Q\s,]/g, '')) || 0;
 }
 
+// Filtra movimientos que son transferencias internas a cuenta propia AJÚA
+// (BAM/GYT reciben abonos entre cuentas propias — no son gastos)
+function esTransferenciaInterna(desc) {
+  return /agr[oa][ -]?ind|ajua|ajúa/i.test(desc);
+}
+
 // Parser universal: busca fila de encabezados y extrae columnas por nombre
 function parseUniversal(rows, banco) {
   // Buscar fila de encabezados buscando "fecha" o "date" en cualquier celda
@@ -46,7 +52,7 @@ function parseUniversal(rows, banco) {
       debito:      parseMonto(r[3]),
       credito:     parseMonto(r[4]),
       saldo:       parseMonto(r[5]),
-    })).filter(r => r.fecha.match(/^\d{4}-\d{2}-\d{2}$/) && r.debito > 0);
+    })).filter(r => r.fecha.match(/^\d{4}-\d{2}-\d{2}$/) && r.debito > 0 && !esTransferenciaInterna(r.descripcion));
   }
 
   const headers = rows[hiIdx].map(c => String(c || '').toLowerCase().trim());
@@ -65,7 +71,7 @@ function parseUniversal(rows, banco) {
     debito:      parseMonto(r[di > -1 ? di : 2]),
     credito:     parseMonto(r[ci > -1 ? ci : 3]),
     saldo:       si > -1 ? parseMonto(r[si]) : 0,
-  })).filter(r => r.fecha.match(/^\d{4}-\d{2}-\d{2}$/) && r.debito > 0);
+  })).filter(r => r.fecha.match(/^\d{4}-\d{2}-\d{2}$/) && r.debito > 0 && !esTransferenciaInterna(r.descripcion));
 }
 
 function parseBAM(rows)          { return parseUniversal(rows, 'BAM'); }
