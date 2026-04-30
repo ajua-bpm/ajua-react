@@ -3,6 +3,7 @@ import { useCollection, useWrite } from '../../hooks/useFirestore';
 import { useProductosCatalogo } from '../../hooks/useMainData';
 import { useToast } from '../../components/Toast';
 import Skeleton from '../../components/Skeleton';
+import { db, collection, getDocs } from '../../firebase';
 
 // ── Design tokens ─────────────────────────────────────────────────
 const T = {
@@ -410,10 +411,15 @@ export default function SalidaBodega() {
     };
   };
 
+  // Clave única de un FEL: authSAT si existe, si no fecha|serie|numero
+  const dupKey = (r) => r?.authSAT?.trim() || `${r?.fecha}|${r?.serieFel}|${r?.numeroDTE}`;
+
   const handleBulkFiles = (files) => {
     const arr = Array.from(files).filter(f => f.name.toLowerCase().endsWith('.xml'));
     if (!arr.length) return;
     setBulkItems([]);
+    // Claves ya existentes en Firestore (ya cargadas via useCollection)
+    const existingKeys = new Set(salidas.map(s => dupKey(s)));
     const items = arr.map(f => ({ file: f, status: 'pending', parsed: null, record: null, error: null }));
     setBulkItems(items);
     items.forEach((item, i) => {
@@ -422,7 +428,10 @@ export default function SalidaBodega() {
         try {
           const parsed = parseXML(e.target.result);
           const record = xmlToRecord(parsed);
-          setBulkItems(prev => prev.map((it, j) => j===i ? { ...it, status:'ready', parsed, record } : it));
+          const isDup  = existingKeys.has(dupKey(record));
+          setBulkItems(prev => prev.map((it, j) => j===i
+            ? { ...it, status: isDup ? 'duplicate' : 'ready', parsed, record }
+            : it));
         } catch(err) {
           setBulkItems(prev => prev.map((it, j) => j===i ? { ...it, status:'error', error: err.message } : it));
         }
@@ -435,10 +444,19 @@ export default function SalidaBodega() {
     const ready = bulkItems.filter(it => it.status === 'ready');
     if (!ready.length) return;
     setBulkImporting(true);
-    let ok = 0, fail = 0;
+    // Re-verificar contra Firestore antes de insertar (por si se importó mientras tanto)
+    const snap = (await getDocs(collection(db, 'isalidas'))).docs.map(d => dupKey(d.data()));
+    const serverKeys = new Set(snap);
+    let ok = 0, skip = 0, fail = 0;
     for (const item of ready) {
+      if (serverKeys.has(dupKey(item.record))) {
+        setBulkItems(prev => prev.map(it => it === item ? { ...it, status:'duplicate' } : it));
+        skip++;
+        continue;
+      }
       try {
         await add(item.record);
+        serverKeys.add(dupKey(item.record));
         setBulkItems(prev => prev.map(it => it === item ? { ...it, status:'done' } : it));
         ok++;
       } catch(err) {
@@ -447,7 +465,7 @@ export default function SalidaBodega() {
       }
     }
     setBulkImporting(false);
-    toast(`✅ ${ok} ventas importadas${fail ? ` · ${fail} errores` : ''}`);
+    toast(`✅ ${ok} importadas · ${skip} duplicadas omitidas${fail ? ` · ${fail} errores` : ''}`);
   };
 
   // ── Tab styles ────────────────────────────────────────────────
@@ -657,10 +675,11 @@ export default function SalidaBodega() {
                   <tbody>
                     {bulkItems.map((it, i) => {
                       const statusBadge = {
-                        pending: { bg:'#FFF3E0', color:'#E65100', label:'Procesando…' },
-                        ready:   { bg:'#E8F5E9', color:'#1B5E20', label:'Listo'       },
-                        done:    { bg:'#E3F2FD', color:'#1565C0', label:'Importado'   },
-                        error:   { bg:'#FFEBEE', color:'#C62828', label:'Error'       },
+                        pending:   { bg:'#FFF3E0', color:'#E65100', label:'Procesando…' },
+                        ready:     { bg:'#E8F5E9', color:'#1B5E20', label:'Listo'       },
+                        done:      { bg:'#E3F2FD', color:'#1565C0', label:'Importado'   },
+                        duplicate: { bg:'#F3F4F6', color:'#6B7280', label:'Duplicado'   },
+                        error:     { bg:'#FFEBEE', color:'#C62828', label:'Error'       },
                       }[it.status] || {};
                       return (
                         <tr key={i} style={{ background: i%2 ? '#F9FBF9' : '#fff' }}>
@@ -684,14 +703,16 @@ export default function SalidaBodega() {
               <div style={{ display:'flex', gap:12, alignItems:'center' }}>
                 <button onClick={handleBulkImport} disabled={bulkImporting || !bulkItems.some(it => it.status === 'ready')}
                   style={{ padding:'11px 28px', background: bulkImporting ? T.textMid : T.primary, color:T.white, border:'none', borderRadius:6, fontWeight:700, fontSize:'.88rem', cursor: bulkImporting ? 'not-allowed' : 'pointer' }}>
-                  {bulkImporting ? 'Importando…' : `⬆️ Importar ${bulkItems.filter(it=>it.status==='ready').length} ventas`}
+                  {bulkImporting ? 'Importando…' : `⬆️ Importar ${bulkItems.filter(it=>it.status==='ready').length} nuevas`}
                 </button>
                 <button onClick={() => setBulkItems([])} disabled={bulkImporting}
                   style={{ padding:'11px 18px', background:'none', border:`1.5px solid ${T.border}`, borderRadius:6, fontWeight:600, fontSize:'.82rem', cursor:'pointer', color:T.textMid }}>
                   Limpiar
                 </button>
                 <span style={{ fontSize:'.78rem', color:T.textMid }}>
-                  {bulkItems.filter(it=>it.status==='done').length} importados · {bulkItems.filter(it=>it.status==='error').length} errores
+                  {bulkItems.filter(it=>it.status==='done').length} importadas
+                  {bulkItems.filter(it=>it.status==='duplicate').length > 0 && ` · ${bulkItems.filter(it=>it.status==='duplicate').length} duplicadas`}
+                  {bulkItems.filter(it=>it.status==='error').length > 0 && ` · ${bulkItems.filter(it=>it.status==='error').length} errores`}
                 </span>
               </div>
             </>
