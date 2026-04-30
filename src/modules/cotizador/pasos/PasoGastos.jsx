@@ -19,6 +19,43 @@ function useLocalGastos(cotId, firestoreList) {
   return [local, setLocal];
 }
 
+function Section({ title, rows, onAdd, onUpdLocal, onBlur, onDel, monedaCol }) {
+  return (
+    <div style={{ marginBottom: 28 }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: 8 }}>
+        <h3 style={{ margin:0, fontSize:'.9rem', fontWeight:700, color:T.primary }}>{title}</h3>
+        <button onClick={onAdd} style={{ padding:'5px 14px', background:T.primary, color:T.white, border:'none', borderRadius:4, cursor:'pointer', fontSize:'.78rem', fontWeight:700 }}>
+          ＋ Agregar
+        </button>
+      </div>
+      {rows.length > 0 ? (
+        <table style={{ width:'100%', borderCollapse:'collapse' }}>
+          <thead><tr>
+            <th style={TH}>Concepto</th>
+            {monedaCol && <th style={TH}>Moneda</th>}
+            <th style={TH}>Monto</th>
+            <th style={TH}></th>
+          </tr></thead>
+          <tbody>
+            {rows.map(g => (
+              <GastoRow
+                key={g.id}
+                g={g}
+                onChange={(k, v) => onUpdLocal(g.id, k, v)}
+                onBlur={onBlur}
+                onDel={() => onDel(g.id)}
+                monedaCol={monedaCol}
+              />
+            ))}
+          </tbody>
+        </table>
+      ) : (
+        <div style={{ padding:'16px 0', color:T.textMid, fontSize:'.82rem' }}>Sin gastos registrados.</div>
+      )}
+    </div>
+  );
+}
+
 function GastoRow({ g, onChange, onBlur, onDel, monedaCol }) {
   return (
     <tr>
@@ -109,41 +146,6 @@ export default function PasoGastos({ cot, update }) {
     setGastosMX(prev => prev.map(g => g.id === id ? { ...g, [k]: v } : g));
   const updGTLocal = (id, k, v) =>
     setGastosGT(prev => prev.map(g => g.id === id ? { ...g, [k]: v } : g));
-
-  const Section = ({ title, rows, onAdd, onUpdLocal, onBlur, onDel, monedaCol }) => (
-    <div style={{ marginBottom: 28 }}>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: 8 }}>
-        <h3 style={{ margin:0, fontSize:'.9rem', fontWeight:700, color:T.primary }}>{title}</h3>
-        <button onClick={onAdd} style={{ padding:'5px 14px', background:T.primary, color:T.white, border:'none', borderRadius:4, cursor:'pointer', fontSize:'.78rem', fontWeight:700 }}>
-          ＋ Agregar
-        </button>
-      </div>
-      {rows.length > 0 ? (
-        <table style={{ width:'100%', borderCollapse:'collapse' }}>
-          <thead><tr>
-            <th style={TH}>Concepto</th>
-            {monedaCol && <th style={TH}>Moneda</th>}
-            <th style={TH}>Monto</th>
-            <th style={TH}></th>
-          </tr></thead>
-          <tbody>
-            {rows.map(g => (
-              <GastoRow
-                key={g.id}
-                g={g}
-                onChange={(k, v) => onUpdLocal(g.id, k, v)}
-                onBlur={onBlur}
-                onDel={() => onDel(g.id)}
-                monedaCol={monedaCol}
-              />
-            ))}
-          </tbody>
-        </table>
-      ) : (
-        <div style={{ padding:'16px 0', color:T.textMid, fontSize:'.82rem' }}>Sin gastos registrados.</div>
-      )}
-    </div>
-  );
 
   return (
     <div style={{ padding: 20 }}>
