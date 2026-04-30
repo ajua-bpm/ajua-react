@@ -174,6 +174,14 @@ export default function Finanzas() {
                   🗑 {b}
                 </button>
               ))}
+              <button onClick={async () => {
+                if (!window.confirm('¿Borrar todos los movimientos de solo CRÉDITO (sin débito) de todos los bancos?')) return;
+                const n = await banco.borrarCreditos();
+                alert(`${n} movimientos de crédito eliminados.`);
+                banco.cargar(desde, hasta);
+              }} style={{ padding:'5px 12px', background:'none', border:`1.5px solid ${T.danger}`, color:T.danger, borderRadius:6, fontSize:'.76rem', fontWeight:600, cursor:'pointer' }}>
+                🗑 Limpiar créditos
+              </button>
               <button onClick={()=>banco.cargar(desde,hasta)} style={{ padding:'6px 14px', background:T.primary, color:WHITE, border:'none', borderRadius:6, fontSize:'.82rem', fontWeight:600, cursor:'pointer' }}>🔄 Recargar</button>
             </div>
           </div>

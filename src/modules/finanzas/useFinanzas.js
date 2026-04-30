@@ -61,6 +61,8 @@ export function useMovimientosBanco() {
       const snap = await getDocs(q);
       let docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       if (hasta) docs = docs.filter(d => (d.fecha || '') <= hasta);
+      // Solo débitos — créditos/ingresos no son gastos clasificables
+      docs = docs.filter(d => (d.debito || 0) > 0);
       docs.sort((a, b) => (a.fecha > b.fecha ? -1 : 1));
       setData(docs);
     } finally { setLoading(false); }
@@ -87,7 +89,18 @@ export function useMovimientosBanco() {
     return snap.docs.length;
   }, []);
 
-  return { data, loading, cargar, clasificar, importar, borrarPorBanco };
+  const borrarCreditos = useCallback(async () => {
+    const snap = await getDocs(collection(db, 'movimientosBanco'));
+    const soloCreditos = snap.docs.filter(d => {
+      const data = d.data();
+      return (data.debito || 0) === 0 && (data.credito || 0) > 0;
+    });
+    for (const d of soloCreditos) await deleteDoc(doc(db, 'movimientosBanco', d.id));
+    setData(prev => prev.filter(d => (d.debito || 0) > 0));
+    return soloCreditos.length;
+  }, []);
+
+  return { data, loading, cargar, clasificar, importar, borrarPorBanco, borrarCreditos };
 }
 
 // ── Hook facturas FEL ──────────────────────────────────────────────
