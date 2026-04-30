@@ -109,6 +109,10 @@ export default function SalidaBodega() {
   const [form,       setForm]       = useState(BLANK_FORM());
   const [lineas,     setLineas]     = useState([BLANK_LINEA()]);
 
+  // Carga masiva XML
+  const [bulkItems,     setBulkItems]     = useState([]);   // { file, parsed, record, status }
+  const [bulkImporting, setBulkImporting] = useState(false);
+
   const sf = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   // Map productoNombre → product record
@@ -342,6 +346,110 @@ export default function SalidaBodega() {
     }
   };
 
+  // ── Bulk XML helpers ──────────────────────────────────────────
+  const xmlToRecord = (parsed) => {
+    const lineasBulk = (parsed.items || []).map(item => {
+      const cajas        = parseFloat(item.cantidad)       || 0;
+      const precioConIva = parseFloat(item.precioUnitario) || 0;
+      const descUp       = (item.descripcion || '').toUpperCase();
+      const palabra      = descUp.split(' ').find(w => w.length >= 4) || '';
+      const prodMatch    = catProd.find(p =>
+        p.nombre.toUpperCase() === descUp ||
+        (palabra && (p.nombre.toUpperCase().includes(palabra) || descUp.includes(p.nombre.toUpperCase())))
+      );
+      let presMatch = null;
+      if (prodMatch) {
+        const wPres = presByProd[prodMatch.nombre] || [];
+        const uxcM  = descUp.match(/UXC_(\d+)/);
+        if (uxcM) presMatch = wPres.find(p => (p.nombre||'').toUpperCase().includes(uxcM[0]));
+        if (!presMatch) presMatch = wPres[0] || null;
+      }
+      const l = { ...BLANK_LINEA(), productoId: prodMatch?.id||'', producto: prodMatch?.nombre||'',
+        descripcion: item.descripcion, cajas: item.cantidad, precioConIva: item.precioUnitario,
+        totalConIva: cajas * precioConIva };
+      if (presMatch) {
+        l.presentacionId = presMatch.id;
+        l.tipoContenido  = presMatch.tipoContenido || '';
+        if (presMatch.tipoContenido === 'unidades') {
+          l.cantidadCaja  = Number(presMatch.cantidadCaja) || 0;
+          l.totalUnidades = cajas * l.cantidadCaja;
+        } else {
+          l.lbsCaja   = Number(presMatch.totalLbsCaja) || Number(presMatch.lbsUnidad) || 0;
+          l.totalLbs  = cajas * l.lbsCaja;
+        }
+      }
+      return l;
+    });
+    const totalCajas    = lineasBulk.reduce((s,l) => s + (parseFloat(l.cajas)||0), 0);
+    const totalLbs      = lineasBulk.reduce((s,l) => s + (l.totalLbs||0), 0);
+    const totalUnidades = lineasBulk.reduce((s,l) => s + (l.totalUnidades||0), 0);
+    const conIva        = lineasBulk.reduce((s,l) => s + (l.totalConIva||0), 0);
+    const neto          = conIva / 1.12;
+    const iva           = conIva - neto;
+    const retencion     = iva * 0.80;
+    const aCobrar       = conIva - retencion;
+    const lineasClean   = lineasBulk.map(({ _key, ...l }) => ({
+      productoId: l.productoId||'', producto: l.producto||'', descripcion: l.descripcion||'',
+      presentacionId: l.presentacionId||'', tipoContenido: l.tipoContenido||'',
+      cajas: parseFloat(l.cajas)||0, cantidadCaja: Number(l.cantidadCaja)||0,
+      lbsCaja: parseFloat(l.lbsCaja)||0, totalLbs: l.totalLbs||0,
+      totalUnidades: l.totalUnidades||0, precioConIva: parseFloat(l.precioConIva)||0,
+      totalConIva: l.totalConIva||0,
+    }));
+    return {
+      fecha: parsed.fecha || new Date().toISOString().slice(0,10),
+      cliente: 'Walmart Guatemala', nit: '1926272',
+      authSAT: parsed.authSAT||'', serieFel: parsed.serieFel||'', numeroDTE: parsed.numeroDTE||'',
+      numOC:'', numEntrega:'', almacen:'', obs:'',
+      lineas: lineasClean,
+      productos: lineasClean.map(l => ({ productoId:l.productoId, producto:l.producto||l.descripcion,
+        presentacionId:l.presentacionId, tipoContenido:l.tipoContenido, cajasEnviadas:l.cajas,
+        cantidadCaja:l.cantidadCaja, totalUnidades:l.totalUnidades, lbs:l.totalLbs,
+        precioConIva:l.precioConIva, totalConIva:l.totalConIva })),
+      totalCajas, totalLbs, totalUnidades, neto, iva, conIva, retencion, aCobrar, _ts: Date.now(),
+    };
+  };
+
+  const handleBulkFiles = (files) => {
+    const arr = Array.from(files).filter(f => f.name.toLowerCase().endsWith('.xml'));
+    if (!arr.length) return;
+    setBulkItems([]);
+    const items = arr.map(f => ({ file: f, status: 'pending', parsed: null, record: null, error: null }));
+    setBulkItems(items);
+    items.forEach((item, i) => {
+      const reader = new FileReader();
+      reader.onload = e => {
+        try {
+          const parsed = parseXML(e.target.result);
+          const record = xmlToRecord(parsed);
+          setBulkItems(prev => prev.map((it, j) => j===i ? { ...it, status:'ready', parsed, record } : it));
+        } catch(err) {
+          setBulkItems(prev => prev.map((it, j) => j===i ? { ...it, status:'error', error: err.message } : it));
+        }
+      };
+      reader.readAsText(item.file);
+    });
+  };
+
+  const handleBulkImport = async () => {
+    const ready = bulkItems.filter(it => it.status === 'ready');
+    if (!ready.length) return;
+    setBulkImporting(true);
+    let ok = 0, fail = 0;
+    for (const item of ready) {
+      try {
+        await add(item.record);
+        setBulkItems(prev => prev.map(it => it === item ? { ...it, status:'done' } : it));
+        ok++;
+      } catch(err) {
+        setBulkItems(prev => prev.map(it => it === item ? { ...it, status:'error', error: err.message } : it));
+        fail++;
+      }
+    }
+    setBulkImporting(false);
+    toast(`✅ ${ok} ventas importadas${fail ? ` · ${fail} errores` : ''}`);
+  };
+
   // ── Tab styles ────────────────────────────────────────────────
   const mainTabBtn = key => ({
     padding:'9px 22px', fontWeight:600, fontSize:'.83rem', cursor:'pointer', border:'none',
@@ -369,6 +477,7 @@ export default function SalidaBodega() {
       <div style={{ display:'flex', borderBottom:`2px solid ${T.border}`, marginBottom:20 }}>
         <button style={mainTabBtn('registrar')} onClick={() => setMainTab('registrar')}>Registrar Venta</button>
         <button style={mainTabBtn('historial')} onClick={() => setMainTab('historial')}>Historial ({loading ? '…' : salidas.length})</button>
+        <button style={mainTabBtn('masiva')} onClick={() => setMainTab('masiva')}>📁 Carga Masiva</button>
       </div>
 
       {/* ══ TAB REGISTRAR ═══════════════════════════════════════ */}
@@ -512,6 +621,82 @@ export default function SalidaBodega() {
             </div>
           </div>
         </>
+      )}
+
+      {/* ══ TAB CARGA MASIVA ════════════════════════════════════ */}
+      {mainTab === 'masiva' && (
+        <div style={card}>
+          <div style={{ fontWeight:700, fontSize:'.9rem', color:T.primary, marginBottom:6 }}>Carga masiva de XML FEL</div>
+          <p style={{ fontSize:'.76rem', color:T.textMid, marginTop:0, marginBottom:16 }}>
+            Selecciona varios archivos XML a la vez. Se parsean automáticamente y puedes importarlos todos de una vez.
+          </p>
+
+          {/* Drop zone */}
+          <div
+            onDragOver={e => e.preventDefault()}
+            onDrop={e => { e.preventDefault(); handleBulkFiles(e.dataTransfer.files); }}
+            style={{ border:`2px dashed ${T.border}`, borderRadius:10, padding:'28px 20px', textAlign:'center', cursor:'pointer', background:'#FAFAFA', marginBottom:16 }}
+            onClick={() => document.getElementById('bulk-xml-input').click()}>
+            <div style={{ fontSize:'1.6rem', marginBottom:6 }}>📂</div>
+            <div style={{ fontSize:'.86rem', color:T.textMid }}>Arrastra archivos XML aquí o <b>haz clic para seleccionar</b></div>
+            <div style={{ fontSize:'.76rem', color:T.textMid, marginTop:4 }}>Múltiples archivos .xml permitidos</div>
+            <input id="bulk-xml-input" type="file" multiple accept=".xml" style={{ display:'none' }}
+              onChange={e => { handleBulkFiles(e.target.files); e.target.value = ''; }} />
+          </div>
+
+          {/* Preview table */}
+          {bulkItems.length > 0 && (
+            <>
+              <div style={{ overflowX:'auto', marginBottom:16 }}>
+                <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'.81rem' }}>
+                  <thead>
+                    <tr>{['Archivo','Fecha','Auth SAT','Productos','A Cobrar Q','Estado'].map(h => (
+                      <th key={h} style={{ ...thSt, padding:'8px 10px' }}>{h}</th>
+                    ))}</tr>
+                  </thead>
+                  <tbody>
+                    {bulkItems.map((it, i) => {
+                      const statusBadge = {
+                        pending: { bg:'#FFF3E0', color:'#E65100', label:'Procesando…' },
+                        ready:   { bg:'#E8F5E9', color:'#1B5E20', label:'Listo'       },
+                        done:    { bg:'#E3F2FD', color:'#1565C0', label:'Importado'   },
+                        error:   { bg:'#FFEBEE', color:'#C62828', label:'Error'       },
+                      }[it.status] || {};
+                      return (
+                        <tr key={i} style={{ background: i%2 ? '#F9FBF9' : '#fff' }}>
+                          <td style={{ ...tdSt, maxWidth:180, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:'.76rem', color:T.textMid }}>{it.file.name}</td>
+                          <td style={{ ...tdSt, whiteSpace:'nowrap', fontWeight:600 }}>{it.record?.fecha || '—'}</td>
+                          <td style={{ ...tdSt, fontSize:'.72rem', color:T.textMid, maxWidth:160, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{it.parsed?.authSAT || '—'}</td>
+                          <td style={{ ...tdSt, textAlign:'center' }}>{it.record?.lineas?.length ?? '—'}</td>
+                          <td style={{ ...tdSt, textAlign:'right', fontWeight:700, color:T.info, whiteSpace:'nowrap' }}>{it.record ? fmtQ(it.record.aCobrar) : '—'}</td>
+                          <td style={{ ...tdSt, textAlign:'center' }}>
+                            <span style={{ padding:'3px 10px', borderRadius:100, background:statusBadge.bg, color:statusBadge.color, fontWeight:700, fontSize:'.72rem', whiteSpace:'nowrap' }}>
+                              {it.status === 'error' ? `Error: ${it.error?.slice(0,40)||'?'}` : statusBadge.label}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <div style={{ display:'flex', gap:12, alignItems:'center' }}>
+                <button onClick={handleBulkImport} disabled={bulkImporting || !bulkItems.some(it => it.status === 'ready')}
+                  style={{ padding:'11px 28px', background: bulkImporting ? T.textMid : T.primary, color:T.white, border:'none', borderRadius:6, fontWeight:700, fontSize:'.88rem', cursor: bulkImporting ? 'not-allowed' : 'pointer' }}>
+                  {bulkImporting ? 'Importando…' : `⬆️ Importar ${bulkItems.filter(it=>it.status==='ready').length} ventas`}
+                </button>
+                <button onClick={() => setBulkItems([])} disabled={bulkImporting}
+                  style={{ padding:'11px 18px', background:'none', border:`1.5px solid ${T.border}`, borderRadius:6, fontWeight:600, fontSize:'.82rem', cursor:'pointer', color:T.textMid }}>
+                  Limpiar
+                </button>
+                <span style={{ fontSize:'.78rem', color:T.textMid }}>
+                  {bulkItems.filter(it=>it.status==='done').length} importados · {bulkItems.filter(it=>it.status==='error').length} errores
+                </span>
+              </div>
+            </>
+          )}
+        </div>
       )}
 
       {/* ══ TAB HISTORIAL ═══════════════════════════════════════ */}
