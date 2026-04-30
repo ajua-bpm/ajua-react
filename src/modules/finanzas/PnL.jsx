@@ -24,15 +24,19 @@ function Section({ title, children }) {
   );
 }
 
-export default function PnL({ pnl, movimientos }) {
+export default function PnL({ pnl, movimientos, gastosFijosConfig = [] }) {
   const { ingresosBanco, ventasWalmart, felEmitidas, notasCredito, ivaRetenido, ingresoNeto,
           costosProducto, utilidadBruta, margenBruto,
           gastosFijos, fijosConfigTotal, factorPeriodo, dias,
           gastosVariables, utilidadNeta, margenNeto,
           puntoEquilibrio, pctEq, sinClasificar } = pnl;
 
-  // Desglose fijos y variables desde movimientos
   const sumCat = (catId) => movimientos.filter(m=>m.categoria===catId&&m.clasificado).reduce((s,m)=>s+(m.debito||0),0);
+
+  // Cuando hay config activa, las filas de fijos vienen del presupuesto (prorrateado), no del banco
+  const usandoConfig = fijosConfigTotal > 0;
+  const configActivos = gastosFijosConfig.filter(d => d.activo !== false);
+  const configMonto = (d) => (d.frecuencia === 'quincenal' ? (d.monto||0)*2 : (d.monto||0)) * factorPeriodo;
 
   return (
     <div style={{ maxWidth:560 }}>
@@ -66,15 +70,27 @@ export default function PnL({ pnl, movimientos }) {
       </div>
 
       <Section title="Gastos fijos">
-        {fijosConfigTotal > 0 && (
-          <div style={{ fontSize:'.74rem', color:T.mid, marginBottom:6, padding:'4px 8px', background:'#F5F5F5', borderRadius:4 }}>
-            Mensual Q {fmtQ(fijosConfigTotal)} × {(factorPeriodo*100).toFixed(0)}% ({dias} días) = período
-          </div>
+        {usandoConfig ? (
+          <>
+            <div style={{ fontSize:'.74rem', color:'#1565C0', marginBottom:8, padding:'6px 10px', background:'#E3F2FD', borderRadius:4, display:'flex', justifyContent:'space-between' }}>
+              <span>📋 Usando presupuesto configurado</span>
+              <span>Mensual Q {fmtQ(fijosConfigTotal)} × {(factorPeriodo*100).toFixed(0)}% ({dias} días)</span>
+            </div>
+            {configActivos.map(d => (
+              <Row key={d.id} label={d.concepto} value={configMonto(d)} indent={1} />
+            ))}
+          </>
+        ) : (
+          <>
+            <div style={{ fontSize:'.74rem', color:T.mid, marginBottom:6, padding:'4px 8px', background:'#F5F5F5', borderRadius:4 }}>
+              Usando movimientos banco clasificados como fijo
+            </div>
+            <Row label="Renta bodega"    value={sumCat('renta_bodega')}    indent={1} />
+            <Row label="Transporte fijo" value={sumCat('transporte_fijo')} indent={1} />
+            <Row label="Luz/servicios"   value={sumCat('luz_servicios')}   indent={1} />
+            <Row label="Empleados fijos" value={sumCat('empleado_fijo')}   indent={1} />
+          </>
         )}
-        <Row label="Renta bodega"     value={sumCat('renta_bodega')}    indent={1} />
-        <Row label="Transporte fijo"  value={sumCat('transporte_fijo')} indent={1} />
-        <Row label="Luz/servicios"    value={sumCat('luz_servicios')}   indent={1} />
-        <Row label="Empleados fijos"  value={sumCat('empleado_fijo')}   indent={1} />
         <Row label="TOTAL FIJOS (período)" value={gastosFijos} bold borderTop />
       </Section>
 

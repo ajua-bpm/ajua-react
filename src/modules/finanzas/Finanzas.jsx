@@ -126,7 +126,7 @@ export default function Finanzas() {
 
       {/* Tab content */}
       {tab==='clasificar' && <ClasificadorDiario movimientos={banco.data} onClasificar={banco.clasificar} />}
-      {tab==='pnl'        && <PnL pnl={pnl} movimientos={banco.data} facturas={fel.data} />}
+      {tab==='pnl'        && <PnL pnl={pnl} movimientos={banco.data} facturas={fel.data} gastosFijosConfig={fijos.data} />}
       {tab==='walmart' && (
         <div>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
