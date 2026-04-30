@@ -60,7 +60,7 @@ export default function Finanzas() {
   useEffect(() => { fel.cargar(desde, hasta);     }, [desde, hasta]); // eslint-disable-line
   useEffect(() => { salidas.cargar(desde, hasta); }, [desde, hasta]); // eslint-disable-line
 
-  const pnl = useMemo(() => calcPnL(banco.data, fel.data, fijos.data, salidas.data, desde, hasta), [banco.data, fel.data, fijos.data, salidas.data, desde, hasta]);
+  const pnl = useMemo(() => calcPnL(banco.data, fel.data, [], salidas.data), [banco.data, fel.data, salidas.data]);
 
   const TABS = [
     { id:'clasificar', label:'⚡ Clasificar', badge: pnl.sinClasificar||0 },
@@ -126,7 +126,7 @@ export default function Finanzas() {
 
       {/* Tab content */}
       {tab==='clasificar' && <ClasificadorDiario movimientos={banco.data} onClasificar={banco.clasificar} />}
-      {tab==='pnl'        && <PnL pnl={pnl} movimientos={banco.data} facturas={fel.data} gastosFijosConfig={fijos.data} />}
+      {tab==='pnl'        && <PnL pnl={pnl} movimientos={banco.data} facturas={fel.data} />}
       {tab==='walmart' && (
         <div>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>

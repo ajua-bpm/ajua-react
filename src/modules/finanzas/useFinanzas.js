@@ -224,45 +224,35 @@ export function useGastosFijos() {
 }
 
 // ── Cálculo P&L ────────────────────────────────────────────────────
-export function calcPnL(movimientos, facturas, gastosFijosConfig = [], walmartSalidas = [], desde = null, hasta = null) {
-  const sumCat = (tipo) => CATEGORIAS.filter(c => c.tipo === tipo).reduce((s, c) => {
-    return s + movimientos.filter(m => m.categoria === c.id && m.clasificado).reduce((a, m) => a + (m.debito || 0), 0);
-  }, 0);
+// Fuente única: movimientos banco + ventas Walmart. Sin config de fijos.
+export function calcPnL(movimientos, facturas, _unused = [], walmartSalidas = []) {
+  const sumCat = (tipo) => CATEGORIAS.filter(c => c.tipo === tipo).reduce((s, c) =>
+    s + movimientos.filter(m => m.categoria === c.id && m.clasificado).reduce((a, m) => a + (m.debito || 0), 0), 0);
 
-  // venta_walmart excluida aquí — viene de isalidas (walmartSalidas) para evitar doble conteo
-  const ingresosBanco = ['venta_cliente', 'recuperacion'].reduce((s, cat) =>
+  const ventasWalmart  = walmartSalidas.reduce((s, r) => s + (r.aCobrar || r.neto || 0), 0);
+  const ingresosBanco  = ['venta_cliente', 'recuperacion'].reduce((s, cat) =>
     s + movimientos.filter(m => m.categoria === cat && m.clasificado).reduce((a, m) => a + (m.credito || 0), 0), 0);
 
-  const ventasWalmart = walmartSalidas.reduce((s, r) => s + (r.aCobrar || r.neto || 0), 0);
+  const felEmitidas  = facturas.filter(f => f.tipoFEL === 'emitida').reduce((s, f) => s + (f.montoNeto   || 0), 0);
+  const notasCredito = facturas.filter(f => f.tipoFEL === 'emitida').reduce((s, f) => s + (f.notaCredito || 0), 0);
+  const ivaRetenido  = facturas.filter(f => f.tipoFEL === 'emitida').reduce((s, f) => s + (f.ivaRetenido || 0), 0);
 
-  const felEmitidas  = facturas.filter(f => f.tipoFEL === 'emitida').reduce((s, f) => s + (f.montoNeto  || 0), 0);
-  const notasCredito = facturas.filter(f => f.tipoFEL === 'emitida').reduce((s, f) => s + (f.notaCredito|| 0), 0);
-  const ivaRetenido  = facturas.filter(f => f.tipoFEL === 'emitida').reduce((s, f) => s + (f.ivaRetenido|| 0), 0);
-
-  const ingresoNeto    = ingresosBanco + felEmitidas + ventasWalmart;
+  const ingresoNeto    = ventasWalmart + ingresosBanco + felEmitidas;
   const costosProducto = sumCat('costo');
+  const gastosFijos    = sumCat('fijo');
+  const gastosVariables= sumCat('variable');
+  const totalGastos    = costosProducto + gastosFijos + gastosVariables;
+
   const utilidadBruta  = ingresoNeto - costosProducto;
   const margenBruto    = ingresoNeto > 0 ? (utilidadBruta / ingresoNeto) * 100 : 0;
+  const utilidadNeta   = ingresoNeto - totalGastos;
+  const margenNeto     = ingresoNeto > 0 ? (utilidadNeta / ingresoNeto) * 100 : 0;
+  const puntoEquilibrio= margenBruto > 0 ? (gastosFijos / (margenBruto / 100)) : 0;
+  const pctEq          = puntoEquilibrio > 0 ? Math.min(200, (ingresoNeto / puntoEquilibrio) * 100) : 0;
+  const sinClasificar  = movimientos.filter(m => !m.clasificado).length;
 
-  // Factor período: gastos fijos son mensuales — escalar al período seleccionado
-  const dias = (desde && hasta)
-    ? Math.max(1, (new Date(hasta) - new Date(desde)) / 86400000 + 1)
-    : 30;
-  const factorPeriodo = dias / 30;
-
-  // Gastos fijos: usar configurados si existen, si no usar movimientos clasificados
-  const fijosConfigTotal = gastosFijosConfig.filter(d => d.activo !== false)
-    .reduce((s, d) => s + (d.frecuencia === 'quincenal' ? (d.monto||0)*2 : (d.monto||0)), 0);
-  const fijosConfig   = fijosConfigTotal * factorPeriodo;
-  const fijosBanco    = sumCat('fijo');
-  const gastosFijos   = fijosConfigTotal > 0 ? fijosConfig : fijosBanco;
-
-  const gastosVariables = sumCat('variable');
-  const utilidadNeta    = utilidadBruta - gastosFijos - gastosVariables;
-  const margenNeto      = ingresoNeto > 0 ? (utilidadNeta / ingresoNeto) * 100 : 0;
-  const puntoEquilibrio = margenBruto > 0 ? (gastosFijos / (margenBruto / 100)) : 0;
-  const pctEq           = puntoEquilibrio > 0 ? Math.min(200, (ingresoNeto / puntoEquilibrio) * 100) : 0;
-  const sinClasificar   = movimientos.filter(m => !m.clasificado).length;
-
-  return { ingresosBanco, ventasWalmart, felEmitidas, notasCredito, ivaRetenido, ingresoNeto, costosProducto, utilidadBruta, margenBruto, gastosFijos, fijosConfig, fijosConfigTotal, factorPeriodo, dias, fijosBanco, gastosVariables, utilidadNeta, margenNeto, puntoEquilibrio, pctEq, sinClasificar };
+  return { ventasWalmart, ingresosBanco, felEmitidas, notasCredito, ivaRetenido,
+           ingresoNeto, costosProducto, gastosFijos, gastosVariables, totalGastos,
+           utilidadBruta, margenBruto, utilidadNeta, margenNeto,
+           puntoEquilibrio, pctEq, sinClasificar };
 }
