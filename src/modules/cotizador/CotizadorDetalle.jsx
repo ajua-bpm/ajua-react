@@ -83,7 +83,7 @@ export default function CotizadorDetalle() {
             <div style={{ margin:'4px 0 0', display:'flex', gap:12, fontSize:'.8rem', color:T.textMid, flexWrap:'wrap' }}>
               <span>{cot.tipo==='interno'?'🏭 Interno':'🤝 Terceros'}</span>
               <span>📅 {cot.fecha}</span>
-              {cot.tc && <span>TC: 1 MXN = Q{cot.tc}</span>}
+              {cot.tc && <span>TC: 1 GTQ = {cot.tc} MXN</span>}
               {cot.totalCosto>0 && <span style={{ fontWeight:700, color:T.secondary }}>Total: Q {fmt(cot.totalCosto)}</span>}
             </div>
           </div>

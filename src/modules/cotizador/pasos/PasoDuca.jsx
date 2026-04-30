@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useToast } from '../../../components/Toast';
+import { useProveedores } from '../../../hooks/useMainData';
 
 const T = { primary:'#1B5E20', secondary:'#2E7D32', border:'#E0E0E0', white:'#FFFFFF', textMid:'#6B6B60', textDark:'#1A1A18' };
 const IS = { padding:'9px 12px', border:`1.5px solid ${T.border}`, borderRadius:6, fontSize:'.85rem', fontFamily:'inherit', width:'100%', color:T.textDark, background:T.white, boxSizing:'border-box', marginTop:2 };
 const LS = { fontSize:'.72rem', fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:T.primary };
 
-const empty = (di) => ({
-  numeroDuca:      di?.numeroDuca      || '',
+const empty = (di, cotDuca) => ({
+  numeroDuca:      di?.numeroDuca      || cotDuca || '',
   fechaDuca:       di?.fechaDuca       || '',
   factProveedor:   di?.factProveedor   || '',
   factProductor:   di?.factProductor   || '',
@@ -20,10 +21,20 @@ const empty = (di) => ({
 
 export default function PasoDuca({ cot, update }) {
   const toast = useToast();
-  const [f, setF] = useState(() => empty(cot.ducaInfo));
+  const { proveedores } = useProveedores();
+  const [f, setF] = useState(() => empty(cot.ducaInfo, cot.duca));
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => { setF(empty(cot.ducaInfo)); }, [cot.ducaInfo]);
+  useEffect(() => { setF(empty(cot.ducaInfo, cot.duca)); }, [cot.id]); // eslint-disable-line
+
+  const autoFillProveedor = (nombre) => {
+    const p = proveedores.find(p => (p.nombre||p.razonSocial||'').toLowerCase() === nombre.toLowerCase());
+    setF(prev => ({ ...prev, proveedorNombre: nombre, proveedorId: p?.nit || p?.rfc || p?.id || prev.proveedorId }));
+  };
+  const autoFillProductor = (nombre) => {
+    const p = proveedores.find(p => (p.nombre||p.razonSocial||'').toLowerCase() === nombre.toLowerCase());
+    setF(prev => ({ ...prev, productorNombre: nombre, productorId: p?.nit || p?.rfc || p?.id || prev.productorId }));
+  };
 
   const set = k => e => setF(p => ({ ...p, [k]: e.target.value }));
 
@@ -42,6 +53,10 @@ export default function PasoDuca({ cot, update }) {
 
   return (
     <div style={{ padding:20, maxWidth:700 }}>
+      {/* Datalist para autocomplete */}
+      <datalist id="dl-proveedores">
+        {proveedores.map((p,i) => <option key={i} value={p.nombre||p.razonSocial} />)}
+      </datalist>
       {alreadySaved && (
         <div style={{ marginBottom:16, padding:'8px 14px', background:'rgba(46,125,50,.08)', border:'1px solid rgba(46,125,50,.25)', borderRadius:6, fontSize:'.82rem', color:T.secondary }}>
           ✅ DUCA registrada: <strong>{cot.ducaInfo.numeroDuca}</strong> — {cot.ducaInfo.fechaDuca}
@@ -67,18 +82,22 @@ export default function PasoDuca({ cot, update }) {
         </div>
         <div>
           <label style={LS}>Nombre proveedor</label>
-          <input value={f.proveedorNombre} onChange={set('proveedorNombre')} style={IS} placeholder="Razón social" />
+          <input value={f.proveedorNombre} list="dl-proveedores"
+            onChange={e => autoFillProveedor(e.target.value)}
+            style={IS} placeholder="Razón social" />
         </div>
         <div>
-          <label style={LS}>ID proveedor</label>
+          <label style={LS}>RFC / NIT proveedor</label>
           <input value={f.proveedorId} onChange={set('proveedorId')} style={IS} placeholder="RFC / NIT" />
         </div>
         <div>
           <label style={LS}>Nombre productor</label>
-          <input value={f.productorNombre} onChange={set('productorNombre')} style={IS} placeholder="Razón social" />
+          <input value={f.productorNombre} list="dl-proveedores"
+            onChange={e => autoFillProductor(e.target.value)}
+            style={IS} placeholder="Razón social" />
         </div>
         <div>
-          <label style={LS}>ID productor</label>
+          <label style={LS}>RFC / NIT productor</label>
           <input value={f.productorId} onChange={set('productorId')} style={IS} placeholder="RFC / NIT" />
         </div>
         <div>

@@ -59,3 +59,9 @@ export function useProductosCatalogo() {
   const { data, loading } = useCollection('iProductos', { orderField: 'nombre', limit: 500 });
   return { productos: data, loading };
 }
+
+export function useProveedores() {
+  const { data, loading } = useMainData();
+  const proveedores = (data.proveedores || []).filter(p => p && (p.nombre || p.razonSocial));
+  return { proveedores, loading };
+}

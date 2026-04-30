@@ -31,7 +31,7 @@ export default function CotizadorNuevo() {
       const gastosGT = GASTOS_GT_DEF.map(label => ({ id:uid(), label, monto:'' }));
       const rec = {
         nombre: f.nombre.trim(), tipo: f.tipo, fecha: f.fecha,
-        tc: parseFloat(f.tc) || 7.5, estado:'borrador',
+        tc: parseFloat(f.tc) || 2.5, tcLabel: 'GTQ/MXN', estado:'borrador',
         duca: f.duca, obs: f.obs,
         ...(f.tipo === 'terceros' && { cliente:f.cliente, pais:f.pais, monedaCli:f.monedaCli }),
         gastosMX, gastosGT,
@@ -72,8 +72,8 @@ export default function CotizadorNuevo() {
               <input type="date" value={f.fecha} onChange={set('fecha')} style={IS} />
             </div>
             <div>
-              <label style={LS}>Tipo de cambio (1 MXN = ? GTQ)</label>
-              <input type="number" step="0.01" value={f.tc} onChange={set('tc')} style={IS} placeholder="7.5" />
+              <label style={LS}>Tipo de cambio (1 GTQ = ? MXN)</label>
+              <input type="number" step="0.01" value={f.tc} onChange={set('tc')} style={IS} placeholder="2.50" />
             </div>
             <div>
               <label style={LS}>No. DUCA (opcional)</label>
