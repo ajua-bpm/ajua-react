@@ -60,7 +60,7 @@ export default function Finanzas() {
   useEffect(() => { fel.cargar(desde, hasta);     }, [desde, hasta]); // eslint-disable-line
   useEffect(() => { salidas.cargar(desde, hasta); }, [desde, hasta]); // eslint-disable-line
 
-  const pnl = useMemo(() => calcPnL(banco.data, fel.data, fijos.data, salidas.data), [banco.data, fel.data, fijos.data, salidas.data]);
+  const pnl = useMemo(() => calcPnL(banco.data, fel.data, fijos.data, salidas.data, desde, hasta), [banco.data, fel.data, fijos.data, salidas.data, desde, hasta]);
 
   const TABS = [
     { id:'clasificar', label:'⚡ Clasificar', badge: pnl.sinClasificar||0 },

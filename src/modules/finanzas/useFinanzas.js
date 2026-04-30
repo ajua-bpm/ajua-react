@@ -204,7 +204,7 @@ export function useGastosFijos() {
 }
 
 // ── Cálculo P&L ────────────────────────────────────────────────────
-export function calcPnL(movimientos, facturas, gastosFijosConfig = [], walmartSalidas = []) {
+export function calcPnL(movimientos, facturas, gastosFijosConfig = [], walmartSalidas = [], desde = null, hasta = null) {
   const sumCat = (tipo) => CATEGORIAS.filter(c => c.tipo === tipo).reduce((s, c) => {
     return s + movimientos.filter(m => m.categoria === c.id && m.clasificado).reduce((a, m) => a + (m.debito || 0), 0);
   }, 0);
@@ -224,11 +224,18 @@ export function calcPnL(movimientos, facturas, gastosFijosConfig = [], walmartSa
   const utilidadBruta  = ingresoNeto - costosProducto;
   const margenBruto    = ingresoNeto > 0 ? (utilidadBruta / ingresoNeto) * 100 : 0;
 
+  // Factor período: gastos fijos son mensuales — escalar al período seleccionado
+  const dias = (desde && hasta)
+    ? Math.max(1, (new Date(hasta) - new Date(desde)) / 86400000 + 1)
+    : 30;
+  const factorPeriodo = dias / 30;
+
   // Gastos fijos: usar configurados si existen, si no usar movimientos clasificados
-  const fijosConfig   = gastosFijosConfig.filter(d => d.activo !== false)
+  const fijosConfigTotal = gastosFijosConfig.filter(d => d.activo !== false)
     .reduce((s, d) => s + (d.frecuencia === 'quincenal' ? (d.monto||0)*2 : (d.monto||0)), 0);
+  const fijosConfig   = fijosConfigTotal * factorPeriodo;
   const fijosBanco    = sumCat('fijo');
-  const gastosFijos   = fijosConfig > 0 ? fijosConfig : fijosBanco;
+  const gastosFijos   = fijosConfigTotal > 0 ? fijosConfig : fijosBanco;
 
   const gastosVariables = sumCat('variable');
   const utilidadNeta    = utilidadBruta - gastosFijos - gastosVariables;
@@ -237,5 +244,5 @@ export function calcPnL(movimientos, facturas, gastosFijosConfig = [], walmartSa
   const pctEq           = puntoEquilibrio > 0 ? Math.min(200, (ingresoNeto / puntoEquilibrio) * 100) : 0;
   const sinClasificar   = movimientos.filter(m => !m.clasificado).length;
 
-  return { ingresosBanco, ventasWalmart, felEmitidas, notasCredito, ivaRetenido, ingresoNeto, costosProducto, utilidadBruta, margenBruto, gastosFijos, fijosConfig, fijosBanco, gastosVariables, utilidadNeta, margenNeto, puntoEquilibrio, pctEq, sinClasificar };
+  return { ingresosBanco, ventasWalmart, felEmitidas, notasCredito, ivaRetenido, ingresoNeto, costosProducto, utilidadBruta, margenBruto, gastosFijos, fijosConfig, fijosConfigTotal, factorPeriodo, dias, fijosBanco, gastosVariables, utilidadNeta, margenNeto, puntoEquilibrio, pctEq, sinClasificar };
 }

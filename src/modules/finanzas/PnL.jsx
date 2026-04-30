@@ -27,7 +27,8 @@ function Section({ title, children }) {
 export default function PnL({ pnl, movimientos }) {
   const { ingresosBanco, ventasWalmart, felEmitidas, notasCredito, ivaRetenido, ingresoNeto,
           costosProducto, utilidadBruta, margenBruto,
-          gastosFijos, gastosVariables, utilidadNeta, margenNeto,
+          gastosFijos, fijosConfigTotal, factorPeriodo, dias,
+          gastosVariables, utilidadNeta, margenNeto,
           puntoEquilibrio, pctEq, sinClasificar } = pnl;
 
   // Desglose fijos y variables desde movimientos
@@ -65,11 +66,16 @@ export default function PnL({ pnl, movimientos }) {
       </div>
 
       <Section title="Gastos fijos">
+        {fijosConfigTotal > 0 && (
+          <div style={{ fontSize:'.74rem', color:T.mid, marginBottom:6, padding:'4px 8px', background:'#F5F5F5', borderRadius:4 }}>
+            Mensual Q {fmtQ(fijosConfigTotal)} × {(factorPeriodo*100).toFixed(0)}% ({dias} días) = período
+          </div>
+        )}
         <Row label="Renta bodega"     value={sumCat('renta_bodega')}    indent={1} />
         <Row label="Transporte fijo"  value={sumCat('transporte_fijo')} indent={1} />
         <Row label="Luz/servicios"    value={sumCat('luz_servicios')}   indent={1} />
         <Row label="Empleados fijos"  value={sumCat('empleado_fijo')}   indent={1} />
-        <Row label="TOTAL FIJOS" value={gastosFijos} bold borderTop />
+        <Row label="TOTAL FIJOS (período)" value={gastosFijos} bold borderTop />
       </Section>
 
       <Section title="Gastos variables">
