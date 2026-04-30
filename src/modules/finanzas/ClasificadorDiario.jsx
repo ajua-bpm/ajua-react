@@ -32,7 +32,10 @@ function MovCard({ mov, onClasificar }) {
           {!mov.clasificado && <span style={{ fontSize:'.68rem', fontWeight:700, color:T.danger, background:'#FFEBEE', padding:'2px 6px', borderRadius:100 }}>SIN</span>}
           {mov.clasificado && <span style={{ fontSize:'.68rem', fontWeight:700, color:'#15803d', background:'#E8F5E9', padding:'2px 6px', borderRadius:100 }}>✓ {CATEGORIAS_MAP[mov.categoria]?.label||mov.categoria}</span>}
         </div>
-        <div style={{ fontWeight:700, fontSize:'.9rem', color:T.dark, marginBottom:2 }}>{mov.descripcion}</div>
+        <div style={{ marginBottom:2 }}>
+          <span style={{ fontSize:'.64rem', fontWeight:700, color:T.mid, textTransform:'uppercase', letterSpacing:'.06em', marginRight:6 }}>Concepto</span>
+          <span style={{ fontWeight:700, fontSize:'.9rem', color:T.dark }}>{mov.descripcion || mov.concepto || <span style={{ color:T.mid, fontStyle:'italic' }}>Sin descripción</span>}</span>
+        </div>
         {mov.referencia && <div style={{ fontSize:'.74rem', color:T.mid }}>Ref: {mov.referencia}</div>}
         <div style={{ marginTop:6, fontSize:'1.05rem', fontWeight:800, color: esCredito?'#15803d':T.danger }}>
           {esCredito ? '+' : '-'} {fmtQ(monto)}
