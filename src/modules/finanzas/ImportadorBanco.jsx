@@ -71,6 +71,23 @@ function parseUniversal(rows, banco) {
 function parseBAM(rows)          { return parseUniversal(rows, 'BAM'); }
 function parseAutoDetect(rows)   { return parseUniversal(rows, 'AUTO'); }
 
+// Parsea texto CSV a array de arrays (maneja comillas y comas dentro de campos)
+function parseCSV(text) {
+  const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+  return lines.map(line => {
+    const fields = [];
+    let cur = '', inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') { inQ = !inQ; }
+      else if (ch === ',' && !inQ) { fields.push(cur.trim()); cur = ''; }
+      else { cur += ch; }
+    }
+    fields.push(cur.trim());
+    return fields;
+  }).filter(r => r.some(c => c !== ''));
+}
+
 export default function ImportadorBanco({ onImportado }) {
   const [banco,    setBanco]    = useState('BAM');
   const [preview,  setPreview]  = useState(null);  // { movs, archivo }
@@ -83,25 +100,43 @@ export default function ImportadorBanco({ onImportado }) {
   const handleFile = (file) => {
     if (!file) return;
     setError(''); setResultado(null);
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const wb   = XLSX.read(e.target.result, { type:'array', cellDates:true });
-        const ws   = wb.Sheets[wb.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(ws, { header:1, raw:false, dateNF:'yyyy-mm-dd' });
-        const movs = banco==='BAM' ? parseBAM(rows) : parseAutoDetect(rows);
-        if (!movs.length) {
-          const hiIdx = rows.findIndex(r => r.some(c => /fecha/i.test(String(c||''))));
-          const sample = rows.slice(0, 10).map((r, i) =>
-            `[${i}]${i===hiIdx?' ← HEADER':''} ${r.filter(c=>c!=null&&c!=='').join(' | ')}`
-          ).join('\n');
-          setError(`No se encontraron movimientos (header en fila ${hiIdx}).\n\n${sample}`);
-          return;
-        }
-        setPreview({ movs: movs.slice(0,200), archivo: file.name });
-      } catch(e) { setError('Error leyendo el archivo: ' + e.message); }
+
+    const isCsv = file.name.toLowerCase().endsWith('.csv');
+
+    const process = (rows) => {
+      const movs = banco==='BAM' ? parseBAM(rows) : parseAutoDetect(rows);
+      if (!movs.length) {
+        const hiIdx = rows.findIndex(r => r.some(c => /fecha/i.test(String(c||''))));
+        const sample = rows.slice(0, 10).map((r, i) =>
+          `[${i}]${i===hiIdx?' ← HEADER':''} ${r.filter(c=>c!=null&&c!=='').join(' | ')}`
+        ).join('\n');
+        setError(`No se encontraron movimientos (header en fila ${hiIdx}).\n\n${sample}`);
+        return;
+      }
+      setPreview({ movs: movs.slice(0,200), archivo: file.name });
     };
-    reader.readAsArrayBuffer(file);
+
+    const reader = new FileReader();
+    if (isCsv) {
+      reader.onload = (e) => {
+        try {
+          // Intentar UTF-8 primero; si hay caracteres raros, el usuario puede recargar
+          const rows = parseCSV(e.target.result);
+          process(rows);
+        } catch(e) { setError('Error leyendo CSV: ' + e.message); }
+      };
+      reader.readAsText(file, 'utf-8');
+    } else {
+      reader.onload = (e) => {
+        try {
+          const wb   = XLSX.read(e.target.result, { type:'array', cellDates:true });
+          const ws   = wb.Sheets[wb.SheetNames[0]];
+          const rows = XLSX.utils.sheet_to_json(ws, { header:1, raw:false, dateNF:'yyyy-mm-dd' });
+          process(rows);
+        } catch(e) { setError('Error leyendo el archivo: ' + e.message); }
+      };
+      reader.readAsArrayBuffer(file);
+    }
   };
 
   const handleImportar = async () => {
@@ -140,8 +175,8 @@ export default function ImportadorBanco({ onImportado }) {
           style={{ border:`2px dashed ${T.border}`, borderRadius:10, padding:'28px 20px', textAlign:'center', cursor:'pointer', background:'#FAFAFA', marginBottom:12 }}>
           <div style={{ fontSize:'1.6rem', marginBottom:6 }}>📂</div>
           <div style={{ fontSize:'.86rem', color:T.mid }}>Arrastra el archivo Excel aquí o <b>haz clic para seleccionar</b></div>
-          <div style={{ fontSize:'.76rem', color:T.mid, marginTop:4 }}>Banco: <b>{banco}</b> · Formato .xlsx / .xls</div>
-          <input ref={fileRef} type="file" accept=".xlsx,.xls" style={{ display:'none' }} onChange={e=>handleFile(e.target.files[0])} />
+          <div style={{ fontSize:'.76rem', color:T.mid, marginTop:4 }}>Banco: <b>{banco}</b> · Formato .xlsx / .xls / .csv</div>
+          <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" style={{ display:'none' }} onChange={e=>handleFile(e.target.files[0])} />
         </div>
 
         {error && <div style={{ padding:'10px 14px', background:'#FFEBEE', border:`1px solid #FFCDD2`, borderRadius:8, color:T.danger, fontSize:'.82rem', marginBottom:12, whiteSpace:'pre-wrap', fontFamily:'monospace' }}>{error}</div>}
