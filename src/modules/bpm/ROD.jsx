@@ -379,8 +379,7 @@ export default function ROD() {
           <Skeleton height={160} />
         ) : (data || []).length === 0 ? (
           <p style={{ textAlign: 'center', padding: 32, color: T.textMid, fontSize: '.85rem' }}>Sin revisiones registradas.</p>
-        ) : (
-          {isMobile ? (
+        ) : isMobile ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {(data || []).map(r => {
                 const traps = r.traps || r.trampas || [];
@@ -436,7 +435,6 @@ export default function ROD() {
               </tbody>
             </table>
           </div>
-          )}
         )}
       </Card>
     </div>

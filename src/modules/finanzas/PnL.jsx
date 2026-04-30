@@ -25,7 +25,7 @@ function Section({ title, children }) {
 }
 
 export default function PnL({ pnl, movimientos }) {
-  const { ingresosBanco, felEmitidas, notasCredito, ivaRetenido, ingresoNeto,
+  const { ingresosBanco, ventasWalmart, felEmitidas, notasCredito, ivaRetenido, ingresoNeto,
           costosProducto, utilidadBruta, margenBruto,
           gastosFijos, gastosVariables, utilidadNeta, margenNeto,
           puntoEquilibrio, pctEq, sinClasificar } = pnl;
@@ -42,8 +42,9 @@ export default function PnL({ pnl, movimientos }) {
       )}
 
       <Section title="Ingresos">
-        <Row label="Ventas cobradas (banco)" value={ingresosBanco} indent={1} />
-        <Row label="Facturas FEL emitidas"   value={felEmitidas}   indent={1} />
+        <Row label="Ventas Walmart (salidas)" value={ventasWalmart} indent={1} color="#15803d" />
+        <Row label="Otros cobros banco (clientes)"  value={ingresosBanco} indent={1} />
+        <Row label="Facturas FEL emitidas"    value={felEmitidas}   indent={1} />
         {notasCredito > 0 && <Row label="- Notas de crédito"     value={-notasCredito} indent={1} color={T.danger} />}
         {ivaRetenido  > 0 && <Row label="- IVA retenido Walmart" value={-ivaRetenido}  indent={1} color={T.danger} />}
         <Row label="INGRESO NETO" value={ingresoNeto} bold borderTop color="#15803d" />

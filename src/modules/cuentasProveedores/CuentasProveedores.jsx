@@ -1,6 +1,7 @@
 // CuentasProveedores.jsx — Estado de cuenta por proveedor
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import html2canvas from 'html2canvas';
 import { storage } from '../../firebase';
@@ -232,12 +233,27 @@ function DetailRows({ m }) {
         {m.cantidad    && <div>Cantidad: <strong style={{ color: T.textDark }}>{m.cantidad} {m.unidad}</strong></div>}
         {m.precioUnit > 0 && <div>Precio/unidad: <strong style={{ color: T.textDark }}>{fmtQ(m.precioUnit)}</strong></div>}
         {m.factura     && <div>Factura: <strong style={{ color: T.textDark }}>{m.factura}</strong></div>}
+        {m._qtyNeta != null && m._qtyNeta !== Number(m.cantidad || 0) && (
+          <div>Cantidad neta: <strong style={{ color: T.textDark }}>{m._qtyNeta} {m.unidad}</strong>
+            <span style={{ fontSize: '.72rem', color: T.textMid }}> (recibido: {m.cantidad})</span>
+          </div>
+        )}
+        {m._neto != null && m._neto !== Number(m.totalBruto || 0) && (
+          <div>Total neto: <strong style={{ color: T.primary }}>{fmtQ(m._neto)}</strong>
+            <span style={{ fontSize: '.72rem', color: T.textMid }}> (bruto: {fmtQ(m.totalBruto)})</span>
+          </div>
+        )}
+        {m._costoFinalPorUnidad != null && (
+          <div>Costo final/{m.unidad || 'unidad'}: <strong style={{ color: '#1B5E20', fontSize: '.88rem' }}>{fmtQ(m._costoFinalPorUnidad)}</strong></div>
+        )}
       </>)}
       {m.tipo === 'pago' && (<>
         {m.metodoPago  && <div>Método: <strong style={{ color: T.textDark }}>{m.metodoPago}</strong></div>}
         {m.referencia  && <div>Referencia: <strong style={{ color: T.textDark }}>{m.referencia}</strong></div>}
+        {m.recepcionId && <div style={{ marginTop: 2 }}>Entrega: <strong style={{ color: '#1565C0' }}>#{m._parentCorrelativo || m.recepcionId.slice(-6)}</strong></div>}
       </>)}
       {m.tipo === 'rechazo' && (<>
+        {(m.cantidadRechazada > 0) && <div>Cantidad rechazada: <strong style={{ color: T.danger }}>{m.cantidadRechazada} {m.unidadRechazo || 'lb'}</strong></div>}
         {m.resolucion  && <div>Resolución: <strong style={{ color: T.textDark }}>{m.resolucion}</strong></div>}
       </>)}
       {m.notas && <div style={{ fontStyle: 'italic', marginTop: 2 }}>{m.notas}</div>}
@@ -268,13 +284,50 @@ function DetailRows({ m }) {
   );
 }
 
-function MovCard({ m, proveedorNombre, onEdit, onDelete }) {
+function MovCard({ m, proveedorNombre, onEdit, onDelete, onLiquidar, childCount = 0, isExpanded = false, onToggleChildren }) {
   const [open, setOpen] = useState(false);
-  const desc = m.descripcion || (
+
+  // Child card (rechazo/pago vinculado)
+  if (m._isChild) {
+    const desc = m.descripcion || (
+      m.tipo === 'rechazo' ? (m.resolucion || '—') :
+      m.tipo === 'pago'    ? `${m.metodoPago || ''} ${m.referencia || ''}`.trim() : '—'
+    ) || '—';
+    return (
+      <div style={{
+        marginLeft: 20, marginBottom: 4,
+        borderLeft: `3px solid ${TIPO_COLOR[m.tipo] || T.border}`,
+        background: '#FFF5F5', borderRadius: '0 8px 8px 0',
+        padding: '9px 12px', display: 'flex', alignItems: 'center', gap: 8,
+      }}>
+        <span style={{ fontSize: '.65rem', color: T.textMid, opacity: 0.5, flexShrink: 0 }}>└─</span>
+        <Badge tipo={m.tipo} />
+        <span style={{ flex: 1, fontSize: '.78rem', color: T.textMid,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {desc} {cantidadStr(m) !== '—' ? `· ${cantidadStr(m)}` : ''}
+        </span>
+        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+          {m.abono > 0 && <div style={{ fontSize: '.82rem', fontWeight: 700, color: T.danger }}>−{fmtQ(m.abono)}</div>}
+          <div style={{ fontSize: '.68rem', fontWeight: 700, color: m.saldoAcum > 0 ? T.warn : T.primary }}>
+            Saldo: {fmtQ(m.saldoAcum)}
+          </div>
+        </div>
+        <button onClick={e => { e.stopPropagation(); onDelete(m.id); }} style={{
+          background: 'none', border: `1px solid ${T.border}`, borderRadius: 4,
+          padding: '2px 6px', cursor: 'pointer', fontSize: '.7rem', color: T.textMid, flexShrink: 0,
+        }}>✕</button>
+      </div>
+    );
+  }
+
+  const pagoBase = `${m.metodoPago || ''} ${m.referencia || ''}`.trim();
+  const pagoLabel = m.tipo === 'pago' && m._parentCorrelativo ? `${pagoBase} → #${m._parentCorrelativo}` : pagoBase;
+  const descRaw = m.descripcion || (
     m.tipo === 'recepcion' ? m.producto :
-    m.tipo === 'pago'      ? `${m.metodoPago || ''} ${m.referencia || ''}`.trim() :
+    m.tipo === 'pago'      ? pagoLabel :
     m.resolucion || '—'
   ) || '—';
+  const desc = m.tipo === 'recepcion' && m.correlativo ? `#${m.correlativo} · ${descRaw}` : descRaw;
 
   return (
     <div style={{ background: '#fff', border: `1px solid ${T.border}`, borderRadius: 10,
@@ -287,9 +340,17 @@ function MovCard({ m, proveedorNombre, onEdit, onDelete }) {
             <Badge tipo={m.tipo} />
             <span style={{ fontSize: '.8rem', color: T.textMid }}>{fmtFecha(m.fecha)}</span>
             {m.historialEdiciones?.length > 0 && (
-              <span style={{ fontSize: '.68rem', color: T.warn, fontWeight: 700 }}>
-                ✏️ editado
-              </span>
+              <span style={{ fontSize: '.68rem', color: T.warn, fontWeight: 700 }}>✏️ editado</span>
+            )}
+            {childCount > 0 && (
+              <button onClick={e => { e.stopPropagation(); onToggleChildren && onToggleChildren(m.id); }} style={{
+                padding: '2px 8px', borderRadius: 4, border: 'none', cursor: 'pointer',
+                background: isExpanded ? '#E3F2FD' : '#F0F0F0',
+                color: isExpanded ? '#1565C0' : T.textMid,
+                fontSize: '.68rem', fontWeight: 700, fontFamily: 'inherit',
+              }}>
+                {isExpanded ? `▼ ${childCount} ajustes` : `▶ ${childCount} ajustes`}
+              </button>
             )}
           </div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
@@ -317,6 +378,17 @@ function MovCard({ m, proveedorNombre, onEdit, onDelete }) {
           <DetailRows m={m} />
           <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
             <BtnCompartir m={m} proveedorNombre={proveedorNombre} />
+            {m.tipo === 'recepcion' && (
+              <button onClick={e => { e.stopPropagation(); onLiquidar && onLiquidar(m.id); }} style={{
+                padding: '5px 14px', borderRadius: 6,
+                border: `1.5px solid ${m.liquidacionId ? T.primary : '#1565C0'}`,
+                background: m.liquidacionId ? T.bgGreen : '#E3F2FD',
+                color: m.liquidacionId ? T.primary : '#1565C0',
+                fontSize: '.78rem', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+              }}>
+                {m.liquidacionId ? '✓ Liquidación' : '📋 Liquidar'}
+              </button>
+            )}
             <button onClick={e => { e.stopPropagation(); onEdit(m); }} style={{
               padding: '5px 14px', borderRadius: 6, border: `1px solid ${T.warn}`,
               background: '#fff', color: T.warn, fontSize: '.78rem',
@@ -341,18 +413,56 @@ function MovCard({ m, proveedorNombre, onEdit, onDelete }) {
 function cantidadStr(m) {
   if (m.tipo === 'recepcion' && m.cantidad) return `${m.cantidad} ${m.unidad || ''}`;
   if (m.tipo === 'pago'      && m.monto)    return fmtQ(m.monto);
-  if (m.tipo === 'rechazo'   && m.valorRechazo) return fmtQ(m.valorRechazo);
+  if (m.tipo === 'rechazo') {
+    if (m.cantidadRechazada > 0) return `−${m.cantidadRechazada} ${m.unidadRechazo || 'lb'}`;
+    if (m.valorRechazo > 0)      return fmtQ(m.valorRechazo);
+  }
   return '—';
 }
 
-function DesktopRow({ m, i, proveedorNombre, onEdit, onDelete }) {
+function DesktopRow({ m, i, proveedorNombre, onEdit, onDelete, onLiquidar, childCount = 0, isExpanded = false, onToggleChildren }) {
   const [open, setOpen] = useState(false);
-  const desc = m.descripcion || (
+
+  // Child row (rechazo/pago vinculado a una recepción)
+  if (m._isChild) {
+    const desc = m.descripcion || (
+      m.tipo === 'rechazo' ? (m.resolucion || '—') :
+      m.tipo === 'pago'    ? `${m.metodoPago || ''} ${m.referencia || ''}`.trim() : '—'
+    ) || '—';
+    return (
+      <tr style={{ background: '#FFF5F5', borderBottom: `1px solid ${T.border}` }}>
+        <td style={{ padding: '5px 8px', fontSize: '.7rem', color: T.textMid, whiteSpace: 'nowrap' }}>
+          <span style={{ opacity: 0.4 }}>└─</span>
+        </td>
+        <td style={{ padding: '5px 8px' }}><Badge tipo={m.tipo} /></td>
+        <td style={{ padding: '5px 8px', fontSize: '.75rem', color: T.textMid,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{desc}</td>
+        <td style={{ padding: '5px 8px', textAlign: 'right', fontSize: '.73rem', color: T.danger, whiteSpace: 'nowrap' }}>
+          {cantidadStr(m)}
+        </td>
+        <td style={{ padding: '5px 8px', textAlign: 'right', color: T.textMid, fontSize: '.75rem' }}>—</td>
+        <td style={{ padding: '5px 8px', textAlign: 'right', fontWeight: 700, fontSize: '.78rem', color: T.danger, whiteSpace: 'nowrap' }}>
+          {m.valorRechazo > 0 ? fmtQ(m.valorRechazo) : m.monto > 0 ? fmtQ(m.monto) : '—'}
+        </td>
+        <td style={{ padding: '5px 8px', textAlign: 'right', fontSize: '.75rem', color: T.textMid, whiteSpace: 'nowrap' }}>—</td>
+        <td style={{ padding: '5px 8px', textAlign: 'right' }}>
+          <button onClick={e => { e.stopPropagation(); onDelete(m.id); }}
+            style={{ background: 'none', border: `1px solid ${T.border}`, borderRadius: 4,
+              padding: '1px 5px', cursor: 'pointer', fontSize: '.68rem', color: T.textMid }}>✕</button>
+        </td>
+      </tr>
+    );
+  }
+
+  const pagoBase = `${m.metodoPago || ''} ${m.referencia || ''}`.trim();
+  const pagoLabel = m.tipo === 'pago' && m._parentCorrelativo ? `${pagoBase} → #${m._parentCorrelativo}` : pagoBase;
+  const descRaw = m.descripcion || (
     m.tipo === 'recepcion' ? m.producto :
-    m.tipo === 'pago'      ? `${m.metodoPago || ''} ${m.referencia || ''}`.trim() :
+    m.tipo === 'pago'      ? pagoLabel :
     m.resolucion || '—'
   ) || '—';
-  const tdSt = { padding: '10px 14px' };
+  const desc = m.tipo === 'recepcion' && m.correlativo ? `#${m.correlativo} · ${descRaw}` : descRaw;
+  const tdSt = { padding: '7px 8px' };
 
   return (
     <>
@@ -364,26 +474,36 @@ function DesktopRow({ m, i, proveedorNombre, onEdit, onDelete }) {
         <td style={{ ...tdSt, whiteSpace: 'nowrap', color: T.textMid, fontSize: '.82rem' }}>
           {fmtFecha(m.fecha)}
           {m.historialEdiciones?.length > 0 && (
-            <span style={{ marginLeft: 6, fontSize: '.65rem', color: T.warn, fontWeight: 700 }}>✏️</span>
+            <span style={{ marginLeft: 4, fontSize: '.65rem', color: T.warn, fontWeight: 700 }}>✏️</span>
+          )}
+          {childCount > 0 && (
+            <button onClick={e => { e.stopPropagation(); onToggleChildren && onToggleChildren(m.id); }} style={{
+              marginLeft: 6, padding: '1px 6px', borderRadius: 3, border: 'none', cursor: 'pointer',
+              background: isExpanded ? '#E3F2FD' : '#F0F0F0',
+              color: isExpanded ? '#1565C0' : T.textMid,
+              fontSize: '.65rem', fontWeight: 700,
+            }}>
+              {isExpanded ? `▼ ${childCount}` : `▶ ${childCount}`}
+            </button>
           )}
         </td>
         <td style={tdSt}><Badge tipo={m.tipo} /></td>
-        <td style={{ ...tdSt, color: T.textMid, maxWidth: 180,
+        <td style={{ ...tdSt, color: T.textMid,
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {desc}
         </td>
-        <td style={{ ...tdSt, textAlign: 'right', fontSize: '.82rem', color: T.textDark, whiteSpace: 'nowrap' }}>
+        <td style={{ ...tdSt, textAlign: 'right', fontSize: '.78rem', color: T.textDark, whiteSpace: 'nowrap' }}>
           {cantidadStr(m)}
         </td>
-        <td style={{ ...tdSt, textAlign: 'right', fontWeight: 700,
+        <td style={{ ...tdSt, textAlign: 'right', fontWeight: 700, whiteSpace: 'nowrap',
           color: m.cargo > 0 ? '#1565C0' : T.textMid }}>
           {m.cargo > 0 ? fmtQ(m.cargo) : '—'}
         </td>
-        <td style={{ ...tdSt, textAlign: 'right', fontWeight: 700,
+        <td style={{ ...tdSt, textAlign: 'right', fontWeight: 700, whiteSpace: 'nowrap',
           color: m.abono > 0 ? T.primary : T.textMid }}>
           {m.abono > 0 ? fmtQ(m.abono) : '—'}
         </td>
-        <td style={{ ...tdSt, textAlign: 'right', fontWeight: 700,
+        <td style={{ ...tdSt, textAlign: 'right', fontWeight: 700, whiteSpace: 'nowrap',
           color: m.saldoAcum > 0 ? T.warn : T.primary }}>
           {fmtQ(m.saldoAcum)}
         </td>
@@ -397,6 +517,17 @@ function DesktopRow({ m, i, proveedorNombre, onEdit, onDelete }) {
             <DetailRows m={m} />
             <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
               <BtnCompartir m={m} proveedorNombre={proveedorNombre} />
+              {m.tipo === 'recepcion' && (
+                <button onClick={e => { e.stopPropagation(); onLiquidar && onLiquidar(m.id); }} style={{
+                  padding: '5px 14px', borderRadius: 6,
+                  border: `1.5px solid ${m.liquidacionId ? T.primary : '#1565C0'}`,
+                  background: m.liquidacionId ? T.bgGreen : '#E3F2FD',
+                  color: m.liquidacionId ? T.primary : '#1565C0',
+                  fontSize: '.78rem', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+                }}>
+                  {m.liquidacionId ? '✓ Liquidación' : '📋 Liquidar'}
+                </button>
+              )}
               <button onClick={e => { e.stopPropagation(); onEdit(m); }} style={{
                 padding: '5px 14px', borderRadius: 6, border: `1px solid ${T.warn}`,
                 background: '#fff', color: T.warn, fontSize: '.78rem',
@@ -421,6 +552,7 @@ function DesktopRow({ m, i, proveedorNombre, onEdit, onDelete }) {
 
 export default function CuentasProveedores() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   useEffect(() => {
     const h = () => setIsMobile(window.innerWidth < 768);
@@ -468,19 +600,72 @@ export default function CuentasProveedores() {
     });
   }, [movimientos, filtTipo, filtProd, filtEstado]);
 
-  // Recalcular saldoAcum sobre la lista filtrada
+  // Reuse cargo/abono del hook (ya tienen lógica NET); solo recalcular saldoAcum en la lista filtrada
   const movsFiltConSaldo = useMemo(() => {
     return movimientosFiltrados.reduce((acc, m) => {
-      const prev  = acc.length > 0 ? acc[acc.length - 1].saldoAcum : 0;
-      const cargo = m.tipo === 'recepcion' ? Number(m.totalBruto   || 0) : 0;
-      const abono = m.tipo === 'pago'      ? Number(m.monto        || 0)
-                  : m.tipo === 'rechazo'   ? Number(m.valorRechazo || 0) : 0;
-      acc.push({ ...m, cargo, abono, saldoAcum: prev + cargo - abono });
+      const prev = acc.length > 0 ? acc[acc.length - 1].saldoAcum : 0;
+      acc.push({ ...m, saldoAcum: prev + (m.cargo || 0) - (m.abono || 0) });
       return acc;
     }, []);
   }, [movimientosFiltrados]);
 
   const filtrosActivos = filtTipo || filtProd || filtEstado;
+
+  // Accordion: set de IDs de recepciones con sub-items expandidos
+  const [expandedIds, setExpandedIds] = useState(new Set());
+  const toggleChildren = useCallback((id) => {
+    setExpandedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+
+  // Enriquecer: recepciones con qty_neta/neto/costoFinal; pagos con referencia a su entrega
+  const movsConCostoFinal = useMemo(() => {
+    const rejMap  = {}; // recepcionId → { totalQty, totalMoney }
+    const corrMap = {}; // recepcionId → correlativo
+    movimientos.forEach(m => {
+      if (m.tipo === 'recepcion') corrMap[m.id] = m.correlativo;
+      if (m.tipo === 'rechazo' && m.recepcionId) {
+        if (!rejMap[m.recepcionId]) rejMap[m.recepcionId] = { totalQty: 0, totalMoney: 0 };
+        rejMap[m.recepcionId].totalQty   += Number(m.cantidadRechazada || 0);
+        rejMap[m.recepcionId].totalMoney += Number(m.valorRechazo      || 0);
+      }
+    });
+    return movsFiltConSaldo.map(m => {
+      if (m.tipo === 'recepcion') {
+        if (m.liquidacionId) {
+          // Liquidada: cargo = totalBruto (ya correcto)
+          const qty = Number(m.cantidad || 0);
+          const neto = m.cargo || 0;
+          const costoFinalPorUnidad = qty > 0 ? neto / qty : null;
+          return { ...m, _qtyNeta: qty, _neto: neto, _costoFinalPorUnidad: costoFinalPorUnidad };
+        }
+        const rej     = rejMap[m.id] || { totalQty: 0, totalMoney: 0 };
+        const qty     = Number(m.cantidad   || 0);
+        const bruto   = Number(m.totalBruto || 0);
+        const pu      = Number(m.precioUnit || 0) || (qty > 0 ? bruto / qty : 0);
+        const qtyNeta = Math.max(0, qty - rej.totalQty);
+        const neto    = Math.max(0, (pu > 0 ? qtyNeta * pu : bruto) - rej.totalMoney);
+        const costoFinalPorUnidad = qtyNeta > 0 ? neto / qtyNeta : null;
+        return { ...m, _qtyNeta: qtyNeta, _neto: neto, _costoFinalPorUnidad: costoFinalPorUnidad };
+      }
+      if (m.tipo === 'pago' && m.recepcionId) {
+        return { ...m, _parentCorrelativo: corrMap[m.recepcionId] || null };
+      }
+      return m;
+    });
+  }, [movsFiltConSaldo, movimientos]);
+
+  // Contar sub-items por padre
+  const parentChildCounts = useMemo(() => {
+    const counts = {};
+    movsConCostoFinal.forEach(m => {
+      if (m._isChild && m.recepcionId) counts[m.recepcionId] = (counts[m.recepcionId] || 0) + 1;
+    });
+    return counts;
+  }, [movsConCostoFinal]);
 
   const recargar = useCallback(() => {
     if (provId) cargar(desde, hasta);
@@ -498,6 +683,12 @@ export default function CuentasProveedores() {
 
   const handleGuardar = async (data) => {
     const { motivoEdit, _fotoFile, ...campos } = data;
+    if (campos.tipo === 'recepcion') {
+      const fecha = campos.fecha || new Date().toISOString().slice(0, 10);
+      const [, mo, d] = fecha.split('-');
+      const countOnDate = movimientos.filter(m => m.tipo === 'recepcion' && m.fecha === fecha).length + 1;
+      campos.correlativo = `${d}${mo}${String(countOnDate).padStart(2, '0')}`;
+    }
     const docId = await agregar({ ...campos, proveedorId: provId });
     if (_fotoFile && docId) {
       const url = await uploadFoto(_fotoFile, docId);
@@ -522,6 +713,10 @@ export default function CuentasProveedores() {
     setEditTarget(null);
     recargar();
   };
+
+  const handleLiquidar = useCallback((id) => {
+    navigate(`/cuentas-proveedores/liquidacion/${id}`);
+  }, [navigate]);
 
   const handleEliminar = async (id) => {
     if (!window.confirm('¿Eliminar este movimiento?')) return;
@@ -859,7 +1054,7 @@ export default function CuentasProveedores() {
               </div>
             )}
 
-            {!loading && !error && movimientos.length > 0 && movsFiltConSaldo.length === 0 && (
+            {!loading && !error && movimientos.length > 0 && movsConCostoFinal.length === 0 && (
               <div style={{ background: '#fff', border: `1px solid ${T.border}`, borderRadius: 10,
                 padding: '24px', textAlign: 'center', color: T.textMid }}>
                 Ningún movimiento coincide con los filtros aplicados.
@@ -867,34 +1062,57 @@ export default function CuentasProveedores() {
             )}
 
             {/* Mobile: cards */}
-            {!loading && !error && isMobile && movsFiltConSaldo.map(m => (
-              <MovCard key={m.id} m={m} proveedorNombre={proveedor?.nombre || ''} onEdit={setEditTarget} onDelete={handleEliminar} />
-            ))}
+            {!loading && !error && isMobile && movsConCostoFinal
+              .filter(m => !m._isChild || expandedIds.has(m.recepcionId))
+              .map(m => (
+                <MovCard key={m.id} m={m} proveedorNombre={proveedor?.nombre || ''}
+                  onEdit={setEditTarget} onDelete={handleEliminar} onLiquidar={handleLiquidar}
+                  childCount={parentChildCounts[m.id] || 0}
+                  isExpanded={expandedIds.has(m.id)}
+                  onToggleChildren={toggleChildren}
+                />
+              ))}
 
             {/* Desktop: tabla */}
-            {!loading && !error && !isMobile && movsFiltConSaldo.length > 0 && (
+            {!loading && !error && !isMobile && movsConCostoFinal.length > 0 && (
               <div style={{ background: '#fff', border: `1px solid ${T.border}`, borderRadius: 10, overflow: 'hidden' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.85rem' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.83rem', tableLayout: 'fixed' }}>
+                  <colgroup>
+                    <col style={{ width: 100 }} /> {/* Fecha */}
+                    <col style={{ width: 88 }} />  {/* Tipo */}
+                    <col />                         {/* Descripción — flexible */}
+                    <col style={{ width: 78 }} />  {/* Cantidad */}
+                    <col style={{ width: 96 }} />  {/* Cargo */}
+                    <col style={{ width: 96 }} />  {/* Abono */}
+                    <col style={{ width: 96 }} />  {/* Saldo */}
+                    <col style={{ width: 32 }} />  {/* Acciones */}
+                  </colgroup>
                   <thead>
                     <tr style={{ background: T.bg, borderBottom: `2px solid ${T.border}` }}>
-                      {['Fecha','Tipo','Descripción','Cantidad','Cargo','Abono','Saldo Acum.',''].map(h => (
-                        <th key={h} style={{ padding: '10px 14px', textAlign: h === 'Cargo' || h === 'Abono' || h === 'Saldo Acum.' || h === 'Cantidad' ? 'right' : 'left',
-                          fontSize: '.68rem', fontWeight: 700, textTransform: 'uppercase',
-                          letterSpacing: '.08em', color: T.textMid }}>
+                      {['Fecha','Tipo','Descripción','Cant.','Cargo','Abono','Saldo',''].map(h => (
+                        <th key={h} style={{ padding: '8px 8px', textAlign: h === 'Cargo' || h === 'Abono' || h === 'Saldo' || h === 'Cant.' ? 'right' : 'left',
+                          fontSize: '.65rem', fontWeight: 700, textTransform: 'uppercase',
+                          letterSpacing: '.06em', color: T.textMid, overflow: 'hidden' }}>
                           {h}
                         </th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {movsFiltConSaldo.map((m, i) => (
-                      <DesktopRow key={m.id}
-                        m={m} i={i}
-                        proveedorNombre={proveedor?.nombre || ''}
-                        onEdit={setEditTarget}
-                        onDelete={handleEliminar}
-                      />
-                    ))}
+                    {movsConCostoFinal
+                      .filter(m => !m._isChild || expandedIds.has(m.recepcionId))
+                      .map((m, i) => (
+                        <DesktopRow key={m.id}
+                          m={m} i={i}
+                          proveedorNombre={proveedor?.nombre || ''}
+                          onEdit={setEditTarget}
+                          onDelete={handleEliminar}
+                          onLiquidar={handleLiquidar}
+                          childCount={parentChildCounts[m.id] || 0}
+                          isExpanded={expandedIds.has(m.id)}
+                          onToggleChildren={toggleChildren}
+                        />
+                      ))}
                   </tbody>
                 </table>
               </div>

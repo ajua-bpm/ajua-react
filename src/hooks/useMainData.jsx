@@ -32,8 +32,9 @@ export function useMainData() {
 }
 
 export function useEmpleados() {
-  const { data, loading } = useMainData();
-  return { empleados: (data?.empleados || []).filter(e => e.activo !== false), loading };
+  const { data, loading } = useCollection('empleados', { orderField: 'nombre', limit: 500 });
+  const activos = (data || []).filter(e => e.estado !== 'inactivo' && e.activo !== false);
+  return { empleados: activos, loading };
 }
 
 export function useClientes() {
@@ -43,8 +44,14 @@ export function useClientes() {
 }
 
 export function useConductores() {
-  const { data, loading } = useMainData();
-  return { conductores: data?.conductores || [], loading };
+  // Conductores: empleados con cargo/area/asignacion que incluya "transporte" o "piloto"
+  const { data, loading } = useCollection('empleados', { orderField: 'nombre', limit: 500 });
+  const conductores = (data || []).filter(e => {
+    if (e.estado === 'inactivo' || e.activo === false) return false;
+    const campos = [e.cargo, e.area, e.asignacion, e.puesto, e.modulo].join(' ').toLowerCase();
+    return campos.includes('transporte') || campos.includes('piloto') || campos.includes('conductor');
+  });
+  return { conductores, loading };
 }
 
 export function useProductosCatalogo() {

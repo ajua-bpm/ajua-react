@@ -8,32 +8,47 @@ const fmtQ  = n => 'Q ' + Number(n||0).toLocaleString('es-GT',{minimumFractionDi
 
 const BANCOS = ['BAM','GYT','INDUSTRIAL'];
 
+// Convierte DD/MM/YYYY, DD-MM-YYYY o YYYY-MM-DD a ISO
+function parseDate(raw) {
+  const s = String(raw || '').trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);            // ya es ISO
+  const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`; // DD/MM/YYYY
+  return '';
+}
+
+function parseMonto(raw) {
+  return parseFloat(String(raw || '').replace(/[Q\s,]/g, '')) || 0;
+}
+
 function parseBAM(rows) {
-  return rows.map(r => ({
-    fecha:       String(r[0]||'').slice(0,10),
-    descripcion: String(r[1]||'').trim(),
-    referencia:  String(r[2]||'').trim(),
-    debito:      parseFloat(String(r[3]||'').replace(/,/g,''))||0,
-    credito:     parseFloat(String(r[4]||'').replace(/,/g,''))||0,
-    saldo:       parseFloat(String(r[5]||'').replace(/,/g,''))||0,
-  })).filter(r=>r.fecha.match(/^\d{4}-\d{2}-\d{2}$/)&&(r.debito||r.credito));
+  // Buscar fila de encabezados (puede estar en fila 0..10)
+  let hiIdx = rows.findIndex(r => r.some(c => /fecha/i.test(String(c || ''))));
+  const dataRows = hiIdx >= 0 ? rows.slice(hiIdx + 1) : rows;
+  return dataRows.map(r => ({
+    fecha:       parseDate(r[0]),
+    descripcion: String(r[1] || '').trim(),
+    referencia:  String(r[2] || '').trim(),
+    debito:      parseMonto(r[3]),
+    credito:     parseMonto(r[4]),
+    saldo:       parseMonto(r[5]),
+  })).filter(r => r.fecha.match(/^\d{4}-\d{2}-\d{2}$/) && (r.debito || r.credito));
 }
 
 function parseAutoDetect(rows) {
-  // Buscar fila de headers
-  let hiIdx = rows.findIndex(r => r.some(c => /fecha/i.test(String(c||''))));
+  let hiIdx = rows.findIndex(r => r.some(c => /fecha/i.test(String(c || ''))));
   if (hiIdx < 0) hiIdx = 0;
-  const headers = rows[hiIdx].map(c => String(c||'').toLowerCase().trim());
+  const headers = rows[hiIdx].map(c => String(c || '').toLowerCase().trim());
   const idx = k => headers.findIndex(h => h.includes(k));
   const fi=idx('fecha'), di=idx('deb'), ci=idx('cred'), ri=idx('ref'), ni=idx('desc'), si=idx('saldo');
-  return rows.slice(hiIdx+1).map(r => ({
-    fecha:       String(r[fi]||'').slice(0,10),
-    descripcion: String(r[ni>-1?ni:1]||'').trim(),
-    referencia:  ri>-1 ? String(r[ri]||'').trim() : '',
-    debito:      parseFloat(String(r[di>-1?di:2]||'').replace(/,/g,''))||0,
-    credito:     parseFloat(String(r[ci>-1?ci:3]||'').replace(/,/g,''))||0,
-    saldo:       si>-1 ? parseFloat(String(r[si]||'').replace(/,/g,''))||0 : 0,
-  })).filter(r=>r.fecha.match(/^\d{4}-\d{2}-\d{2}$/)&&(r.debito||r.credito));
+  return rows.slice(hiIdx + 1).map(r => ({
+    fecha:       parseDate(r[fi > -1 ? fi : 0]),
+    descripcion: String(r[ni > -1 ? ni : 1] || '').trim(),
+    referencia:  ri > -1 ? String(r[ri] || '').trim() : '',
+    debito:      parseMonto(r[di > -1 ? di : 2]),
+    credito:     parseMonto(r[ci > -1 ? ci : 3]),
+    saldo:       si > -1 ? parseMonto(r[si]) : 0,
+  })).filter(r => r.fecha.match(/^\d{4}-\d{2}-\d{2}$/) && (r.debito || r.credito));
 }
 
 export default function ImportadorBanco({ onImportado }) {
@@ -55,7 +70,11 @@ export default function ImportadorBanco({ onImportado }) {
         const ws   = wb.Sheets[wb.SheetNames[0]];
         const rows = XLSX.utils.sheet_to_json(ws, { header:1, raw:false, dateNF:'yyyy-mm-dd' });
         const movs = banco==='BAM' ? parseBAM(rows) : parseAutoDetect(rows);
-        if (!movs.length) { setError('No se encontraron movimientos. Verifica el formato del archivo.'); return; }
+        if (!movs.length) {
+          const sample = rows.slice(0,4).map(r=>r.join(' | ')).join('\n');
+          setError(`No se encontraron movimientos. Primeras filas del archivo:\n${sample}`);
+          return;
+        }
         setPreview({ movs: movs.slice(0,200), archivo: file.name });
       } catch(e) { setError('Error leyendo el archivo: ' + e.message); }
     };
@@ -102,7 +121,7 @@ export default function ImportadorBanco({ onImportado }) {
           <input ref={fileRef} type="file" accept=".xlsx,.xls" style={{ display:'none' }} onChange={e=>handleFile(e.target.files[0])} />
         </div>
 
-        {error && <div style={{ padding:'10px 14px', background:'#FFEBEE', border:`1px solid #FFCDD2`, borderRadius:8, color:T.danger, fontSize:'.84rem', marginBottom:12 }}>{error}</div>}
+        {error && <div style={{ padding:'10px 14px', background:'#FFEBEE', border:`1px solid #FFCDD2`, borderRadius:8, color:T.danger, fontSize:'.82rem', marginBottom:12, whiteSpace:'pre-wrap', fontFamily:'monospace' }}>{error}</div>}
 
         {resultado && (
           <div style={{ padding:'12px 16px', background:'#E8F5E9', border:`1px solid #A5D6A7`, borderRadius:8, fontSize:'.86rem', color:'#15803d', fontWeight:600 }}>

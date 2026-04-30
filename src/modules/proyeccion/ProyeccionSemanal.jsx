@@ -65,9 +65,15 @@ export default function ProyeccionSemanal() {
 
   const addOrEdit = (form) => {
     const base = productosMap[form.productoId] || {};
-    const item = { productoId: form.productoId, nombre: base.nombre || form.nombre,
+    const item = {
+      productoId: form.productoId, nombre: base.nombre || form.nombre,
       cajasProyectadas: form.cajasProyectadas, cajasCompradas: form.cajasCompradas ?? form.cajasProyectadas,
-      lbsPorCaja: form.lbsPorCaja, frecuencia: form.frecuencia };
+      lbsPorCaja: form.lbsPorCaja, frecuencia: form.frecuencia,
+      ...(form.precioVenta  != null ? { precioVenta:  form.precioVenta  } : {}),
+      ...(form.costo        != null ? { costo:        form.costo        } : {}),
+      ...(form.descuentoPct != null ? { descuentoPct: form.descuentoPct } : {}),
+      ...(form.ivaRetPct    != null ? { ivaRetPct:    form.ivaRetPct    } : {}),
+    };
     setProyeccion(prev => {
       const prods = prev.productos || [];
       const idx = prods.findIndex(p => p.productoId === item.productoId);

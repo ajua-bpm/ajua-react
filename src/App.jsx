@@ -1,70 +1,89 @@
+import { lazy, Suspense, Component } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+
+class ErrorBoundary extends Component {
+  state = { error: null };
+  static getDerivedStateFromError(e) { return { error: e }; }
+  render() {
+    if (this.state.error) return (
+      <div style={{ padding: 40, fontFamily: 'monospace', background: '#1a1a1a', color: '#fff', minHeight: '100vh' }}>
+        <h2 style={{ color: '#ff6b6b' }}>Error de aplicación</h2>
+        <pre style={{ color: '#ffa', whiteSpace: 'pre-wrap', fontSize: 13 }}>{this.state.error?.message}</pre>
+        <button onClick={() => window.location.reload()} style={{ marginTop: 24, padding: '10px 24px', background: '#2d6a4f', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 14 }}>
+          Recargar página
+        </button>
+      </div>
+    );
+    return this.props.children;
+  }
+}
 import { useAuth } from './hooks/useAuth';
 import Layout from './components/Layout';
 import Login from './modules/auth/Login';
-import Dashboard from './modules/dashboard/Dashboard';
 import LoadingSpinner from './components/LoadingSpinner';
 
+const Dashboard          = lazy(() => import('./modules/dashboard/Dashboard'));
+
 // BPM
-import TL from './modules/bpm/TL';
-import DT from './modules/bpm/DT';
-import AL from './modules/bpm/AL';
-import BAS from './modules/bpm/BAS';
-import ROD from './modules/bpm/ROD';
-import LIMP from './modules/bpm/LIMP';
-import VYP from './modules/bpm/VYP';
-import Fumigacion from './modules/bpm/Fumigacion';
-import Croquis from './modules/bpm/Croquis';
-import Capacitacion from './modules/bpm/Capacitacion';
-import EmpleadosEnfermos from './modules/bpm/EmpleadosEnfermos';
-import Visitas from './modules/bpm/Visitas';
-import LavadoProducto from './modules/bpm/LavadoProducto';
-import ControlPersonal from './modules/bpm/ControlPersonal';
-import ControlCloro from './modules/bpm/ControlCloro';
-import ControlTemperatura from './modules/bpm/ControlTemperatura';
+const TL                 = lazy(() => import('./modules/bpm/TL'));
+const DT                 = lazy(() => import('./modules/bpm/DT'));
+const AL                 = lazy(() => import('./modules/bpm/AL'));
+const BAS                = lazy(() => import('./modules/bpm/BAS'));
+const ROD                = lazy(() => import('./modules/bpm/ROD'));
+const LIMP               = lazy(() => import('./modules/bpm/LIMP'));
+const VYP                = lazy(() => import('./modules/bpm/VYP'));
+const Fumigacion         = lazy(() => import('./modules/bpm/Fumigacion'));
+const Croquis            = lazy(() => import('./modules/bpm/Croquis'));
+const Capacitacion       = lazy(() => import('./modules/bpm/Capacitacion'));
+const EmpleadosEnfermos  = lazy(() => import('./modules/bpm/EmpleadosEnfermos'));
+const Visitas            = lazy(() => import('./modules/bpm/Visitas'));
+const LavadoProducto     = lazy(() => import('./modules/bpm/LavadoProducto'));
+const ControlPersonal    = lazy(() => import('./modules/bpm/ControlPersonal'));
+const ControlCloro       = lazy(() => import('./modules/bpm/ControlCloro'));
+const ControlTemperatura = lazy(() => import('./modules/bpm/ControlTemperatura'));
 
 // Inventario
-import StockVivo from './modules/stock/StockVivo';
-import EntradaBodega from './modules/inventario/EntradaBodega';
-import SalidaBodega from './modules/inventario/SalidaBodega';
+const StockVivo          = lazy(() => import('./modules/stock/StockVivo'));
+const EntradaBodega      = lazy(() => import('./modules/inventario/EntradaBodega'));
+const SalidaBodega       = lazy(() => import('./modules/inventario/SalidaBodega'));
 
 // Ventas
-import VentasGT from './modules/ventas/VentasGT';
-import VentasInt from './modules/ventas/VentasInt';
-import Walmart from './modules/walmart/Walmart';
+const VentasGT           = lazy(() => import('./modules/ventas/VentasGT'));
+const VentasInt          = lazy(() => import('./modules/ventas/VentasInt'));
+const Walmart            = lazy(() => import('./modules/walmart/Walmart'));
 
 // Proyección Semanal
-import ProyeccionSemanal from './modules/proyeccion/ProyeccionSemanal';
+const ProyeccionSemanal  = lazy(() => import('./modules/proyeccion/ProyeccionSemanal'));
 
 // Finanzas
-import GastosUnificado from './modules/gastos/GastosUnificado';
-import AnticiposMX from './modules/finanzas/AnticiposMX';
-import FinanzasModule from './modules/finanzas/Finanzas';
-import CotizadorRapido from './modules/cotizador/CotizadorRapido';
-import CotizadorLista   from './modules/cotizador/CotizadorLista';
-import CotizadorNuevo   from './modules/cotizador/CotizadorNuevo';
-import CotizadorDetalle from './modules/cotizador/CotizadorDetalle';
+const GastosUnificado    = lazy(() => import('./modules/gastos/GastosUnificado'));
+const AnticiposMX        = lazy(() => import('./modules/finanzas/AnticiposMX'));
+const FinanzasModule     = lazy(() => import('./modules/finanzas/Finanzas'));
+const CotizadorRapido    = lazy(() => import('./modules/cotizador/CotizadorRapido'));
+const CotizadorLista     = lazy(() => import('./modules/cotizador/CotizadorLista'));
+const CotizadorNuevo     = lazy(() => import('./modules/cotizador/CotizadorNuevo'));
+const CotizadorDetalle   = lazy(() => import('./modules/cotizador/CotizadorDetalle'));
 
 // Precios
-import Precios from './modules/precios/Precios';
+const Precios            = lazy(() => import('./modules/precios/Precios'));
 
 // Personal
-import Personal from './modules/personal/Personal';
+const Personal           = lazy(() => import('./modules/personal/Personal'));
 
-// Finanzas — Cuentas Proveedores
-import CuentasProveedores from './modules/cuentasProveedores/CuentasProveedores';
-import Liquidacion        from './modules/cuentasProveedores/Liquidacion';
+// Cuentas Proveedores
+const CuentasProveedores = lazy(() => import('./modules/cuentasProveedores/CuentasProveedores'));
+const Liquidacion        = lazy(() => import('./modules/cuentasProveedores/Liquidacion'));
 
 // CxC — Cuentas Clientes
-import CuentasClientes from './modules/cuentasClientes/CuentasClientes';
+const CuentasClientes    = lazy(() => import('./modules/cuentasClientes/CuentasClientes'));
 
 // Equipo
-import Pendientes from './modules/pendientes/Pendientes';
+const Pendientes         = lazy(() => import('./modules/pendientes/Pendientes'));
 
 // Sistema
-import Guatecompras from './modules/guatecompras/Guatecompras';
-import Reportes from './modules/reportes/Reportes';
-import Admin from './modules/admin/Admin';
+const Guatecompras       = lazy(() => import('./modules/guatecompras/Guatecompras'));
+const Reportes           = lazy(() => import('./modules/reportes/Reportes'));
+const Admin              = lazy(() => import('./modules/admin/Admin'));
 
 function RequireAuth({ children }) {
   const { user, loading } = useAuth();
@@ -83,7 +102,9 @@ function RequireAdmin({ children }) {
 
 export default function App() {
   return (
+    <ErrorBoundary>
     <BrowserRouter>
+      <Suspense fallback={<LoadingSpinner />}>
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/" element={
@@ -161,6 +182,8 @@ export default function App() {
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
+      </Suspense>
     </BrowserRouter>
+    </ErrorBoundary>
   );
 }

@@ -21,6 +21,18 @@ const IS   = { padding:'9px 12px', border:`1.5px solid ${T.border}`, borderRadiu
 const today  = () => new Date().toISOString().slice(0, 10);
 const fmtQ   = n => Number(n||0).toLocaleString('es-GT', { minimumFractionDigits:2 });
 
+// Devuelve todos los nombres que identifican a un empleado (nombre + aliases)
+function nombresEmp(emp) {
+  const base = (emp?.nombre || '').toLowerCase().trim();
+  const als  = (emp?.aliases || []).map(a => a.toLowerCase().trim()).filter(Boolean);
+  return [base, ...als].filter(Boolean);
+}
+// True si el nombre de un registro AL coincide con el empleado (incluyendo aliases)
+function matchEmpNombre(registroNombre, emp) {
+  const rn = (registroNombre || '').toLowerCase().trim();
+  return nombresEmp(emp).includes(rn);
+}
+
 // Lunes de la semana que contiene la fecha dada
 const weekOf = (d) => {
   const dt = new Date(d + 'T12:00:00');
@@ -288,6 +300,7 @@ function TabPagosSemanales() {
   const [filtroEmp,   setFiltroEmp]   = useState('');
   const [filtroDesde, setFiltroDesde] = useState('');
   const [filtroHasta, setFiltroHasta] = useState('');
+  const [expandedId,  setExpandedId]  = useState(null);
 
   // ── Calcular anticipos pendientes para el empleado seleccionado ──
   const anticPendientes = useMemo(() => {
@@ -297,34 +310,34 @@ function TabPagosSemanales() {
 
   const totalAnticPend = anticPendientes.reduce((s,a) => s+(a.monto||0), 0);
 
+  // ── Empleado seleccionado (con aliases) ──
+  const empSeleccionado = activos.find(e => e.nombre === form.empleado);
+  const tipoPago   = empSeleccionado?.tipoPago || 'diario';
+  const salarioDia = empSeleccionado?.salarioDia || 0;
+  const salarioSemana = empSeleccionado?.salarioSemana || 0;
+
   // ── Calcular días presentes en AL para la semana seleccionada ──
   const diasPresentes = useMemo(() => {
     if (!form.empleado || !form.semana) return { dias:0, detalle:[] };
     const lunes  = form.semana;
     const domingo = weekEnd(lunes);
-    // Registros AL de esa semana
     const semRecs = alData.filter(r => r.fecha >= lunes && r.fecha <= domingo);
     const diasSet = new Set();
     semRecs.forEach(r => {
       (r.checks||[]).forEach(ch => {
-        // Buscar por nombre (normalizado) o empleadoId
-        const empNombre = (ch.nombre||'').toLowerCase().trim();
-        const formNombre = form.empleado.toLowerCase().trim();
-        if (empNombre === formNombre) {
+        if (matchEmpNombre(ch.nombre, empSeleccionado)) {
           const tieneHoras = ch.horas && Object.values(ch.horas).some(v => v);
           if (tieneHoras) diasSet.add(r.fecha);
         }
       });
     });
     return { dias: diasSet.size, detalle: [...diasSet].sort() };
-  }, [form.empleado, form.semana, alData]);
+  }, [form.empleado, form.semana, alData, empSeleccionado]);
 
-  // ── Salario del empleado seleccionado ──
-  const empSeleccionado = activos.find(e => e.nombre === form.empleado);
-  const salarioDia = empSeleccionado?.salarioDia || 0;
-
-  // ── Monto sugerido ──
-  const montoBase     = diasPresentes.dias * salarioDia;
+  // ── Monto sugerido — semanal/quincenal usan monto fijo, diario usa días × tarifa ──
+  const montoBase = tipoPago === 'diario'
+    ? diasPresentes.dias * salarioDia
+    : (salarioSemana || 0);
   const montoSugerido = Math.max(0, montoBase - totalAnticPend);
 
   // Auto-llenar monto cuando cambia empleado o semana
@@ -332,16 +345,18 @@ function TabPagosSemanales() {
     if (!editId && montoBase > 0) {
       setForm(f => ({ ...f, monto: String(montoSugerido.toFixed(2)) }));
     }
-  }, [montoBase, montoSugerido, form.empleado, form.semana]);
+  }, [montoBase, form.empleado, form.semana, editId]);
 
   const handleSave = async () => {
     if (!form.empleado || !form.monto) { toast('Empleado y monto son requeridos', 'error'); return; }
     const payload = {
       ...form,
       monto:           parseFloat(form.monto)||0,
-      diasAL:          diasPresentes.dias,
+      diasAL:           diasPresentes.dias,
       fechasTrabajadas: diasPresentes.detalle,
       salarioDia,
+      tipoPago,
+      montoBase,
       anticDescontados: descontarAnticipos ? totalAnticPend : 0,
       creadoEn:        new Date().toISOString(),
     };
@@ -457,20 +472,23 @@ function TabPagosSemanales() {
                 )}
               </div>
 
-              {/* Salario/día */}
+              {/* Salario configurado */}
               <div>
                 <div style={{ fontSize:'.72rem', fontWeight:700, color:T.textMid, textTransform:'uppercase', letterSpacing:'.07em', marginBottom:4 }}>
-                  Salario por día
+                  {tipoPago === 'diario' ? 'Salario por día' : tipoPago === 'quincenal' ? 'Salario quincenal' : 'Salario semanal'}
                 </div>
                 <div style={{ fontSize:'1.1rem', fontWeight:700, color:T.textDark }}>
-                  {salarioDia > 0 ? `Q ${fmtQ(salarioDia)}` : <span style={{ color:T.danger, fontSize:'.82rem' }}>No configurado en Admin</span>}
+                  {tipoPago === 'diario'
+                    ? (salarioDia > 0 ? `Q ${fmtQ(salarioDia)}` : <span style={{ color:T.danger, fontSize:'.82rem' }}>No configurado en Admin</span>)
+                    : (salarioSemana > 0 ? `Q ${fmtQ(salarioSemana)}` : <span style={{ color:T.danger, fontSize:'.82rem' }}>No configurado en Admin</span>)
+                  }
                 </div>
               </div>
 
               {/* Base calculada */}
               <div>
                 <div style={{ fontSize:'.72rem', fontWeight:700, color:T.textMid, textTransform:'uppercase', letterSpacing:'.07em', marginBottom:4 }}>
-                  Base ({diasPresentes.dias} × Q{fmtQ(salarioDia)})
+                  {tipoPago === 'diario' ? `Base (${diasPresentes.dias} días × Q${fmtQ(salarioDia)})` : 'Monto fijo'}
                 </div>
                 <div style={{ fontSize:'1.1rem', fontWeight:700, color:T.secondary }}>Q {fmtQ(montoBase)}</div>
               </div>
@@ -577,9 +595,17 @@ function TabPagosSemanales() {
                         <td style={{ ...TD_S(i%2===1), whiteSpace:'nowrap', fontSize:'.78rem', color:T.textMid }}>{r.semana||'—'}</td>
                         <td style={{ ...TD_S(i%2===1), fontWeight:600 }}>{r.empleado||'—'}</td>
                         <td style={{ ...TD_S(i%2===1) }}>
-                          <div style={{ fontWeight:800, fontSize:'1rem', color: (r.diasAL||0)>0 ? T.secondary : T.textMid, marginBottom: fechas.length?4:0 }}>{r.diasAL ?? '—'}</div>
-                          {fechas.length > 0 && (
-                            <div style={{ display:'flex', flexWrap:'wrap', gap:3 }}>
+                          <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                            <span style={{ fontWeight:800, fontSize:'1rem', color: (r.diasAL||0)>0 ? T.secondary : T.textMid }}>{r.diasAL ?? '—'}</span>
+                            {fechas.length > 0 && (
+                              <button onClick={() => setExpandedId(expandedId === r.id ? null : r.id)}
+                                style={{ padding:'1px 7px', border:`1px solid ${T.border}`, borderRadius:4, background:'#fff', cursor:'pointer', fontSize:'.65rem', color:T.textMid, fontWeight:600 }}>
+                                {expandedId === r.id ? '▲' : '▼ fechas'}
+                              </button>
+                            )}
+                          </div>
+                          {expandedId === r.id && fechas.length > 0 && (
+                            <div style={{ display:'flex', flexWrap:'wrap', gap:3, marginTop:5 }}>
                               {fechas.map(f => (
                                 <span key={f} style={{ background:'#E8F5E9', color:T.secondary, border:`1px solid #A5D6A7`, borderRadius:4, padding:'1px 6px', fontSize:'.68rem', fontWeight:700, whiteSpace:'nowrap' }}>
                                   {fmtFecha(f)}
@@ -587,11 +613,10 @@ function TabPagosSemanales() {
                               ))}
                             </div>
                           )}
-                          {fechas.length === 0 && r.diasAL > 0 && (
-                            <div style={{ fontSize:'.68rem', color:T.textMid }}>fechas no guardadas</div>
-                          )}
                         </td>
-                        <td style={{ ...TD_S(i%2===1), fontWeight:600, color:T.secondary }}>Q {fmtQ((r.diasAL||0)*(r.salarioDia||0))}</td>
+                        <td style={{ ...TD_S(i%2===1), fontWeight:600, color:T.secondary }}>
+                          Q {fmtQ(r.montoBase || (r.diasAL||0)*(r.salarioDia||0))}
+                        </td>
                         <td style={{ ...TD_S(i%2===1), color: r.anticDescontados > 0 ? T.warn : T.textMid }}>
                           {r.anticDescontados > 0 ? `− Q ${fmtQ(r.anticDescontados)}` : '—'}
                         </td>
@@ -623,11 +648,329 @@ function TabPagosSemanales() {
   );
 }
 
+// ─── TAB 4: NÓMINA PERÍODO ────────────────────────────────────────────────────
+function TabNomina() {
+  const toast   = useToast();
+  const { activos, loading: lEmp } = useEmpActivos();
+  const { data: alData,   loading: lAL  } = useCollection('al',          { orderField:'fecha', orderDir:'desc', limit:1000 });
+  const { data: anticData                } = useCollection('perAnticipo', { orderField:'fecha', orderDir:'desc', limit:300 });
+  const { add: addPago, saving }           = useWrite('perPagos');
+
+  const [desde,     setDesde]     = useState('');
+  const [hasta,     setHasta]     = useState('');
+  const [nomResult, setNomResult] = useState(null);
+  const [pagando,   setPagando]   = useState(false);
+
+  const HORAS = ['10:00','12:00','14:00','16:00'];
+
+  const calcular = () => {
+    if (!desde || !hasta) { toast('Ingresá rango de fechas', 'error'); return; }
+    const filtrados = (alData||[]).filter(r => r.fecha >= desde && r.fecha <= hasta);
+    const diasPorEmp = {};
+    filtrados.forEach(r => {
+      (r.checks||[]).forEach(row => {
+        const tiene = HORAS.some(h => row.horas && row.horas[h]);
+        if (!tiene) return;
+        const key = row.empleadoId || row.nombre;
+        if (!diasPorEmp[key]) diasPorEmp[key] = { nombre: row.nombre, dias: new Set(), he: {} };
+        diasPorEmp[key].dias.add(r.fecha);
+        if ((row.horasExtras||0) > 0)
+          diasPorEmp[key].he[r.fecha] = (diasPorEmp[key].he[r.fecha]||0) + row.horasExtras;
+      });
+    });
+    const tabla = Object.values(diasPorEmp).map(entry => {
+      const emp   = activos.find(e => matchEmpNombre(entry.nombre, e));
+      // Si encontramos el empleado por alias, usar su nombre oficial
+      const nombreOficial = emp?.nombre || entry.nombre;
+      const sd    = emp?.salarioDia || (emp?.salario ? emp.salario/30 : 0);
+      const tarifaHE = emp?.tarifaHoraExtra || (sd > 0 ? (sd/8)*1.5 : 0);
+      const dias  = entry.dias.size;
+      const fechas = [...entry.dias].sort().map(f => ({ fecha:f, he: entry.he[f]||0 }));
+      const totalHE = Object.values(entry.he).reduce((s,h) => s+h, 0);
+      const pagoHE  = totalHE * tarifaHE;
+      const anticPend = (anticData||[]).filter(a => a.empleado === nombreOficial && a.estado === 'pendiente').reduce((s,a) => s+(a.monto||0), 0);
+      const bruto = dias * sd + pagoHE;
+      const neto  = Math.max(0, bruto - anticPend);
+      return { nombre:nombreOficial, nombreOriginal: entry.nombre !== nombreOficial ? entry.nombre : null, dias, fechas, salarioDia:sd, tarifaHE, totalHE, pagoHE, anticPend, bruto, neto };
+    }).sort((a,b) => a.nombre.localeCompare(b.nombre));
+    setNomResult(tabla);
+  };
+
+  const registrarPagos = async () => {
+    if (!nomResult?.length) return;
+    const conSalario = nomResult.filter(r => r.salarioDia > 0);
+    if (!conSalario.length) { toast('Ningún empleado tiene salario configurado', 'error'); return; }
+    if (!window.confirm(`¿Registrar ${conSalario.length} pago(s) por Q ${conSalario.reduce((s,r)=>s+r.neto,0).toFixed(2)} total?`)) return;
+    setPagando(true);
+    try {
+      for (const r of conSalario) {
+        await addPago({
+          empleado: r.nombre,
+          fecha:    hasta,
+          semana:   desde,
+          monto:    r.neto,
+          tipo:     'semanal',
+          diasAL:   r.dias,
+          fechasTrabajadas: r.fechas.map(f => f.fecha),
+          salarioDia: r.salarioDia,
+          anticDescontados: r.anticPend,
+          estado:   'pendiente',
+          observaciones: `Nómina ${desde} → ${hasta}`,
+          creadoEn: new Date().toISOString(),
+        });
+      }
+      toast(`✓ ${conSalario.length} pagos registrados`);
+    } catch(e) { toast('Error: '+e.message,'error'); }
+    setPagando(false);
+  };
+
+  const fmtQ = n => Number(n||0).toLocaleString('es-GT',{minimumFractionDigits:2});
+  const fmtF = f => { const d=new Date(f+'T12:00:00Z'); return d.toLocaleDateString('es-GT',{weekday:'short',day:'2-digit',month:'short',timeZone:'UTC'}); };
+
+  if (lEmp||lAL) return <Skeleton rows={5}/>;
+
+  const totalBruto = (nomResult||[]).reduce((s,r)=>s+r.bruto,0);
+  const totalNeto  = (nomResult||[]).reduce((s,r)=>s+r.neto,0);
+
+  return (
+    <div>
+      <div style={{...card, padding:'16px 20px'}}>
+        <div style={{fontWeight:700,fontSize:'.95rem',color:T.primary,marginBottom:16,borderBottom:`2px solid ${T.primary}`,paddingBottom:8}}>
+          Nómina del Período — desde AL (Acceso y Lavado)
+        </div>
+        <div style={{display:'flex',gap:14,flexWrap:'wrap',alignItems:'flex-end',marginBottom:14}}>
+          <label style={LS}>Desde<input type="date" value={desde} onChange={e=>setDesde(e.target.value)} style={{...IS,width:145}}/></label>
+          <label style={LS}>Hasta<input type="date" value={hasta} onChange={e=>setHasta(e.target.value)} style={{...IS,width:145}}/></label>
+          <button onClick={calcular} style={{padding:'9px 24px',background:T.primary,color:T.white,border:'none',borderRadius:6,fontWeight:700,fontSize:'.85rem',cursor:'pointer',alignSelf:'flex-end'}}>
+            👷 Calcular
+          </button>
+        </div>
+        {nomResult && nomResult.length === 0 && (
+          <div style={{textAlign:'center',padding:'30px',color:T.textMid}}>Sin registros en ese período</div>
+        )}
+        {nomResult && nomResult.length > 0 && (
+          <>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:12,marginBottom:16}}>
+              <div style={{padding:'12px 16px',background:T.bgGreen,borderRadius:8,border:`1px solid #A5D6A7`}}>
+                <div style={{fontSize:'.7rem',fontWeight:700,textTransform:'uppercase',color:T.textMid,marginBottom:4}}>Total bruto</div>
+                <div style={{fontSize:'1.2rem',fontWeight:800,color:T.secondary}}>Q {fmtQ(totalBruto)}</div>
+              </div>
+              <div style={{padding:'12px 16px',background:'#FFF3E0',borderRadius:8,border:`1px solid #FFCC80`}}>
+                <div style={{fontSize:'.7rem',fontWeight:700,textTransform:'uppercase',color:T.textMid,marginBottom:4}}>Anticipos a descontar</div>
+                <div style={{fontSize:'1.2rem',fontWeight:800,color:T.warn}}>Q {fmtQ(totalBruto-totalNeto)}</div>
+              </div>
+              <div style={{padding:'12px 16px',background:T.bgGreen,borderRadius:8,border:`2px solid ${T.primary}`}}>
+                <div style={{fontSize:'.7rem',fontWeight:700,textTransform:'uppercase',color:T.textMid,marginBottom:4}}>Total neto a pagar</div>
+                <div style={{fontSize:'1.3rem',fontWeight:800,color:T.primary}}>Q {fmtQ(totalNeto)}</div>
+              </div>
+            </div>
+            <div style={{overflowX:'auto',marginBottom:16}}>
+              <table style={{width:'100%',borderCollapse:'collapse'}}>
+                <thead>
+                  <tr style={{background:T.primary}}>
+                    {['Empleado','Días · Fechas','Sal/Día','Pago Reg.','H.E.','Pago HE','Anticipos Pend.','Bruto','Neto'].map(h=>(
+                      <th key={h} style={{padding:'9px 12px',textAlign:'left',color:'#fff',fontSize:'.72rem',fontWeight:700,textTransform:'uppercase',whiteSpace:'nowrap'}}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {nomResult.map((row,i)=>(
+                    <tr key={row.nombre} style={{background:i%2===0?'#fff':'#F9FBF9'}}>
+                      <td style={{padding:'9px 12px',fontWeight:600,fontSize:'.85rem'}}>{row.nombre}</td>
+                      <td style={{padding:'9px 12px',verticalAlign:'top'}}>
+                        <div style={{fontWeight:800,fontSize:'1rem',color:T.secondary,marginBottom:4}}>{row.dias}</div>
+                        <div style={{display:'flex',flexWrap:'wrap',gap:3}}>
+                          {row.fechas.map(({fecha:f,he})=>(
+                            <span key={f} style={{background:he>0?'#FFF3E0':'#E8F5E9',color:he>0?T.warn:T.secondary,border:`1px solid ${he>0?'#FFCC80':'#A5D6A7'}`,borderRadius:4,padding:'2px 6px',fontSize:'.68rem',fontWeight:700,whiteSpace:'nowrap'}}>
+                              {fmtF(f)}{he>0?` · ${he}HE`:''}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                      <td style={{padding:'9px 12px',fontSize:'.83rem'}}>{row.salarioDia>0?`Q${row.salarioDia.toFixed(2)}`:<span style={{color:T.danger,fontSize:'.75rem'}}>Sin config</span>}</td>
+                      <td style={{padding:'9px 12px',fontWeight:600,color:T.secondary,fontSize:'.85rem'}}>{row.salarioDia>0?`Q${(row.dias*row.salarioDia).toFixed(2)}`:'—'}</td>
+                      <td style={{padding:'9px 12px',textAlign:'center'}}>{row.totalHE>0?<span style={{background:'#FFF3E0',color:T.warn,border:'1px solid #FFCC80',borderRadius:4,padding:'2px 7px',fontSize:'.75rem',fontWeight:700}}>{row.totalHE}h</span>:'—'}</td>
+                      <td style={{padding:'9px 12px',color:T.warn,fontWeight:600,fontSize:'.85rem'}}>{row.pagoHE>0?`Q${row.pagoHE.toFixed(2)}`:'—'}</td>
+                      <td style={{padding:'9px 12px',color:row.anticPend>0?T.warn:T.textMid,fontSize:'.85rem'}}>{row.anticPend>0?`− Q${row.anticPend.toFixed(2)}`:'—'}</td>
+                      <td style={{padding:'9px 12px',fontWeight:700,color:T.secondary,fontSize:'.85rem'}}>{row.salarioDia>0?`Q${row.bruto.toFixed(2)}`:'—'}</td>
+                      <td style={{padding:'9px 12px',fontWeight:800,fontSize:'.9rem',color:T.primary}}>{row.salarioDia>0?`Q${row.neto.toFixed(2)}`:'—'}</td>
+                    </tr>
+                  ))}
+                  <tr style={{background:'#E8F5E9'}}>
+                    <td colSpan={7} style={{padding:'10px 12px',fontWeight:700,textAlign:'right',color:T.primary}}>Total:</td>
+                    <td style={{padding:'10px 12px',fontWeight:800,color:T.secondary}}>Q{fmtQ(totalBruto)}</td>
+                    <td style={{padding:'10px 12px',fontWeight:800,color:T.primary}}>Q{fmtQ(totalNeto)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <button onClick={registrarPagos} disabled={pagando||saving}
+              style={{padding:'11px 28px',background:pagando?'#BDBDBD':T.secondary,color:T.white,border:'none',borderRadius:6,fontWeight:700,fontSize:'.88rem',cursor:pagando?'not-allowed':'pointer'}}>
+              {pagando?'Registrando…':'💾 Registrar pagos en Historial'}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── TAB 5: ESTADO DE CUENTA ──────────────────────────────────────────────────
+function TabEstadoCuenta() {
+  const toast = useToast();
+  const { activos, loading: lEmp } = useEmpActivos();
+  const { data: alData,   loading: lAL  } = useCollection('al',          { orderField:'fecha', orderDir:'desc', limit:1000 });
+  const { data: anticData,loading: lAnt } = useCollection('perAnticipo', { orderField:'fecha', orderDir:'desc', limit:300 });
+  const { data: pagosData,loading: lPag } = useCollection('perPagos',    { orderField:'fecha', orderDir:'desc', limit:500 });
+
+  const [empSel,  setEmpSel]  = useState('');
+  const [desde,   setDesde]   = useState('');
+  const [hasta,   setHasta]   = useState('');
+  const [nomData, setNomData] = useState(null);
+
+  const HORAS = ['10:00','12:00','14:00','16:00'];
+
+  const calcular = () => {
+    if (!empSel || !desde || !hasta) { toast('Seleccioná empleado y rango','error'); return; }
+    const filtrados = (alData||[]).filter(r => r.fecha >= desde && r.fecha <= hasta);
+    const diasSet = new Set();
+    const heMap = {};
+    const emp    = activos.find(e => e.nombre === empSel);
+    filtrados.forEach(r => {
+      (r.checks||[]).forEach(row => {
+        if (!matchEmpNombre(row.nombre, emp)) return;
+        if (!HORAS.some(h => row.horas && row.horas[h])) return;
+        diasSet.add(r.fecha);
+        if ((row.horasExtras||0) > 0) heMap[r.fecha] = (heMap[r.fecha]||0) + row.horasExtras;
+      });
+    });
+    const sd     = emp?.salarioDia || 0;
+    const tHE    = emp?.tarifaHoraExtra || (sd > 0 ? (sd/8)*1.5 : 0);
+    const dias   = diasSet.size;
+    const fechas = [...diasSet].sort().map(f => ({ fecha:f, he:heMap[f]||0 }));
+    const totalHE = Object.values(heMap).reduce((s,h)=>s+h, 0);
+    const pagoHE  = totalHE * tHE;
+    const bruto   = dias * sd + pagoHE;
+    const anticsPend  = (anticData||[]).filter(a => a.empleado===empSel && a.estado==='pendiente');
+    const totalAntPend = anticsPend.reduce((s,a)=>s+(a.monto||0),0);
+    const pagosRealizados = (pagosData||[]).filter(r => r.empleado===empSel && r.fecha>=desde && r.fecha<=hasta);
+    const totalPagado = pagosRealizados.reduce((s,r)=>s+(r.monto||0),0);
+    const saldo = bruto - totalAntPend - totalPagado;
+    setNomData({ sd, tHE, dias, fechas, totalHE, pagoHE, bruto, anticsPend, totalAntPend, pagosRealizados, totalPagado, saldo });
+  };
+
+  const fmtQ = n => Number(n||0).toLocaleString('es-GT',{minimumFractionDigits:2});
+  const fmtF = f => { const d=new Date(f+'T12:00:00Z'); return d.toLocaleDateString('es-GT',{weekday:'short',day:'2-digit',month:'short',timeZone:'UTC'}); };
+
+  if (lEmp||lAL||lAnt||lPag) return <Skeleton rows={5}/>;
+
+  return (
+    <div>
+      <div style={{...card, padding:'16px 20px'}}>
+        <div style={{fontWeight:700,fontSize:'.95rem',color:T.primary,marginBottom:16,borderBottom:`2px solid ${T.primary}`,paddingBottom:8}}>
+          Estado de Cuenta por Empleado
+        </div>
+        <div style={{display:'flex',gap:14,flexWrap:'wrap',alignItems:'flex-end',marginBottom:16}}>
+          <label style={LS}>Empleado
+            <select value={empSel} onChange={e=>setEmpSel(e.target.value)} style={{...IS,width:220}}>
+              <option value="">— Seleccionar —</option>
+              {activos.map(e=><option key={e.id||e.nombre} value={e.nombre}>{e.nombre}</option>)}
+            </select>
+          </label>
+          <label style={LS}>Desde<input type="date" value={desde} onChange={e=>setDesde(e.target.value)} style={{...IS,width:145}}/></label>
+          <label style={LS}>Hasta<input type="date" value={hasta} onChange={e=>setHasta(e.target.value)} style={{...IS,width:145}}/></label>
+          <button onClick={calcular} style={{padding:'9px 24px',background:T.primary,color:T.white,border:'none',borderRadius:6,fontWeight:700,fontSize:'.85rem',cursor:'pointer',alignSelf:'flex-end'}}>
+            Ver Estado
+          </button>
+        </div>
+
+        {nomData && (
+          <div>
+            {/* KPIs */}
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))',gap:12,marginBottom:20}}>
+              {[
+                { label:'Días trabajados', val:nomData.dias,        color:T.primary,   fmt:v=>`${v}` },
+                { label:'Pago regular',    val:nomData.dias*nomData.sd, color:T.secondary, fmt:v=>`Q ${fmtQ(v)}` },
+                { label:'Horas extra',     val:nomData.pagoHE,      color:'#E65100',   fmt:v=>`Q ${fmtQ(v)}` },
+                { label:'Total devengado', val:nomData.bruto,       color:T.primary,   fmt:v=>`Q ${fmtQ(v)}`, big:true },
+                { label:'Anticipos pend.', val:nomData.totalAntPend,color:T.warn,      fmt:v=>`− Q ${fmtQ(v)}` },
+                { label:'Ya pagado',       val:nomData.totalPagado, color:T.secondary, fmt:v=>`− Q ${fmtQ(v)}` },
+                { label:'Saldo pendiente', val:nomData.saldo,       color:nomData.saldo>0?T.danger:T.secondary, fmt:v=>`Q ${fmtQ(v)}`, big:true },
+              ].map(({label,val,color,fmt,big})=>(
+                <div key={label} style={{padding:'12px 14px',background:'#fff',border:`1px solid ${T.border}`,borderRadius:8,boxShadow:'0 1px 3px rgba(0,0,0,.07)'}}>
+                  <div style={{fontSize:'.68rem',fontWeight:700,textTransform:'uppercase',color:T.textMid,marginBottom:4}}>{label}</div>
+                  <div style={{fontSize:big?'1.2rem':'.95rem',fontWeight:big?800:700,color}}>{fmt(val)}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Fechas trabajadas */}
+            <div style={{marginBottom:16}}>
+              <div style={{fontSize:'.75rem',fontWeight:700,textTransform:'uppercase',color:T.textMid,marginBottom:6}}>Días trabajados</div>
+              <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
+                {nomData.fechas.map(({fecha:f,he})=>(
+                  <span key={f} style={{background:he>0?'#FFF3E0':'#E8F5E9',color:he>0?T.warn:T.secondary,border:`1px solid ${he>0?'#FFCC80':'#A5D6A7'}`,borderRadius:4,padding:'3px 8px',fontSize:'.75rem',fontWeight:700}}>
+                    {fmtF(f)}{he>0?` · ${he}HE`:''}
+                  </span>
+                ))}
+                {nomData.fechas.length===0 && <span style={{color:T.textMid,fontSize:'.82rem'}}>Sin registros en ese período</span>}
+              </div>
+            </div>
+
+            {/* Anticipos pendientes */}
+            {nomData.anticsPend.length > 0 && (
+              <div style={{marginBottom:16}}>
+                <div style={{fontSize:'.75rem',fontWeight:700,textTransform:'uppercase',color:T.warn,marginBottom:6}}>Anticipos pendientes</div>
+                {nomData.anticsPend.map(a=>(
+                  <div key={a.id} style={{display:'flex',justifyContent:'space-between',padding:'6px 10px',background:'#FFF3E0',borderRadius:6,marginBottom:4,fontSize:'.82rem'}}>
+                    <span>{a.fecha} · {a.concepto||'Anticipo'}</span>
+                    <span style={{fontWeight:700,color:T.warn}}>Q {fmtQ(a.monto)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Pagos realizados */}
+            {nomData.pagosRealizados.length > 0 && (
+              <div style={{marginBottom:16}}>
+                <div style={{fontSize:'.75rem',fontWeight:700,textTransform:'uppercase',color:T.secondary,marginBottom:6}}>Pagos realizados en el período</div>
+                {nomData.pagosRealizados.map(p=>(
+                  <div key={p.id} style={{display:'flex',justifyContent:'space-between',padding:'6px 10px',background:T.bgGreen,borderRadius:6,marginBottom:4,fontSize:'.82rem'}}>
+                    <span>{p.fecha} · {p.tipo||'Pago'} {p.observaciones?`· ${p.observaciones}`:''}</span>
+                    <span style={{fontWeight:700,color:T.secondary}}>Q {fmtQ(p.monto)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Saldo final */}
+            <div style={{padding:'14px 18px',borderRadius:8,border:`2px solid ${nomData.saldo>0?T.danger:T.secondary}`,background:nomData.saldo>0?'#FFEBEE':T.bgGreen}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                <div>
+                  <div style={{fontWeight:700,fontSize:'.82rem',color:T.textMid,marginBottom:2}}>
+                    {nomData.saldo>0?'⚠ Saldo pendiente de pago':'✓ Liquidado'}
+                  </div>
+                  <div style={{fontSize:'.78rem',color:T.textMid}}>Q{fmtQ(nomData.bruto)} devengado − Q{fmtQ(nomData.totalAntPend)} anticipos − Q{fmtQ(nomData.totalPagado)} pagado</div>
+                </div>
+                <div style={{fontSize:'1.6rem',fontWeight:800,color:nomData.saldo>0?T.danger:T.secondary}}>
+                  Q {fmtQ(nomData.saldo)}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── MAIN ─────────────────────────────────────────────────────────────────────
 const TABS = [
-  { id:'empleados',       label:'Empleados',       Component:TabEmpleados      },
-  { id:'anticipos',       label:'Anticipos',        Component:TabAnticipos      },
-  { id:'pagos-semanales', label:'Pagos Semanales',  Component:TabPagosSemanales },
+  { id:'empleados',       label:'👥 Empleados',      Component:TabEmpleados      },
+  { id:'anticipos',       label:'💵 Anticipos',       Component:TabAnticipos      },
+  { id:'pagos-semanales', label:'💳 Pagos',           Component:TabPagosSemanales },
+  { id:'nomina',          label:'👷 Nómina Período',  Component:TabNomina         },
+  { id:'estado-cuenta',   label:'📋 Estado de Cuenta',Component:TabEstadoCuenta  },
 ];
 
 export default function Personal() {

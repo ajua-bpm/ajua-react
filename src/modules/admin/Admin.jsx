@@ -446,7 +446,7 @@ export default function Admin() {
 
   const [formCond, setFormCond] = useState({ nombre:'', lic:'', tel:'', obs:'' });
   const [formCli,  setFormCli ] = useState({ nombre:'', rtu:'', tel:'', dir:'', muni:'', obs:'' });
-  const [formEmp,  setFormEmp ] = useState({ nombre:'', cargo:'', tel:'', dpi:'', sexo:'', area:'', estado:'activo' });
+  const [formEmp,  setFormEmp ] = useState({ nombre:'', cargo:'', tel:'', dpi:'', sexo:'', area:'', estado:'activo', tipoPago:'diario', salarioDia:'', salarioSemana:'', tarifaHoraExtra:'' });
   const [editingEmp, setEditingEmp] = useState(null);
 
   // Usuarios (ajua_bpm/main)
@@ -605,6 +605,23 @@ export default function Admin() {
                       <option value="inactivo">✗ Inactivo</option>
                     </select>
                   </label>
+                  <label style={LS}>Tipo de pago
+                    <select value={editingEmp.tipoPago||'diario'} onChange={e=>setEditingEmp(u=>({...u,tipoPago:e.target.value}))} style={IS}>
+                      <option value="diario">Por día</option>
+                      <option value="semanal">Semanal fijo</option>
+                      <option value="quincenal">Quincenal fijo</option>
+                    </select>
+                  </label>
+                  {(editingEmp.tipoPago||'diario')==='diario'
+                    ? <label style={LS}>Salario por día (Q)<input type="number" min="0" step="0.01" value={editingEmp.salarioDia||''} onChange={e=>setEditingEmp(u=>({...u,salarioDia:parseFloat(e.target.value)||0}))} style={IS} placeholder="0.00"/></label>
+                    : <label style={LS}>{editingEmp.tipoPago==='quincenal'?'Salario quincenal (Q)':'Salario semanal (Q)'}<input type="number" min="0" step="0.01" value={editingEmp.salarioSemana||''} onChange={e=>setEditingEmp(u=>({...u,salarioSemana:parseFloat(e.target.value)||0}))} style={IS} placeholder="0.00"/></label>
+                  }
+                  <label style={LS}>Tarifa hora extra (Q)<input type="number" min="0" step="0.01" value={editingEmp.tarifaHoraExtra||''} onChange={e=>setEditingEmp(u=>({...u,tarifaHoraExtra:parseFloat(e.target.value)||0}))} style={IS} placeholder="auto (sd/8×1.5)"/></label>
+                  <label style={{...LS,gridColumn:'1/-1'}}>
+                    Nombres anteriores / alias (separados por coma)
+                    <input value={(editingEmp.aliases||[]).join(', ')} onChange={e=>setEditingEmp(u=>({...u,aliases:e.target.value.split(',').map(s=>s.trim()).filter(Boolean)}))} style={IS} placeholder="Ej: Tesmin, Jesmin"/>
+                    <span style={{fontSize:'.65rem',color:'#9aaa9e',marginTop:2}}>Para que el sistema reconozca registros históricos con ese nombre</span>
+                  </label>
                 </div>
                 <div style={{display:'flex',gap:10,marginTop:10}}>
                   <button onClick={async()=>{
@@ -645,8 +662,25 @@ export default function Admin() {
                   <option value="inactivo">Inactivo</option>
                 </select>
               </label>
+              <label style={LS}>Tipo de pago
+                <select value={formEmp.tipoPago||'diario'} onChange={e=>setFormEmp(f=>({...f,tipoPago:e.target.value}))} style={IS}>
+                  <option value="diario">Por día</option>
+                  <option value="semanal">Semanal fijo</option>
+                  <option value="quincenal">Quincenal fijo</option>
+                </select>
+              </label>
+              {(formEmp.tipoPago||'diario')==='diario'
+                ? <label style={LS}>Salario por día (Q)<input type="number" min="0" step="0.01" value={formEmp.salarioDia||''} onChange={e=>setFormEmp(f=>({...f,salarioDia:e.target.value}))} style={IS} placeholder="0.00"/></label>
+                : <label style={LS}>{formEmp.tipoPago==='quincenal'?'Salario quincenal (Q)':'Salario semanal (Q)'}<input type="number" min="0" step="0.01" value={formEmp.salarioSemana||''} onChange={e=>setFormEmp(f=>({...f,salarioSemana:e.target.value}))} style={IS} placeholder="0.00"/></label>
+              }
+              <label style={LS}>Tarifa hora extra (Q)<input type="number" min="0" step="0.01" value={formEmp.tarifaHoraExtra||''} onChange={e=>setFormEmp(f=>({...f,tarifaHoraExtra:e.target.value}))} style={IS} placeholder="auto"/></label>
             </div>
-            <button onClick={async()=>{ if(!formEmp.nombre){toast('⚠ Nombre requerido','error');return;} await addEmp(formEmp); toast('✓ Empleado agregado'); setFormEmp({nombre:'',cargo:'',tel:'',dpi:'',sexo:'',area:'',estado:'activo'}); }} disabled={savEmp}
+            <button onClick={async()=>{
+              if(!formEmp.nombre){toast('⚠ Nombre requerido','error');return;}
+              const payload={...formEmp,salarioDia:parseFloat(formEmp.salarioDia)||0,salarioSemana:parseFloat(formEmp.salarioSemana)||0,tarifaHoraExtra:parseFloat(formEmp.tarifaHoraExtra)||0};
+              await addEmp(payload); toast('✓ Empleado agregado');
+              setFormEmp({nombre:'',cargo:'',tel:'',dpi:'',sexo:'',area:'',estado:'activo',tipoPago:'diario',salarioDia:'',salarioSemana:'',tarifaHoraExtra:''});
+            }} disabled={savEmp}
               style={{padding:'10px 24px',background:savEmp?'#ccc':C.acc,color:'#fff',border:'none',borderRadius:6,fontWeight:700,fontSize:'.85rem',cursor:savEmp?'not-allowed':'pointer'}}>
               + Agregar
             </button>
@@ -655,7 +689,7 @@ export default function Admin() {
           <div style={{background:'#fff',border:`1px solid ${C.sand}`,borderRadius:8,padding:20,overflowX:'auto'}}>
             <table style={{width:'100%',borderCollapse:'collapse',fontSize:'.8rem'}}>
               <thead><tr style={{background:C.bg}}>
-                {['Nombre','Cargo','Área','DPI','Tel','Sexo','Estado',''].map(h=>(
+                {['Nombre','Cargo','Tipo pago','Salario','H.Extra/hr','Estado',''].map(h=>(
                   <th key={h} style={{padding:'7px 10px',textAlign:'left',fontWeight:700,color:'#6B8070',borderBottom:`1px solid ${C.sand}`,whiteSpace:'nowrap'}}>{h}</th>
                 ))}
               </tr></thead>
@@ -663,11 +697,20 @@ export default function Admin() {
                 {empleados.map(r=>(
                   <tr key={r.id} style={{borderBottom:`1px solid ${C.sand}`}}>
                     <td style={{padding:'7px 10px',fontWeight:600,color:C.green,whiteSpace:'nowrap'}}>{r.nombre}</td>
-                    <td style={{padding:'7px 10px',color:'#6B8070'}}>{r.cargo||'—'}</td>
-                    <td style={{padding:'7px 10px',color:'#6B8070'}}>{r.area||'—'}</td>
-                    <td style={{padding:'7px 10px',color:'#6B8070',fontFamily:'monospace'}}>{r.dpi||'—'}</td>
-                    <td style={{padding:'7px 10px',color:'#6B8070'}}>{r.tel||'—'}</td>
-                    <td style={{padding:'7px 10px',color:'#6B8070'}}>{r.sexo||'—'}</td>
+                    <td style={{padding:'7px 10px',color:'#6B8070'}}>{r.cargo||'—'}{r.area?<span style={{fontSize:'.68rem',color:'#9aaa9e'}}> · {r.area}</span>:''}</td>
+                    <td style={{padding:'7px 10px'}}>
+                      <span style={{padding:'2px 8px',borderRadius:100,fontSize:'.65rem',fontWeight:700,
+                        background:r.tipoPago==='semanal'?'#E3F2FD':r.tipoPago==='quincenal'?'#F3E5F5':'rgba(74,158,106,.12)',
+                        color:r.tipoPago==='semanal'?'#1565C0':r.tipoPago==='quincenal'?'#6A1B9A':C.acc}}>
+                        {r.tipoPago==='semanal'?'Semanal':r.tipoPago==='quincenal'?'Quincenal':'Por día'}
+                      </span>
+                    </td>
+                    <td style={{padding:'7px 10px',fontWeight:700,color:C.green}}>
+                      {r.tipoPago==='semanal'||r.tipoPago==='quincenal'
+                        ? (r.salarioSemana?`Q ${Number(r.salarioSemana).toFixed(2)}`:'—')
+                        : (r.salarioDia?`Q ${Number(r.salarioDia).toFixed(2)}/día`:'—')}
+                    </td>
+                    <td style={{padding:'7px 10px',color:r.tarifaHoraExtra?'#E65100':'#9aaa9e'}}>{r.tarifaHoraExtra?`Q ${Number(r.tarifaHoraExtra).toFixed(2)}`:'auto'}</td>
                     <td style={{padding:'7px 10px'}}>
                       <span style={{padding:'2px 8px',borderRadius:100,fontSize:'.65rem',fontWeight:700,background:(r.estado||r.activo)!=='inactivo'&&r.activo!==false?'rgba(74,158,106,.15)':'rgba(192,57,43,.1)',color:(r.estado||r.activo)!=='inactivo'&&r.activo!==false?C.acc:C.danger}}>
                         {(r.estado==='inactivo'||r.activo===false)?'Inactivo':'Activo'}
@@ -682,7 +725,7 @@ export default function Admin() {
                     </td>
                   </tr>
                 ))}
-                {empleados.length===0&&<tr><td colSpan={8} style={{textAlign:'center',padding:'30px',color:'#9aaa9e'}}>Sin empleados</td></tr>}
+                {empleados.length===0&&<tr><td colSpan={7} style={{textAlign:'center',padding:'30px',color:'#9aaa9e'}}>Sin empleados</td></tr>}
               </tbody>
             </table>
           </div>

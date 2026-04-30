@@ -1,8 +1,8 @@
 // AJÚA PWA Service Worker
 // Cachea assets para funcionamiento offline y mantiene la app activa
 
-const CACHE = 'ajua-v1';
-const PRECACHE = ['/', '/index.html', '/favicon.svg', '/icon-192.png', '/icon-512.png'];
+const CACHE = 'ajua-v5';
+const PRECACHE = ['/favicon.svg', '/icon-192.png', '/icon-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(

@@ -24,14 +24,15 @@ const TIPO_FG    = { recepcion: '#1565C0',   pago: '#1B5E20', rechazo: '#C62828'
 const TIPO_BD    = { recepcion: '#90CAF9',   pago: '#A5D6A7', rechazo: '#EF9A9A' };
 
 function calcResumen(movimientos) {
-  const r = movimientos.reduce((acc, m) => {
-    if (m.tipo === 'recepcion') acc.comprado += Number(m.totalBruto   || 0);
-    if (m.tipo === 'rechazo')   acc.rechazos += Number(m.valorRechazo || 0);
-    if (m.tipo === 'pago')      acc.pagado   += Number(m.monto        || 0);
-    return acc;
-  }, { comprado: 0, rechazos: 0, pagado: 0 });
-  r.saldo = r.comprado - r.rechazos - r.pagado;
-  return r;
+  let comprado = 0, pagado = 0, cargoNeto = 0, abonoOrfanos = 0;
+  movimientos.forEach(m => {
+    if (m.tipo === 'recepcion') { comprado += Number(m.totalBruto || 0); cargoNeto += m.cargo || 0; }
+    if (m.tipo === 'pago')       pagado       += Number(m.monto || 0);
+    if (m.tipo === 'rechazo' && !m._isChild) abonoOrfanos += m.abono || 0;
+  });
+  const rechazos = comprado - cargoNeto + abonoOrfanos;
+  const saldo = comprado - rechazos - pagado;
+  return { comprado, rechazos, pagado, saldo };
 }
 
 /* ─── genera HTML completo para abrir en nueva ventana ─── */
@@ -39,6 +40,9 @@ function buildHTML({ proveedor, movimientos, desde, hasta, titulo }) {
   const hoy    = fmtFL(hoyISO());
   const docNum = `EC-${Date.now().toString().slice(-6)}`;
   const r      = calcResumen(movimientos);
+
+  const totalCargo = movimientos.reduce((s, m) => s + (m.cargo || 0), 0);
+  const totalAbono = movimientos.reduce((s, m) => s + (m.abono || 0), 0);
 
   const filas = movimientos.length === 0
     ? `<tr><td colspan="8" style="padding:24px;text-align:center;color:#616161;font-style:italic">Sin movimientos en el período</td></tr>`
@@ -191,8 +195,8 @@ function buildHTML({ proveedor, movimientos, desde, hasta, titulo }) {
       <tfoot>
         <tr style="border-top:2px solid #1B5E20;background:#F5F5F5">
           <td colspan="5" style="padding:8px 10px;font-weight:700;font-size:11px">TOTALES DEL PERÍODO</td>
-          <td style="padding:8px 8px;text-align:right;font-weight:800;color:#1565C0;font-size:12px">${fmtQ(r.comprado)}</td>
-          <td style="padding:8px 8px;text-align:right;font-weight:800;color:#1B5E20;font-size:12px">${fmtQ(r.pagado + r.rechazos)}</td>
+          <td style="padding:8px 8px;text-align:right;font-weight:800;color:#1565C0;font-size:12px">${fmtQ(totalCargo)}</td>
+          <td style="padding:8px 8px;text-align:right;font-weight:800;color:#1B5E20;font-size:12px">${fmtQ(totalAbono)}</td>
           <td style="padding:8px 8px;text-align:right;font-weight:800;color:${saldoColor};font-size:12px">${fmtQ(r.saldo)}</td>
         </tr>
       </tfoot>

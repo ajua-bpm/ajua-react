@@ -47,6 +47,7 @@ const initChecks = (empleados) =>
     area: e.area || e.cargo || '',
     selected: false,
     horas: Object.fromEntries(HORAS.map(h => [h, false])),
+    horasExtras: 0,
   }));
 
 // ─── Main component ───────────────────────────────────────────────────────────
@@ -102,6 +103,11 @@ export default function AL() {
       r.empleadoId !== id ? r : { ...r, horas: { ...r.horas, [h]: !r.horas[h] } }
     ));
 
+  const setHE = (id, val) =>
+    setChecks(prev => prev.map(r =>
+      r.empleadoId !== id ? r : { ...r, horasExtras: Math.max(0, parseFloat(val) || 0) }
+    ));
+
   const selectedChecks  = checks.filter(r => r.selected);
   const numSelected     = selectedChecks.length;
   const horasVisible    = HORAS;
@@ -122,6 +128,7 @@ export default function AL() {
           empleadoId: r.empleadoId,
           nombre: r.nombre,
           horas: Object.fromEntries(HORAS.map(h => [h, r.horas[h]])),
+          horasExtras: r.horasExtras || 0,
         })),
         totalOk, totalPosible, pct, resultado, obs,
         creadoEn: new Date().toISOString(),
@@ -144,17 +151,28 @@ export default function AL() {
         const tiene = HORAS.some(h => row.horas && row.horas[h]);
         if (tiene) {
           const key = row.empleadoId || row.nombre;
-          if (!diasPorEmp[key]) diasPorEmp[key] = { nombre: row.nombre, dias: new Set() };
+          if (!diasPorEmp[key]) diasPorEmp[key] = { nombre: row.nombre, dias: new Set(), he: {} };
           diasPorEmp[key].dias.add(r.fecha);
+          if (row.horasExtras > 0)
+            diasPorEmp[key].he[r.fecha] = (diasPorEmp[key].he[r.fecha] || 0) + row.horasExtras;
         }
       });
     });
     const tabla = Object.values(diasPorEmp).map(entry => {
-      const emp   = empleados.find(e => e.nombre === entry.nombre);
+      const rn  = (entry.nombre || '').toLowerCase().trim();
+      const emp = empleados.find(e => {
+        if ((e.nombre||'').toLowerCase().trim() === rn) return true;
+        return (e.aliases||[]).some(a => (a||'').toLowerCase().trim() === rn);
+      });
+      const nombreOficial = emp?.nombre || entry.nombre;
       const sd    = emp?.salarioDia || (emp?.salario ? emp.salario / 30 : 0);
+      const tarifaHE = emp?.tarifaHoraExtra || (sd > 0 ? (sd / 8) * 1.5 : 0);
       const dias  = entry.dias.size;
-      const fechas = [...entry.dias].sort();
-      return { nombre: entry.nombre, dias, fechas, salarioDia: sd, total: dias * sd };
+      const fechas = [...entry.dias].sort().map(f => ({ fecha: f, he: entry.he[f] || 0 }));
+      const totalHE = Object.values(entry.he).reduce((s, h) => s + h, 0);
+      const pagoHE  = totalHE * tarifaHE;
+      return { nombre: nombreOficial, dias, fechas, salarioDia: sd, tarifaHE,
+        totalHE, pagoHE, total: dias * sd + pagoHE };
     });
     setNomResult(tabla);
   };
@@ -287,6 +305,7 @@ export default function AL() {
                         {HORA_LABELS[h]}
                       </th>
                     ))}
+                    <th style={{ padding: '9px 14px', textAlign: 'center', color: '#fff', fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', background: '#E65100' }}>HE hrs</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -305,6 +324,14 @@ export default function AL() {
                           </td>
                         );
                       })}
+                      <td style={{ padding: '9px 10px', textAlign: 'center', borderBottom: '1px solid #F0F0F0' }}>
+                        <input type="number" min="0" max="12" step="0.5"
+                          value={row.horasExtras || ''}
+                          onChange={e => setHE(row.empleadoId, e.target.value)}
+                          placeholder="0"
+                          style={{ width: 52, padding: '5px 6px', border: '1.5px solid #FFCC80', borderRadius: 5,
+                            fontSize: '.82rem', textAlign: 'center', background: '#FFF3E0', fontFamily: 'inherit' }} />
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -356,29 +383,45 @@ export default function AL() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: T.primary }}>
-                  {['Empleado', 'Días · Fechas trabajadas', 'Salario/Día', 'Total'].map(h => (
-                    <th key={h} style={{ padding: '10px 14px', textAlign: 'left', color: '#fff', fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em' }}>{h}</th>
+                  {['Empleado', 'Días · Fechas', 'Salario/Día', 'Pago Regular', 'H. Extra', 'Pago HE', 'Total'].map(h => (
+                    <th key={h} style={{ padding: '10px 14px', textAlign: 'left', color: '#fff', fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {nomResult.map((row, i) => {
                   const fmtF = f => { const d = new Date(f + 'T12:00:00Z'); return d.toLocaleDateString('es-GT', { weekday:'short', day:'2-digit', month:'short', timeZone:'UTC' }); };
+                  const pagoReg = row.dias * row.salarioDia;
                   return (
                   <tr key={row.nombre} style={{ background: i % 2 === 0 ? '#fff' : '#F9FBF9' }}>
                     <td style={{ ...TD, fontWeight: 600 }}>{row.nombre}</td>
                     <td style={{ ...TD, verticalAlign: 'top' }}>
                       <div style={{ fontWeight: 800, fontSize: '1.1rem', color: T.accent, marginBottom: 5 }}>{row.dias}</div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                        {(row.fechas || []).map(f => (
-                          <span key={f} style={{ background: '#E8F5E9', color: '#1B5E20', border: '1px solid #A5D6A7', borderRadius: 4, padding: '2px 7px', fontSize: '.7rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
-                            {fmtF(f)}
+                        {(row.fechas || []).map(({ fecha: f, he }) => (
+                          <span key={f} style={{
+                            background: he > 0 ? '#FFF3E0' : '#E8F5E9',
+                            color:      he > 0 ? T.warn    : '#1B5E20',
+                            border:    `1px solid ${he > 0 ? '#FFCC80' : '#A5D6A7'}`,
+                            borderRadius: 4, padding: '2px 7px', fontSize: '.7rem', fontWeight: 700, whiteSpace: 'nowrap',
+                          }}>
+                            {fmtF(f)}{he > 0 ? ` · ${he}HE` : ''}
                           </span>
                         ))}
                       </div>
                     </td>
                     <td style={TD}>{row.salarioDia > 0 ? `Q${Number(row.salarioDia).toFixed(2)}` : '—'}</td>
-                    <td style={{ ...TD, fontWeight: 700, color: T.primary }}>{row.salarioDia > 0 ? `Q${Number(row.total).toFixed(2)}` : '—'}</td>
+                    <td style={{ ...TD, color: T.secondary, fontWeight: 600 }}>{row.salarioDia > 0 ? `Q${pagoReg.toFixed(2)}` : '—'}</td>
+                    <td style={{ ...TD, textAlign: 'center' }}>
+                      {row.totalHE > 0
+                        ? <span style={{ background:'#FFF3E0', color:T.warn, border:'1px solid #FFCC80', borderRadius:4, padding:'2px 8px', fontSize:'.78rem', fontWeight:700 }}>{row.totalHE} hrs</span>
+                        : <span style={{ color:T.textMid }}>—</span>}
+                    </td>
+                    <td style={{ ...TD, color: T.warn, fontWeight: 600 }}>
+                      {row.pagoHE > 0 ? `Q${row.pagoHE.toFixed(2)}` : '—'}
+                      {row.pagoHE > 0 && <div style={{ fontSize:'.68rem', color:T.textMid }}>Q{row.tarifaHE.toFixed(2)}/hr</div>}
+                    </td>
+                    <td style={{ ...TD, fontWeight: 800, color: T.primary }}>{row.salarioDia > 0 ? `Q${Number(row.total).toFixed(2)}` : '—'}</td>
                   </tr>
                   );
                 })}

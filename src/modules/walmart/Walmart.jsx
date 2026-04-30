@@ -78,7 +78,7 @@ function parseFechaEsp(str) {
   return `${yr}-${String(mes).padStart(2,'0')}-${String(dia).padStart(2,'0')}`;
 }
 
-// ── Walmart email parser — 3 formatos (port de bpm.html) ──────────
+// ── Walmart email parser — 4 formatos ────────────────────────────
 const KNOWN_SIZES = ['_300','_200','_100','_50','_48','_40','_36','_30','_24','_20','_18','_12','_10','_8','_6','_4'];
 
 function splitDescCajas(str) {
@@ -100,9 +100,17 @@ function matchProd(desc, productos) {
   });
 }
 
+// Detecta el índice de columna buscando keywords en el header
+function detectColIdx(headerCols, ...keywords) {
+  for (const kw of keywords) {
+    const i = headerCols.findIndex(h => h.includes(kw.toUpperCase()));
+    if (i >= 0) return i;
+  }
+  return -1;
+}
+
 function parseWalmartEmail(raw, productos) {
-  // Returns { hora, rampa, dia, fechaEntrega, rubros[] }
-  const result = { hora: '16:00', rampa: '', dia: '', fechaEntrega: '', rubros: [] };
+  const result = { hora: '16:00', rampa: '', dia: '', fechaEntrega: '', rubros: [], _debug: [] };
   if (!raw || !raw.trim()) return result;
 
   const addRubro = (item, desc, cajas, hora, rampa, dia) => {
@@ -111,35 +119,60 @@ function parseWalmartEmail(raw, productos) {
       item: item || '',
       descripcion: desc || '',
       cajas: cajas || 0,
-      productoId:   prod ? (prod.id || '') : '',
+      productoId:     prod ? (prod.id || '') : '',
       productoNombre: prod ? (prod.nombre || '') : '',
     });
-    if (hora  && !result.hora)         result.hora  = hora.slice(0, 5);
-    if (rampa && !result.rampa)        result.rampa = rampa;
-    if (dia   && !result.dia)          result.dia   = dia.replace(/\s*-\s*$/, '').trim();
-    // Siempre actualizar hora/rampa/dia del PRIMER rubro (como bpm.html)
     if (result.rubros.length === 1) {
       result.hora  = (hora || '16:00').slice(0, 5);
       result.rampa = rampa || '';
       result.dia   = (dia || '').replace(/\s*-\s*$/, '').trim();
+    } else {
+      if (hora  && !result.hora)  result.hora  = hora.slice(0, 5);
+      if (rampa && !result.rampa) result.rampa = rampa;
+      if (dia   && !result.dia)   result.dia   = dia.replace(/\s*-\s*$/, '').trim();
     }
   };
 
-  // ── FORMAT A: TAB-SEPARATED ───────────────────────────────────
-  // Cols: #ATLAS | #SAP | COD.PROV | NOM.PROV | Item | Descrip | Cajas | Hora | Rampa | Dia | Nota
-  if (raw.includes('\t')) {
+  // ── FORMAT A: TAB o PIPE separado, con detección de columnas ──────
+  const sep = raw.includes('\t') ? '\t' : (raw.includes('|') && raw.split('\n')[0]?.includes('|') ? '|' : null);
+  if (sep) {
     const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
-    lines.forEach(line => {
-      const cols = line.split('\t').map(c => c.trim());
-      if (cols[0].includes('ATLAS') || cols[4] === 'Item' || cols[0] === '#') return;
-      if (cols.length < 6) return;
-      const item  = cols[4] || '';
-      const desc  = cols[5] || '';
-      const cajas = parseInt(cols[6], 10) || 0;
-      const hora  = (cols[7] || '16:00').slice(0, 5);
-      const rampa = cols[8] || '';
-      const dia   = (cols[9] || '').replace(/\s*-\s*$/, '').trim();
-      if (!item && !desc) return;
+    // Detectar header para mapeo dinámico de columnas
+    let colMap = { item: 4, desc: 5, cajas: 6, hora: 7, rampa: 8, dia: 9 };
+    const headerIdx = lines.findIndex(l => {
+      const u = l.toUpperCase();
+      return u.includes('ITEM') || u.includes('DESCR') || u.includes('CAJA') || u.includes('ATLAS');
+    });
+    if (headerIdx >= 0) {
+      const hcols = lines[headerIdx].split(sep).map(c => c.trim().toUpperCase());
+      const ci   = detectColIdx(hcols, 'ITEM', 'ARTÍCULO', 'ARTICULO', 'COD');
+      const cd   = detectColIdx(hcols, 'DESC', 'NOMBRE', 'PRODUCT', 'ARTÍC');
+      const cc   = detectColIdx(hcols, 'CAJA', 'CANT', 'QTY', 'CAJAS');
+      const ch   = detectColIdx(hcols, 'HORA', 'TIME', 'HOR');
+      const cr   = detectColIdx(hcols, 'RAMPA', 'DOCK', 'MUELLE');
+      const cdia = detectColIdx(hcols, 'DÍA', 'DIA', 'FECHA', 'DATE');
+      if (ci   >= 0) colMap.item  = ci;
+      if (cd   >= 0) colMap.desc  = cd;
+      if (cc   >= 0) colMap.cajas = cc;
+      if (ch   >= 0) colMap.hora  = ch;
+      if (cr   >= 0) colMap.rampa = cr;
+      if (cdia >= 0) colMap.dia   = cdia;
+      result._debug.push(`Header en línea ${headerIdx}: cols detectadas → item=${colMap.item} desc=${colMap.desc} cajas=${colMap.cajas} rampa=${colMap.rampa}`);
+    }
+    lines.forEach((line, li) => {
+      if (li === headerIdx) return;
+      const cols = line.split(sep).map(c => c.trim());
+      const u = cols.join('').toUpperCase();
+      if (u.includes('ATLAS') && u.includes('SAP')) return; // skip header alternativo
+      if (cols.length < 3) return;
+      const item  = cols[colMap.item] || '';
+      const desc  = cols[colMap.desc] || '';
+      const cajas = parseInt(cols[colMap.cajas], 10) || 0;
+      const hora  = (cols[colMap.hora] || '16:00').slice(0, 5);
+      const rampa = cols[colMap.rampa] || '';
+      const dia   = (cols[colMap.dia]  || '').replace(/\s*-\s*$/, '').trim();
+      if (!item && !desc && !cajas) return;
+      result._debug.push(`Línea ${li}: item="${item}" desc="${desc}" cajas=${cajas}`);
       addRubro(item, desc, cajas, hora, rampa, dia);
     });
   }
@@ -155,7 +188,7 @@ function parseWalmartEmail(raw, productos) {
     recStarts.push(data.length);
     for (let i = 0; i < recStarts.length - 1; i++) {
       let chunk = data.slice(recStarts[i], recStarts[i+1]).trim().replace(/\s*-\s*$/, '');
-      const tmM = chunk.match(/(\d{2}:\d{2}:\d{2})/);
+      const tmM = chunk.match(/(\d{2}:\d{2}(?::\d{2})?)/);
       if (!tmM) continue;
       const before = chunk.slice(0, tmM.index);
       const afterT = chunk.slice(tmM.index + tmM[1].length).trim();
@@ -173,17 +206,18 @@ function parseWalmartEmail(raw, productos) {
     }
   }
 
-  // ── FORMAT C: LINE-BY-LINE with time anchor ───────────────────
+  // ── FORMAT C: LINE-BY-LINE with time anchor (HH:MM or HH:MM:SS) ─
   if (!result.rubros.length) {
     raw.split('\n').map(l => l.trim()).filter(Boolean).forEach(line => {
-      const tmM = line.match(/(\d{2}:\d{2}:\d{2})/);
+      const tmM = line.match(/(\d{2}:\d{2}(?::\d{2})?)/);
       if (!tmM) return;
       const before = line.slice(0, tmM.index).trim();
       const afterT = line.slice(tmM.index + tmM[1].length).trim();
       const raM = afterT.match(/^(\d{4,})\s*(.*)/);
       const rampa = raM ? raM[1] : '';
       const dia   = raM ? raM[2].replace(/\s*-\s*$/, '').trim() : '';
-      const itemM = before.match(/(\d{5,8})\s+/);
+      // Acepta item con 2+ dígitos (antes requería 5-8)
+      const itemM = before.match(/(\d{2,8})\s+/);
       if (!itemM) return;
       const item  = itemM[1];
       const { desc, cajas } = splitDescCajas(before.slice(itemM.index + itemM[0].length));
@@ -192,9 +226,28 @@ function parseWalmartEmail(raw, productos) {
     });
   }
 
-  // Parsear fecha del campo dia
-  if (result.dia) result.fechaEntrega = parseFechaEsp(result.dia);
+  // ── FORMAT D: líneas con UXC_ o producto + número (sin timestamp) ─
+  // Walmart Guatemala a veces envía: "PAPA GRANEL LIBRA UXC_20 30\n..."
+  if (!result.rubros.length) {
+    const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
+    // Buscar línea de rampa/hora para contexto
+    let globalRampa = '', globalDia = '';
+    lines.forEach(l => {
+      const rm = l.match(/^(\d{4})\s+(.+)/);
+      if (rm && /^\d{4}$/.test(rm[1])) globalRampa = rm[1];
+      const dm = parseFechaEsp(l);
+      if (dm) globalDia = l;
+    });
+    lines.forEach(line => {
+      const { desc, cajas } = splitDescCajas(line);
+      if (!desc || !cajas) return;
+      if (/^\d+$/.test(desc)) return; // solo número → no es descripción
+      result._debug.push(`Format D: "${desc}" x${cajas}`);
+      addRubro('', desc, cajas, '16:00', globalRampa, globalDia);
+    });
+  }
 
+  if (result.dia) result.fechaEntrega = parseFechaEsp(result.dia);
   return result;
 }
 
@@ -202,21 +255,26 @@ function parseWalmartEmail(raw, productos) {
 function EmailImportModal({ onClose, onSaved, add, productos }) {
   const toast = useToast();
   const [raw,     setRaw]     = useState('');
-  const [parsed,  setParsed]  = useState(null);
-  const [rubros,  setRubros]  = useState([]);
-  const [fecha,   setFecha]   = useState('');
-  const [hora,    setHora]    = useState('');
-  const [rampa,   setRampa]   = useState('');
-  const [saving,  setSaving]  = useState(false);
+  const [parsed,   setParsed]   = useState(null);
+  const [rubros,   setRubros]   = useState([]);
+  const [fecha,    setFecha]    = useState('');
+  const [hora,     setHora]     = useState('');
+  const [rampa,    setRampa]    = useState('');
+  const [saving,   setSaving]   = useState(false);
+  const [showDbg,  setShowDbg]  = useState(false);
 
   const handleParse = () => {
     const r = parseWalmartEmail(raw, productos);
-    if (!r.rubros.length) { toast('No se pudo leer el pedido. Prueba copiando la tabla completa.', 'error'); return; }
+    if (!r.rubros.length) {
+      toast('No se pudo leer el pedido. Revisá el formato o pegá el texto completo del correo.', 'error');
+      return;
+    }
     setParsed(r);
     setRubros(r.rubros.map((x, i) => ({ ...x, _id: i })));
     setFecha(r.fechaEntrega || today());
     setHora(r.hora || '16:00');
     setRampa(r.rampa || '');
+    setShowDbg(false);
   };
 
   const updateRubro = (idx, field, val) =>
@@ -224,11 +282,13 @@ function EmailImportModal({ onClose, onSaved, add, productos }) {
 
   const removeRubro = (idx) => setRubros(prev => prev.filter((_, i) => i !== idx));
 
-  const totalCajas = rubros.reduce((s, r) => s + (r.cajas || 0), 0);
+  const totalCajas    = rubros.reduce((s, r) => s + (r.cajas || 0), 0);
+  const sinDesc       = rubros.filter(r => !r.descripcion?.trim()).length;
 
   const handleGuardar = async () => {
     if (!fecha) { toast('Ingresa la fecha de entrega', 'error'); return; }
     if (!rubros.length) { toast('No hay rubros para guardar', 'error'); return; }
+    if (sinDesc > 0 && !window.confirm(`⚠ ${sinDesc} rubro(s) tienen descripción vacía. ¿Guardar de todos modos?`)) return;
     setSaving(true);
     try {
       const doc = {
@@ -284,18 +344,45 @@ function EmailImportModal({ onClose, onSaved, add, productos }) {
             style={{ ...IS, resize:'vertical', fontFamily:'monospace', fontSize:'.8rem', marginBottom:12 }}
             placeholder="Pega aquí el texto del correo de Walmart..." />
 
-          <div style={{ display:'flex', gap:8, marginBottom:parsed ? 20 : 0 }}>
+          <div style={{ display:'flex', gap:8, marginBottom:parsed ? 12 : 0 }}>
             <button onClick={handleParse} disabled={!raw.trim()}
               style={{ padding:'8px 22px', background: raw.trim() ? T.warn : T.border, color:WHITE, border:'none', borderRadius:6, fontWeight:700, fontSize:'.88rem', cursor:raw.trim()?'pointer':'not-allowed' }}>
               ⚡ Parsear
             </button>
+            {raw.trim() && (
+              <button onClick={() => { handleParse(); setShowDbg(true); }}
+                style={{ padding:'8px 14px', background:'none', border:`1px solid ${T.border}`, borderRadius:6, color:T.textMid, fontWeight:600, fontSize:'.8rem', cursor:'pointer' }}>
+                🔍 Debug
+              </button>
+            )}
             <button onClick={onClose} style={{ padding:'8px 16px', background:'none', border:`1px solid ${T.border}`, borderRadius:6, color:T.textMid, fontWeight:600, fontSize:'.88rem', cursor:'pointer' }}>
               Cancelar
             </button>
           </div>
 
+          {/* Panel debug */}
+          {parsed && showDbg && parsed._debug?.length > 0 && (
+            <div style={{ background:'#1A1A18', borderRadius:6, padding:'10px 14px', marginBottom:12, fontSize:'.72rem', fontFamily:'monospace', color:'#A5D6A7', maxHeight:120, overflowY:'auto' }}>
+              {parsed._debug.map((l, i) => <div key={i}>{l}</div>)}
+            </div>
+          )}
+
           {parsed && (
             <>
+              {/* Advertencia descripciones vacías */}
+              {sinDesc > 0 && (
+                <div style={{ background:'#FFF3E0', border:`1.5px solid #FFCC80`, borderRadius:8, padding:'10px 14px', marginBottom:12, display:'flex', alignItems:'center', gap:10 }}>
+                  <span style={{ fontSize:'1.1rem' }}>⚠️</span>
+                  <div>
+                    <div style={{ fontWeight:700, color:T.warn, fontSize:'.83rem' }}>{sinDesc} rubro(s) sin descripción</div>
+                    <div style={{ fontSize:'.75rem', color:T.textMid, marginTop:2 }}>
+                      El parser no pudo leer el nombre del producto. Completá manualmente los campos en naranja antes de guardar.
+                      Si este error es constante, usá el botón 🔍 Debug y compartí el resultado para ajustar el parser.
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Header editable */}
               <div style={{ background:'#F0FFF4', border:`1px solid #C8E6C9`, borderRadius:8, padding:'14px 16px', marginBottom:16 }}>
                 <div style={{ fontSize:'.72rem', fontWeight:700, color:T.secondary, textTransform:'uppercase', letterSpacing:'.06em', marginBottom:10 }}>
@@ -331,14 +418,15 @@ function EmailImportModal({ onClose, onSaved, add, productos }) {
                   </thead>
                   <tbody>
                     {rubros.map((r, i) => (
-                      <tr key={r._id} style={{ background: i%2===0 ? WHITE : '#F9FBF9' }}>
+                      <tr key={r._id} style={{ background: !r.descripcion?.trim() ? '#FFF8E1' : i%2===0 ? WHITE : '#F9FBF9' }}>
                         <td style={{ padding:'5px 8px', borderBottom:`1px solid #F0F0F0` }}>
                           <input value={r.item} onChange={e => updateRubro(i,'item',e.target.value)}
                             style={{ width:90, border:`1px solid ${T.border}`, borderRadius:4, padding:'4px 6px', fontSize:'.8rem', fontFamily:'monospace' }} />
                         </td>
                         <td style={{ padding:'5px 8px', borderBottom:`1px solid #F0F0F0` }}>
                           <input value={r.descripcion} onChange={e => updateRubro(i,'descripcion',e.target.value)}
-                            style={{ width:'100%', border:`1px solid ${T.border}`, borderRadius:4, padding:'4px 6px', fontSize:'.8rem', minWidth:180 }} />
+                            placeholder="⚠ Completar"
+                            style={{ width:'100%', border:`1.5px solid ${!r.descripcion?.trim() ? T.warn : T.border}`, borderRadius:4, padding:'4px 6px', fontSize:'.8rem', minWidth:180, background: !r.descripcion?.trim() ? '#FFF3E0' : WHITE }} />
                         </td>
                         <td style={{ padding:'5px 8px', borderBottom:`1px solid #F0F0F0`, textAlign:'center' }}>
                           <input type="number" min="0" value={r.cajas} onChange={e => updateRubro(i,'cajas',e.target.value)}

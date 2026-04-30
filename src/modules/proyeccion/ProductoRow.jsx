@@ -83,23 +83,51 @@ export function ProductoCard({ p, productosMap, onEdit, onRemove, cerrada }) {
 
 // ── Modal Agregar / Editar ────────────────────────────────────────
 export function ProductoModal({ item, productosDB, existingIds, onSave, onClose }) {
-  const [f, setF] = useState(item || { productoId:'', nombre:'', cajasProyectadas:'', lbsPorCaja:'20', frecuencia:'1' });
+  const [f, setF] = useState(item || { productoId:'', nombre:'', cajasProyectadas:'', lbsPorCaja:'20', frecuencia:'1', precioVenta:'', costo:'', descuentoPct:'', ivaRetPct:'' });
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
 
   const base = productosDB.find(p => p.id === f.productoId) || {};
-  const merged = { ...base, precioVenta: base.precioVenta||0, costo: base.costo||0, descuentoPct: base.descuentoPct||0, ivaRetPct: base.ivaRetPct||85.71,
-    cajasProyectadas: parseFloat(f.cajasProyectadas)||0, lbsPorCaja: parseFloat(f.lbsPorCaja)||0, frecuencia: parseFloat(f.frecuencia)||1 };
-  const c = f.productoId ? calcRow(merged) : null;
+
+  // Auto-fill prices from productosDB when product changes
+  const handleProductoChange = (pid) => {
+    const b = productosDB.find(p => p.id === pid) || {};
+    setF(p => ({ ...p, productoId: pid,
+      lbsPorCaja:   b.lbsPorCaja  ? String(b.lbsPorCaja)   : p.lbsPorCaja,
+      precioVenta:  b.precioVenta ? String(b.precioVenta)   : p.precioVenta,
+      costo:        b.costo       ? String(b.costo)         : p.costo,
+      descuentoPct: b.descuentoPct!==undefined ? String(b.descuentoPct) : p.descuentoPct,
+      ivaRetPct:    b.ivaRetPct   ? String(b.ivaRetPct)     : p.ivaRetPct,
+    }));
+  };
+
+  const merged = {
+    ...base,
+    precioVenta:  parseFloat(f.precioVenta)  || base.precioVenta  || 0,
+    costo:        parseFloat(f.costo)        || base.costo        || 0,
+    descuentoPct: parseFloat(f.descuentoPct) ?? base.descuentoPct ?? 0,
+    ivaRetPct:    parseFloat(f.ivaRetPct)    || base.ivaRetPct    || 85.71,
+    cajasProyectadas: parseFloat(f.cajasProyectadas)||0,
+    lbsPorCaja:       parseFloat(f.lbsPorCaja)||0,
+    frecuencia:       parseFloat(f.frecuencia)||1,
+  };
+  const c = (f.productoId && merged.precioVenta > 0) ? calcRow(merged) : null;
   const { libre, neto, ivaRet, descuento } = c ? calcLibreStd(merged) : {};
 
   const disponibles = productosDB.filter(p => !existingIds.includes(p.id) || p.id === f.productoId);
 
   const handleSave = () => {
     if (!f.productoId || !f.cajasProyectadas) return;
-    onSave({ productoId: f.productoId, nombre: base.nombre || f.nombre,
+    onSave({
+      productoId:   f.productoId,
+      nombre:       base.nombre || f.nombre,
       cajasProyectadas: parseFloat(f.cajasProyectadas)||0,
-      lbsPorCaja:       parseFloat(f.lbsPorCaja)||0,
-      frecuencia:       parseFloat(f.frecuencia)||1 });
+      lbsPorCaja:   parseFloat(f.lbsPorCaja)||0,
+      frecuencia:   parseFloat(f.frecuencia)||1,
+      ...(f.precioVenta  ? { precioVenta:  parseFloat(f.precioVenta)  } : {}),
+      ...(f.costo        ? { costo:        parseFloat(f.costo)        } : {}),
+      ...(f.descuentoPct ? { descuentoPct: parseFloat(f.descuentoPct) } : {}),
+      ...(f.ivaRetPct    ? { ivaRetPct:    parseFloat(f.ivaRetPct)    } : {}),
+    });
   };
 
   return (
@@ -109,7 +137,7 @@ export function ProductoModal({ item, productosDB, existingIds, onSave, onClose 
         <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
           <div>
             <label style={{ fontSize:'.74rem', fontWeight:700, color:T.mid, display:'block', marginBottom:3 }}>PRODUCTO</label>
-            <select value={f.productoId} onChange={e => { set('productoId', e.target.value); }}
+            <select value={f.productoId} onChange={e => handleProductoChange(e.target.value)}
               style={{ width:'100%', padding:'8px 10px', border:`1.5px solid ${T.border}`, borderRadius:6, fontSize:'.86rem' }}>
               <option value="">Seleccionar…</option>
               {disponibles.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
@@ -123,6 +151,19 @@ export function ProductoModal({ item, productosDB, existingIds, onSave, onClose 
                   style={{ width:'100%', padding:'8px 9px', border:`1.5px solid ${T.border}`, borderRadius:6, fontSize:'.86rem', boxSizing:'border-box' }} />
               </div>
             ))}
+          </div>
+          <div style={{ borderTop:`1px solid ${T.border}`, paddingTop:10 }}>
+            <div style={{ fontSize:'.74rem', fontWeight:700, color:T.mid, marginBottom:6 }}>PRECIOS (Q / lb)</div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:8 }}>
+              {[['precioVenta','PV / lb','#15803d'],['costo','Costo / lb','#C62828'],['descuentoPct','Desc %',T.mid],['ivaRetPct','IVA Ret %',T.mid]].map(([k,lbl,color]) => (
+                <div key={k}>
+                  <label style={{ fontSize:'.72rem', fontWeight:700, color, display:'block', marginBottom:2 }}>{lbl}</label>
+                  <input type="number" value={f[k]} onChange={e=>set(k,e.target.value)} min="0" step="0.01"
+                    placeholder={k==='ivaRetPct'?'85.71':k==='descuentoPct'?'0':'0.00'}
+                    style={{ width:'100%', padding:'7px 8px', border:`1.5px solid ${T.border}`, borderRadius:6, fontSize:'.84rem', boxSizing:'border-box' }} />
+                </div>
+              ))}
+            </div>
           </div>
           {c && (
             <div style={{ background:'#F1F8F1', border:'1px solid #A5D6A7', borderRadius:8, padding:'12px 14px', fontSize:'.82rem' }}>

@@ -1,54 +1,85 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;1,400;1,700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
 
+/* ── Variables ─────────────────────────────────────────────── */
+:root {
+  --cream:      #FAFAF7;
+  --cream-dark: #F2F0E8;
+  --ink:        #1A1A18;
+  --ink-light:  #6B6B60;
+  --forest:     #1B5E20;
+  --sage:       #4A7C59;
+  --sage-light: #E8EFE9;
+  --gold:       #8B7355;
+  --border:     #E5E3DC;
+  --white:      #FFFFFF;
+
+  --font-heading: 'Playfair Display', Georgia, serif;
+  --font-body:    'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono:    'JetBrains Mono', 'Courier New', monospace;
+}
+
+/* ── Reset ─────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
 
 body {
   margin: 0;
-  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-family: var(--font-body);
   font-size: 14px;
   line-height: 1.5;
-  color: #1A1A18;
-  background: #F5F5F5;
+  color: var(--ink);
+  background: var(--cream);
   -webkit-font-smoothing: antialiased;
 }
 
 #root { width: 100%; min-height: 100vh; }
 
 h1, h2, h3, h4 { margin: 0; }
-p { margin: 0; }
-a { color: inherit; text-decoration: none; }
+p  { margin: 0; }
+a  { color: inherit; text-decoration: none; }
 button { font-family: inherit; }
 input, select, textarea { font-family: inherit; }
 
-/* Scrollbar */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: #F5F5F5; }
-::-webkit-scrollbar-thumb { background: #BDBDBD; border-radius: 3px; }
+/* ── Scrollbar ─────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: var(--cream-dark); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 
-/* Focus ring */
+/* ── Focus ─────────────────────────────────────────────────── */
 input:focus, select:focus, textarea:focus {
-  border-color: #2E7D32 !important;
-  box-shadow: 0 0 0 3px rgba(46,125,50,.12);
+  border-color: var(--sage) !important;
+  box-shadow: 0 0 0 3px rgba(74,124,89,.14);
+  outline: none;
 }
 
-/* Button hover */
-button:hover:not(:disabled) { opacity: .9; }
+/* ── Buttons ───────────────────────────────────────────────── */
+button:hover:not(:disabled) { opacity: .88; }
 button:active:not(:disabled) { transform: translateY(1px); }
-button:disabled { opacity: .5; cursor: not-allowed !important; }
+button:disabled { opacity: .45; cursor: not-allowed !important; }
 
-/* Table base */
+/* ── Touch / mobile ────────────────────────────────────────── */
+button, a, input, select, textarea {
+  touch-action: manipulation; /* Prevents 300ms delay & double-tap zoom */
+}
+
+/* ── Table ─────────────────────────────────────────────────── */
 table { border-collapse: collapse; width: 100%; }
 th { white-space: nowrap; }
 
-/* Mobile nav */
+/* ── Mobile sidebar ────────────────────────────────────────── */
 @media (max-width: 768px) {
   nav.sidebar { transform: translateX(-240px) !important; }
   nav.sidebar.open { transform: translateX(0) !important; }
   .main-wrapper { margin-left: 0 !important; }
   .hamburger { display: flex !important; }
+
+  /* Prevent iOS zoom on focused inputs (requires font-size >= 16px) */
+  input, select, textarea { font-size: 16px !important; }
+
+  /* Tighter padding on small screens */
+  main { padding: 16px 14px 48px !important; }
 }
 
-/* Animations */
+/* ── Animations ────────────────────────────────────────────── */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }

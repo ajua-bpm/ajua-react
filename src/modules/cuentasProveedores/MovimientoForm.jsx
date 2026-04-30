@@ -69,9 +69,11 @@ export default function MovimientoForm({ proveedorNombre, movimientos = [], init
   const [referencia,  setReferencia]  = useState(initialData?.referencia  || '');
 
   // Rechazo
-  const [recepcionId, setRecepcionId] = useState(initialData?.recepcionId || '');
-  const [valorRechazo,setValorRechazo]= useState(initialData?.valorRechazo != null ? String(initialData.valorRechazo) : '');
-  const [resolucion,  setResolucion]  = useState(initialData?.resolucion  || 'devolucion');
+  const [recepcionId,        setRecepcionId]        = useState(initialData?.recepcionId || '');
+  const [valorRechazo,       setValorRechazo]        = useState(initialData?.valorRechazo != null ? String(initialData.valorRechazo) : '');
+  const [cantidadRechazada,  setCantidadRechazada]   = useState(initialData?.cantidadRechazada != null ? String(initialData.cantidadRechazada) : '');
+  const [unidadRechazo,      setUnidadRechazo]       = useState(initialData?.unidadRechazo || 'lb');
+  const [resolucion,         setResolucion]          = useState(initialData?.resolucion  || 'devolucion');
 
   // Foto — file local + preview; fotoUrl = URL ya guardada (edición)
   const [fotoFile,    setFotoFile]    = useState(null);          // File objeto nuevo
@@ -102,7 +104,7 @@ export default function MovimientoForm({ proveedorNombre, movimientos = [], init
     if (isEdit && !motivoEdit.trim()) return false;
     if (tipo === 'recepcion') return producto.trim() && (Number(totalBruto) > 0 || Number(cantidad) > 0);
     if (tipo === 'pago')      return Number(monto) > 0;
-    if (tipo === 'rechazo')   return Number(valorRechazo) > 0;
+    if (tipo === 'rechazo')   return Number(cantidadRechazada) > 0 || Number(valorRechazo) > 0;
     return false;
   })();
 
@@ -126,12 +128,15 @@ export default function MovimientoForm({ proveedorNombre, movimientos = [], init
         monto: Number(monto),
         metodoPago,
         referencia: referencia.trim(),
+        recepcionId: recepcionId || null,
       });
     } else if (tipo === 'rechazo') {
       onConfirm({
         ...base,
         recepcionId: recepcionId || null,
-        valorRechazo: Number(valorRechazo),
+        cantidadRechazada: Number(cantidadRechazada) || 0,
+        unidadRechazo,
+        valorRechazo: Number(valorRechazo) || 0,
         resolucion,
       });
     }
@@ -241,6 +246,22 @@ export default function MovimientoForm({ proveedorNombre, movimientos = [], init
 
           {/* ── PAGO ── */}
           {tipo === 'pago' && (<>
+            {recepciones.length > 0 && (
+              <Field label="Entrega vinculada (opcional)">
+                <select value={recepcionId} onChange={e => setRecepcionId(e.target.value)} style={{
+                  width: '100%', padding: '9px 8px', border: `1.5px solid ${recepcionId ? '#2E7D32' : T.border}`,
+                  borderRadius: 6, fontSize: '.85rem', fontFamily: 'inherit',
+                  background: '#fff', color: T.textDark, outline: 'none',
+                }}>
+                  <option value="">— Pago general —</option>
+                  {recepciones.map((r, idx) => (
+                    <option key={r.id} value={r.id}>
+                      {r.correlativo ? `#${r.correlativo}` : `#${idx + 1}`} · {r.fecha} · {r.producto} · {fmtQ(r.totalBruto)}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            )}
             <Field label="Monto (Q)">
               <Input
                 type="number" min="0" step="0.01" placeholder="0.00"
@@ -267,28 +288,49 @@ export default function MovimientoForm({ proveedorNombre, movimientos = [], init
           {/* ── RECHAZO ── */}
           {tipo === 'rechazo' && (<>
             {recepciones.length > 0 && (
-              <Field label="Recepción relacionada (opcional)">
+              <Field label="Recepción vinculada (opcional)">
                 <select value={recepcionId} onChange={e => setRecepcionId(e.target.value)} style={{
-                  width: '100%', padding: '9px 8px', border: `1.5px solid ${T.border}`,
+                  width: '100%', padding: '9px 8px', border: `1.5px solid ${recepcionId ? '#1565C0' : T.border}`,
                   borderRadius: 6, fontSize: '.85rem', fontFamily: 'inherit',
                   background: '#fff', color: T.textDark, outline: 'none',
                 }}>
                   <option value="">— Sin vincular —</option>
-                  {recepciones.map(r => (
+                  {recepciones.map((r, idx) => (
                     <option key={r.id} value={r.id}>
-                      {r.fecha} · {r.producto} · {fmtQ(r.totalBruto)}
+                      {r.correlativo ? `#${r.correlativo}` : `#${idx + 1}`} · {r.fecha} · {r.producto} · {fmtQ(r.totalBruto)}
                     </option>
                   ))}
                 </select>
               </Field>
             )}
-            <Field label="Valor del rechazo (Q)">
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 10 }}>
+              <Field label="Cantidad rechazada (opcional)">
+                <Input
+                  type="number" min="0" step="0.01" placeholder="0"
+                  value={cantidadRechazada}
+                  onChange={e => setCantidadRechazada(e.target.value)}
+                />
+              </Field>
+              <Field label="Unidad">
+                <select value={unidadRechazo} onChange={e => setUnidadRechazo(e.target.value)} style={{
+                  width: '100%', padding: '9px 8px', border: `1.5px solid ${T.border}`,
+                  borderRadius: 6, fontSize: '.88rem', fontFamily: 'inherit',
+                  background: '#fff', color: T.textDark, outline: 'none',
+                }}>
+                  {['lb','kg','qq','caja','bulto','unidad'].map(u => <option key={u}>{u}</option>)}
+                </select>
+              </Field>
+            </div>
+            <Field label="Valor en quetzales (opcional)">
               <Input
                 type="number" min="0" step="0.01" placeholder="0.00"
                 value={valorRechazo} onChange={e => setValorRechazo(e.target.value)}
                 style={{ fontSize: '1.1rem', fontWeight: 700, color: T.danger }}
               />
             </Field>
+            <div style={{ fontSize: '.72rem', color: T.textMid, marginTop: -10, marginBottom: 12 }}>
+              Puedes indicar cantidad, valor en Q, o ambos.
+            </div>
             <Field label="Resolución">
               <select value={resolucion} onChange={e => setResolucion(e.target.value)} style={{
                 width: '100%', padding: '9px 8px', border: `1.5px solid ${T.border}`,

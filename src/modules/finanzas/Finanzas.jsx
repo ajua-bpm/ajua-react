@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useMovimientosBanco, useFacturasFEL, useGastosFijos, calcPnL } from './useFinanzas';
+import { useMovimientosBanco, useFacturasFEL, useGastosFijos, useVentasSalidas, calcPnL } from './useFinanzas';
 import ClasificadorDiario  from './ClasificadorDiario';
 import ImportadorBanco     from './ImportadorBanco';
 import ImportadorFEL       from './ImportadorFEL';
@@ -41,9 +41,10 @@ export default function Finanzas() {
   const [desde,  setDesde]  = useState(mesIni);
   const [hasta,  setHasta]  = useState(hoy);
 
-  const banco = useMovimientosBanco();
-  const fel   = useFacturasFEL();
-  const fijos = useGastosFijos();
+  const banco   = useMovimientosBanco();
+  const fel     = useFacturasFEL();
+  const fijos   = useGastosFijos();
+  const salidas = useVentasSalidas();
 
   // Cargar fijos al montar (son estáticos, no dependen del período)
   useEffect(() => { fijos.cargar(); }, []); // eslint-disable-line
@@ -55,14 +56,16 @@ export default function Finanzas() {
     if (p.desde) { setDesde(p.desde()); setHasta(p.hasta()); }
   }, [pid]);
 
-  useEffect(() => { banco.cargar(desde, hasta); }, [desde, hasta]); // eslint-disable-line
-  useEffect(() => { fel.cargar(desde, hasta);   }, [desde, hasta]); // eslint-disable-line
+  useEffect(() => { banco.cargar(desde, hasta);   }, [desde, hasta]); // eslint-disable-line
+  useEffect(() => { fel.cargar(desde, hasta);     }, [desde, hasta]); // eslint-disable-line
+  useEffect(() => { salidas.cargar(desde, hasta); }, [desde, hasta]); // eslint-disable-line
 
-  const pnl = useMemo(() => calcPnL(banco.data, fel.data, fijos.data), [banco.data, fel.data, fijos.data]);
+  const pnl = useMemo(() => calcPnL(banco.data, fel.data, fijos.data, salidas.data), [banco.data, fel.data, fijos.data, salidas.data]);
 
   const TABS = [
     { id:'clasificar', label:'⚡ Clasificar', badge: pnl.sinClasificar||0 },
     { id:'pnl',        label:'📊 P&L' },
+    { id:'walmart',    label:'🛒 Walmart', badge: salidas.data.length||0 },
     { id:'banco',      label:'🏦 Banco' },
     { id:'fel',        label:'📄 FEL' },
     { id:'importar',   label:'⬆️ Importar' },
@@ -124,6 +127,39 @@ export default function Finanzas() {
       {/* Tab content */}
       {tab==='clasificar' && <ClasificadorDiario movimientos={banco.data} onClasificar={banco.clasificar} />}
       {tab==='pnl'        && <PnL pnl={pnl} movimientos={banco.data} facturas={fel.data} />}
+      {tab==='walmart' && (
+        <div>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+            <span style={{ fontWeight:700, color:T.dark }}>{salidas.data.length} ventas · A cobrar total: <span style={{ color:'#15803d' }}>{fmtQ(salidas.data.reduce((s,r)=>s+(r.aCobrar||r.neto||0),0))}</span></span>
+            <button onClick={()=>salidas.cargar(desde,hasta)} style={{ padding:'6px 14px', background:T.primary, color:WHITE, border:'none', borderRadius:6, fontSize:'.82rem', fontWeight:600, cursor:'pointer' }}>🔄 Recargar</button>
+          </div>
+          <div style={{ overflowX:'auto' }}>
+            <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'.82rem' }}>
+              <thead><tr style={{ background:T.primary, color:WHITE }}>
+                {['Fecha','Productos','LBS','Neto Q','IVA Q','Con IVA','Ret. Q','A Cobrar Q','OC'].map(h=>(
+                  <th key={h} style={{ padding:'8px 10px', textAlign:'left', whiteSpace:'nowrap' }}>{h}</th>
+                ))}
+              </tr></thead>
+              <tbody>{salidas.data.map((r,i)=>{
+                const prods = (r.lineas||r.productos||[]).map(l=>l.producto||l.nombre).filter(Boolean).join(', ');
+                return (
+                  <tr key={r.id} style={{ background:i%2===0?WHITE:'#F9F9F9', borderBottom:`1px solid ${T.border}` }}>
+                    <td style={{ padding:'7px 10px', whiteSpace:'nowrap', fontWeight:600 }}>{r.fecha||'—'}</td>
+                    <td style={{ padding:'7px 10px', maxWidth:200, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:'.78rem', color:T.mid }}>{prods||'—'}</td>
+                    <td style={{ padding:'7px 10px', textAlign:'right' }}>{(r.totalLbs||0).toLocaleString('es-GT',{maximumFractionDigits:1})}</td>
+                    <td style={{ padding:'7px 10px', textAlign:'right' }}>{fmtQ(r.neto)}</td>
+                    <td style={{ padding:'7px 10px', textAlign:'right' }}>{fmtQ(r.iva)}</td>
+                    <td style={{ padding:'7px 10px', textAlign:'right', fontWeight:600 }}>{fmtQ(r.conIva)}</td>
+                    <td style={{ padding:'7px 10px', textAlign:'right', color:T.danger }}>{fmtQ(r.retencion)}</td>
+                    <td style={{ padding:'7px 10px', textAlign:'right', fontWeight:800, color:'#15803d' }}>{fmtQ(r.aCobrar||r.neto)}</td>
+                    <td style={{ padding:'7px 10px', fontSize:'.76rem' }}>{r.numOC||'—'}</td>
+                  </tr>
+                );
+              })}</tbody>
+            </table>
+          </div>
+        </div>
+      )}
       {tab==='banco'      && (
         <div>
           <div style={{ display:'flex', justifyContent:'space-between', marginBottom:12 }}>

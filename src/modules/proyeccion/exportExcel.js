@@ -1,6 +1,27 @@
 import * as XLSX from 'xlsx';
 import { calcRow } from './useProyeccion';
 
+// Safari/iOS no soporta a.click() en blobs — usa window.open como fallback
+function downloadXLSX(wb, filename) {
+  const buf  = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url  = URL.createObjectURL(blob);
+  const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
+    || /iPad|iPhone|iPod/.test(navigator.userAgent);
+  if (isSafari) {
+    // En Safari: abrir en nueva pestaña — el usuario toca "Compartir → Guardar en Archivos"
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; a.target = '_blank'; a.rel = 'noopener';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 3000);
+  } else {
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+}
+
 const Q  = n => Number(n || 0).toFixed(2);
 const P  = n => Number(n || 0).toFixed(1) + '%';
 const N  = n => Number(n || 0).toFixed(0);
@@ -119,5 +140,5 @@ export function exportarProyeccion({ proyeccion, productosMap, fijosSemanal, his
     XLSX.utils.book_append_sheet(wb, ws4, '📅 Historial');
   }
 
-  XLSX.writeFile(wb, `ajua_proyeccion_${sem}.xlsx`);
+  downloadXLSX(wb, `ajua_proyeccion_${sem}.xlsx`);
 }
