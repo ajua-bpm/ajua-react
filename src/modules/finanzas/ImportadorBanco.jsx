@@ -60,8 +60,8 @@ function parseUniversal(rows, banco) {
   const fi = idx(['fecha','date']);
   const ni = idx(['desc','concepto','detalle','narr']);
   const ri = idx(['ref','doc','num']);
-  const di = idx(['deb','cargo','retiro','salida']);
-  const ci = idx(['cred','abono','entrada','deposito','depósito']);
+  const di = idx(['debe','deb','cargo','retiro','salida']);
+  const ci = idx(['haber','cred','abono','entrada','deposito','depósito']);
   const si = idx(['saldo','balance']);
 
   return rows.slice(hiIdx + 1).map(r => ({
@@ -131,7 +131,7 @@ export default function ImportadorBanco({ onImportado }) {
           process(rows);
         } catch(e) { setError('Error leyendo CSV: ' + e.message); }
       };
-      reader.readAsText(file, 'utf-8');
+      reader.readAsText(file, 'latin1');
     } else {
       reader.onload = (e) => {
         try {
