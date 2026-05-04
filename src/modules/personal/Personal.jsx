@@ -4,6 +4,7 @@ import { useCollection, useWrite } from '../../hooks/useFirestore';
 import { useEmpleados } from '../../hooks/useMainData';
 import { useToast } from '../../components/Toast';
 import Skeleton from '../../components/Skeleton';
+import * as XLSX from 'xlsx';
 
 const T = {
   primary:  '#1B5E20', secondary: '#2E7D32',
@@ -661,7 +662,9 @@ function TabNomina() {
   const [nomResult, setNomResult] = useState(null);
   const [pagando,   setPagando]   = useState(false);
 
-  const HORAS = ['10:00','12:00','14:00','16:00'];
+  const AM_HORAS = ['10:00','12:00'];
+  const PM_HORAS = ['14:00','16:00'];
+  const HORAS = [...AM_HORAS, ...PM_HORAS];
 
   const calcular = () => {
     if (!desde || !hasta) { toast('Ingresá rango de fechas', 'error'); return; }
@@ -669,23 +672,25 @@ function TabNomina() {
     const diasPorEmp = {};
     filtrados.forEach(r => {
       (r.checks||[]).forEach(row => {
-        const tiene = HORAS.some(h => row.horas && row.horas[h]);
-        if (!tiene) return;
+        const hasAM = AM_HORAS.some(h => row.horas && row.horas[h]);
+        const hasPM = PM_HORAS.some(h => row.horas && row.horas[h]);
+        if (!hasAM && !hasPM) return;
+        const valor = (hasAM && hasPM) ? 1 : 0.5;
         const key = row.empleadoId || row.nombre;
-        if (!diasPorEmp[key]) diasPorEmp[key] = { nombre: row.nombre, dias: new Set(), he: {} };
-        diasPorEmp[key].dias.add(r.fecha);
+        if (!diasPorEmp[key]) diasPorEmp[key] = { nombre: row.nombre, diasMap: {}, he: {} };
+        // Tomar el mayor valor si el mismo empleado aparece dos veces en el mismo día
+        diasPorEmp[key].diasMap[r.fecha] = Math.max(diasPorEmp[key].diasMap[r.fecha] || 0, valor);
         if ((row.horasExtras||0) > 0)
           diasPorEmp[key].he[r.fecha] = (diasPorEmp[key].he[r.fecha]||0) + row.horasExtras;
       });
     });
     const tabla = Object.values(diasPorEmp).map(entry => {
       const emp   = activos.find(e => matchEmpNombre(entry.nombre, e));
-      // Si encontramos el empleado por alias, usar su nombre oficial
       const nombreOficial = emp?.nombre || entry.nombre;
       const sd    = emp?.salarioDia || (emp?.salario ? emp.salario/30 : 0);
       const tarifaHE = emp?.tarifaHoraExtra || (sd > 0 ? (sd/8)*1.5 : 0);
-      const dias  = entry.dias.size;
-      const fechas = [...entry.dias].sort().map(f => ({ fecha:f, he: entry.he[f]||0 }));
+      const dias  = Object.values(entry.diasMap).reduce((s,v) => s+v, 0);
+      const fechas = Object.keys(entry.diasMap).sort().map(f => ({ fecha:f, he: entry.he[f]||0, val: entry.diasMap[f] }));
       const totalHE = Object.values(entry.he).reduce((s,h) => s+h, 0);
       const pagoHE  = totalHE * tarifaHE;
       const anticPend = (anticData||[]).filter(a => a.empleado === nombreOficial && a.estado === 'pendiente').reduce((s,a) => s+(a.monto||0), 0);
@@ -694,6 +699,31 @@ function TabNomina() {
       return { nombre:nombreOficial, nombreOriginal: entry.nombre !== nombreOficial ? entry.nombre : null, dias, fechas, salarioDia:sd, tarifaHE, totalHE, pagoHE, anticPend, bruto, neto };
     }).sort((a,b) => a.nombre.localeCompare(b.nombre));
     setNomResult(tabla);
+  };
+
+  const exportarExcel = () => {
+    if (!nomResult?.length) return;
+    const header = ['Empleado','Días','Fechas trabajadas','Sal/Día (Q)','Pago Regular (Q)','H.E. (hrs)','Pago HE (Q)','Anticipos Pend. (Q)','Bruto (Q)','Neto (Q)'];
+    const rows = nomResult.map(r => [
+      r.nombre,
+      r.dias,
+      r.fechas.map(({fecha:f,he,val}) => `${f}${val<1?'(½)':''}${he>0?`(${he}HE)`:''}`).join(', '),
+      r.salarioDia > 0 ? +r.salarioDia.toFixed(2) : '',
+      r.salarioDia > 0 ? +(r.dias * r.salarioDia).toFixed(2) : '',
+      r.totalHE || 0,
+      r.pagoHE > 0 ? +r.pagoHE.toFixed(2) : 0,
+      r.anticPend > 0 ? +r.anticPend.toFixed(2) : 0,
+      r.salarioDia > 0 ? +r.bruto.toFixed(2) : '',
+      r.salarioDia > 0 ? +r.neto.toFixed(2) : '',
+    ]);
+    const totalBrutoX = nomResult.reduce((s,r)=>s+r.bruto,0);
+    const totalNetoX  = nomResult.reduce((s,r)=>s+r.neto,0);
+    rows.push(['TOTAL','','','','','','','',+totalBrutoX.toFixed(2),+totalNetoX.toFixed(2)]);
+    const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
+    ws['!cols'] = [22,8,60,12,16,10,12,18,12,12].map(w => ({ wch: w }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Nómina');
+    XLSX.writeFile(wb, `nomina_${desde}_${hasta}.xlsx`);
   };
 
   const registrarPagos = async () => {
@@ -780,9 +810,9 @@ function TabNomina() {
                       <td style={{padding:'9px 12px',verticalAlign:'top'}}>
                         <div style={{fontWeight:800,fontSize:'1rem',color:T.secondary,marginBottom:4}}>{row.dias}</div>
                         <div style={{display:'flex',flexWrap:'wrap',gap:3}}>
-                          {row.fechas.map(({fecha:f,he})=>(
-                            <span key={f} style={{background:he>0?'#FFF3E0':'#E8F5E9',color:he>0?T.warn:T.secondary,border:`1px solid ${he>0?'#FFCC80':'#A5D6A7'}`,borderRadius:4,padding:'2px 6px',fontSize:'.68rem',fontWeight:700,whiteSpace:'nowrap'}}>
-                              {fmtF(f)}{he>0?` · ${he}HE`:''}
+                          {row.fechas.map(({fecha:f,he,val})=>(
+                            <span key={f} style={{background:he>0?'#FFF3E0':val<1?'#F3E5F5':'#E8F5E9',color:he>0?T.warn:val<1?'#6A1B9A':T.secondary,border:`1px solid ${he>0?'#FFCC80':val<1?'#CE93D8':'#A5D6A7'}`,borderRadius:4,padding:'2px 6px',fontSize:'.68rem',fontWeight:700,whiteSpace:'nowrap'}}>
+                              {fmtF(f)}{val<1?' ½':''}{he>0?` · ${he}HE`:''}
                             </span>
                           ))}
                         </div>
@@ -804,10 +834,16 @@ function TabNomina() {
                 </tbody>
               </table>
             </div>
-            <button onClick={registrarPagos} disabled={pagando||saving}
-              style={{padding:'11px 28px',background:pagando?'#BDBDBD':T.secondary,color:T.white,border:'none',borderRadius:6,fontWeight:700,fontSize:'.88rem',cursor:pagando?'not-allowed':'pointer'}}>
-              {pagando?'Registrando…':'💾 Registrar pagos en Historial'}
-            </button>
+            <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
+              <button onClick={exportarExcel}
+                style={{padding:'11px 24px',background:'#1565C0',color:T.white,border:'none',borderRadius:6,fontWeight:700,fontSize:'.88rem',cursor:'pointer'}}>
+                📥 Descargar Excel
+              </button>
+              <button onClick={registrarPagos} disabled={pagando||saving}
+                style={{padding:'11px 28px',background:pagando?'#BDBDBD':T.secondary,color:T.white,border:'none',borderRadius:6,fontWeight:700,fontSize:'.88rem',cursor:pagando?'not-allowed':'pointer'}}>
+                {pagando?'Registrando…':'💾 Registrar pagos en Historial'}
+              </button>
+            </div>
           </>
         )}
       </div>
