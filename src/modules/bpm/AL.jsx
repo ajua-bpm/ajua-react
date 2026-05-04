@@ -3,7 +3,6 @@ import { useCollection, useWrite } from '../../hooks/useFirestore';
 import { useEmpleados } from '../../hooks/useMainData';
 import { useToast } from '../../components/Toast';
 import Skeleton from '../../components/Skeleton';
-import { db, collection, getDocs, doc, updateDoc } from '../../firebase';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const T = {
@@ -66,7 +65,6 @@ export default function AL() {
   const [obs,         setObs]         = useState('');
   const [initialized, setInitialized] = useState(false);
   const [listOpen,    setListOpen]    = useState(true);
-  const [migrating,   setMigrating]   = useState(false);
 
   // Nómina
   const [nomDesde,   setNomDesde]   = useState('');
@@ -119,31 +117,6 @@ export default function AL() {
   const pct             = totalPosible > 0 ? Math.round(totalOk / totalPosible * 100) : 0;
   const resultado       = pct >= 80 ? 'aprobado' : pct >= 60 ? 'aprobado_con_obs' : 'rechazado';
 
-  // ── Migración: marcar todas las horas como true en historial ─────
-  const migrarTurnosCompletos = async () => {
-    if (!window.confirm(`¿Actualizar TODOS los registros AL a turno completo (las 4 horas marcadas)?\nEsto afecta el cálculo de nómina histórica. No se puede deshacer.`)) return;
-    setMigrating(true);
-    try {
-      const snap = await getDocs(collection(db, 'al'));
-      let count = 0;
-      for (const docSnap of snap.docs) {
-        const data = docSnap.data();
-        const checksActualizados = (data.checks || []).map(c => ({
-          ...c,
-          horas: { '10:00': true, '12:00': true, '14:00': true, '16:00': true },
-        }));
-        await updateDoc(doc(db, 'al', docSnap.id), {
-          turno: 'COMPLETO',
-          checks: checksActualizados,
-        });
-        count++;
-      }
-      toast(`✓ ${count} registros migrados a turno completo`);
-    } catch(e) {
-      toast('Error: ' + e.message, 'error');
-    }
-    setMigrating(false);
-  };
 
   // ── Save ─────────────────────────────────────────────────────────
   const handleSave = async () => {
@@ -465,17 +438,6 @@ export default function AL() {
         )}
       </Card>
 
-      {/* ── Migración one-time ── */}
-      <Card style={{ border: '1.5px solid #E65100', background: '#FFF8F5' }}>
-        <SecTitle>🔧 Migración de datos</SecTitle>
-        <p style={{ fontSize: '.8rem', color: T.textMid, marginBottom: 12 }}>
-          Corrige registros históricos que tenían turno AM o PM: marca las 4 horas como asistidas y cambia el turno a COMPLETO para que la nómina calcule días completos.
-        </p>
-        <button onClick={migrarTurnosCompletos} disabled={migrating}
-          style={{ padding: '10px 22px', background: migrating ? '#BDBDBD' : T.warn, color: '#fff', border: 'none', borderRadius: 6, fontWeight: 700, fontSize: '.85rem', cursor: migrating ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
-          {migrating ? 'Migrando…' : '⚡ Migrar todos los registros a turno completo'}
-        </button>
-      </Card>
 
       {/* ── Historial ── */}
       <Card>
