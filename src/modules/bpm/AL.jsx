@@ -55,7 +55,7 @@ export default function AL() {
   const toast = useToast();
   const { empleados, loading: empLoading } = useEmpleados();
   const { data: registros, loading: histLoading } = useCollection('al', { orderField: 'fecha', orderDir: 'desc', limit: 300 });
-  const { add, remove, saving } = useWrite('al');
+  const { add, update, remove, saving } = useWrite('al');
 
   const [fecha,       setFecha]       = useState(today());
   const [turno,       setTurno]       = useState('COMPLETO');
@@ -66,10 +66,10 @@ export default function AL() {
   const [initialized, setInitialized] = useState(false);
   const [listOpen,    setListOpen]    = useState(true);
 
-  // Nómina
-  const [nomDesde,   setNomDesde]   = useState('');
-  const [nomHasta,   setNomHasta]   = useState('');
-  const [nomResult,  setNomResult]  = useState(null);
+  // Horas Extras
+  const [heDate,   setHeDate]   = useState(today());
+  const [heEdits,  setHeEdits]  = useState({});
+  const [heSaving, setHeSaving] = useState(false);
 
   useEffect(() => {
     if (!empLoading && empleados.length > 0 && !initialized) {
@@ -142,40 +142,31 @@ export default function AL() {
     }
   };
 
-  // ── Nómina ────────────────────────────────────────────────────────
-  const calcularNomina = () => {
-    if (!nomDesde || !nomHasta) { toast('Ingresá el rango de fechas', 'error'); return; }
-    const filtrados = (registros || []).filter(r => r.fecha >= nomDesde && r.fecha <= nomHasta);
-    const diasPorEmp = {};
-    filtrados.forEach(r => {
-      (r.checks || []).forEach(row => {
-        const tiene = HORAS.some(h => row.horas && row.horas[h]);
-        if (tiene) {
-          const key = row.empleadoId || row.nombre;
-          if (!diasPorEmp[key]) diasPorEmp[key] = { nombre: row.nombre, dias: new Set(), he: {} };
-          diasPorEmp[key].dias.add(r.fecha);
-          if (row.horasExtras > 0)
-            diasPorEmp[key].he[r.fecha] = (diasPorEmp[key].he[r.fecha] || 0) + row.horasExtras;
-        }
-      });
-    });
-    const tabla = Object.values(diasPorEmp).map(entry => {
-      const rn  = (entry.nombre || '').toLowerCase().trim();
-      const emp = empleados.find(e => {
-        if ((e.nombre||'').toLowerCase().trim() === rn) return true;
-        return (e.aliases||[]).some(a => (a||'').toLowerCase().trim() === rn);
-      });
-      const nombreOficial = emp?.nombre || entry.nombre;
-      const sd    = emp?.salarioDia || (emp?.salario ? emp.salario / 30 : 0);
-      const tarifaHE = emp?.tarifaHoraExtra || (sd > 0 ? (sd / 8) * 1.5 : 0);
-      const dias  = entry.dias.size;
-      const fechas = [...entry.dias].sort().map(f => ({ fecha: f, he: entry.he[f] || 0 }));
-      const totalHE = Object.values(entry.he).reduce((s, h) => s + h, 0);
-      const pagoHE  = totalHE * tarifaHE;
-      return { nombre: nombreOficial, dias, fechas, salarioDia: sd, tarifaHE,
-        totalHE, pagoHE, total: dias * sd + pagoHE };
-    });
-    setNomResult(tabla);
+  // ── Horas Extras ─────────────────────────────────────────────────
+  const heRecord = (registros || []).find(r => r.fecha === heDate);
+
+  useEffect(() => {
+    if (heRecord) {
+      const edits = {};
+      heRecord.checks.forEach(c => { edits[c.empleadoId || c.nombre] = c.horasExtras || 0; });
+      setHeEdits(edits);
+    } else {
+      setHeEdits({});
+    }
+  }, [heRecord?.id, heDate]); // eslint-disable-line
+
+  const guardarHE = async () => {
+    if (!heRecord) { toast('Sin registro AL para esa fecha', 'error'); return; }
+    setHeSaving(true);
+    try {
+      const checksActualizados = heRecord.checks.map(c => ({
+        ...c,
+        horasExtras: parseFloat(heEdits[c.empleadoId || c.nombre] ?? 0) || 0,
+      }));
+      await update(heRecord.id, { checks: checksActualizados });
+      toast('✓ Horas extras guardadas');
+    } catch(e) { toast('Error: ' + e.message, 'error'); }
+    setHeSaving(false);
   };
 
   const TD = { padding: '9px 14px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0', whiteSpace: 'nowrap' };
@@ -365,76 +356,57 @@ export default function AL() {
         </button>
       </Card>
 
-      {/* ── Nómina ── */}
-      <Card style={{ background: 'rgba(27,94,32,.03)', border: '1.5px solid rgba(27,94,32,.15)' }}>
-        <SecTitle>Calcular Nómina desde Asistencia</SecTitle>
+      {/* ── Horas Extras ── */}
+      <Card style={{ background: 'rgba(230,81,0,.03)', border: '1.5px solid rgba(230,81,0,.2)' }}>
+        <SecTitle>⏰ Agregar Horas Extras</SecTitle>
         <p style={{ fontSize: '.78rem', color: T.textMid, marginBottom: 14, lineHeight: 1.6 }}>
-          Cuenta automáticamente los días que cada empleado apareció en el registro de acceso y calcula el pago total del período.
+          Seleccioná la fecha del turno ya guardado para agregar o editar las horas extras de cada empleado.
         </p>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
-          <Lbl text="Desde"><input type="date" value={nomDesde} onChange={e => setNomDesde(e.target.value)} style={iStyle} /></Lbl>
-          <Lbl text="Hasta"><input type="date" value={nomHasta} onChange={e => setNomHasta(e.target.value)} style={iStyle} /></Lbl>
+        <div style={{ marginBottom: 14 }}>
+          <Lbl text="Fecha del turno">
+            <input type="date" value={heDate} onChange={e => setHeDate(e.target.value)} style={{ ...iStyle, width: 180 }} />
+          </Lbl>
         </div>
-        <button onClick={calcularNomina}
-          style={{ padding: '10px 22px', background: T.primary, color: '#fff', border: 'none', borderRadius: 6, fontWeight: 700, fontSize: '.88rem', cursor: 'pointer', fontFamily: 'inherit' }}>
-          👷 Ver Nómina del Período
-        </button>
-        {nomResult && (
-          <div style={{ marginTop: 16, overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ background: T.primary }}>
-                  {['Empleado', 'Días · Fechas', 'Salario/Día', 'Pago Regular', 'H. Extra', 'Pago HE', 'Total'].map(h => (
-                    <th key={h} style={{ padding: '10px 14px', textAlign: 'left', color: '#fff', fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', whiteSpace: 'nowrap' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {nomResult.map((row, i) => {
-                  const fmtF = f => { const d = new Date(f + 'T12:00:00Z'); return d.toLocaleDateString('es-GT', { weekday:'short', day:'2-digit', month:'short', timeZone:'UTC' }); };
-                  const pagoReg = row.dias * row.salarioDia;
-                  return (
-                  <tr key={row.nombre} style={{ background: i % 2 === 0 ? '#fff' : '#F9FBF9' }}>
-                    <td style={{ ...TD, fontWeight: 600 }}>{row.nombre}</td>
-                    <td style={{ ...TD, verticalAlign: 'top' }}>
-                      <div style={{ fontWeight: 800, fontSize: '1.1rem', color: T.accent, marginBottom: 5 }}>{row.dias}</div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                        {(row.fechas || []).map(({ fecha: f, he }) => (
-                          <span key={f} style={{
-                            background: he > 0 ? '#FFF3E0' : '#E8F5E9',
-                            color:      he > 0 ? T.warn    : '#1B5E20',
-                            border:    `1px solid ${he > 0 ? '#FFCC80' : '#A5D6A7'}`,
-                            borderRadius: 4, padding: '2px 7px', fontSize: '.7rem', fontWeight: 700, whiteSpace: 'nowrap',
-                          }}>
-                            {fmtF(f)}{he > 0 ? ` · ${he}HE` : ''}
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                    <td style={TD}>{row.salarioDia > 0 ? `Q${Number(row.salarioDia).toFixed(2)}` : '—'}</td>
-                    <td style={{ ...TD, color: T.secondary, fontWeight: 600 }}>{row.salarioDia > 0 ? `Q${pagoReg.toFixed(2)}` : '—'}</td>
-                    <td style={{ ...TD, textAlign: 'center' }}>
-                      {row.totalHE > 0
-                        ? <span style={{ background:'#FFF3E0', color:T.warn, border:'1px solid #FFCC80', borderRadius:4, padding:'2px 8px', fontSize:'.78rem', fontWeight:700 }}>{row.totalHE} hrs</span>
-                        : <span style={{ color:T.textMid }}>—</span>}
-                    </td>
-                    <td style={{ ...TD, color: T.warn, fontWeight: 600 }}>
-                      {row.pagoHE > 0 ? `Q${row.pagoHE.toFixed(2)}` : '—'}
-                      {row.pagoHE > 0 && <div style={{ fontSize:'.68rem', color:T.textMid }}>Q{row.tarifaHE.toFixed(2)}/hr</div>}
-                    </td>
-                    <td style={{ ...TD, fontWeight: 800, color: T.primary }}>{row.salarioDia > 0 ? `Q${Number(row.total).toFixed(2)}` : '—'}</td>
-                  </tr>
-                  );
-                })}
-                {nomResult.length > 0 && (
-                  <tr style={{ background: '#E8F5E9' }}>
-                    <td colSpan={3} style={{ padding: '10px 14px', fontSize: '.83rem', fontWeight: 700, textAlign: 'right', color: T.primary }}>Total del período:</td>
-                    <td style={{ padding: '10px 14px', fontSize: '.9rem', fontWeight: 800, color: T.primary }}>Q{nomResult.reduce((s, r) => s + r.total, 0).toFixed(2)}</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+        {heDate && !heRecord && (
+          <div style={{ padding: '10px 14px', background: '#F5F5F5', borderRadius: 6, fontSize: '.82rem', color: T.textMid }}>
+            Sin registro AL guardado para el {heDate}.
           </div>
+        )}
+        {heRecord && (
+          <>
+            <div style={{ overflowX: 'auto', marginBottom: 14 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ background: T.warn }}>
+                    <th style={{ padding: '9px 14px', textAlign: 'left', color: '#fff', fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase' }}>Empleado</th>
+                    <th style={{ padding: '9px 14px', textAlign: 'left', color: '#fff', fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase' }}>Horas Extras</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {heRecord.checks.map((c, i) => {
+                    const key = c.empleadoId || c.nombre;
+                    return (
+                      <tr key={key} style={{ background: i % 2 === 0 ? '#fff' : '#FFF8F5' }}>
+                        <td style={{ padding: '9px 14px', fontWeight: 600, fontSize: '.85rem' }}>{c.nombre}</td>
+                        <td style={{ padding: '9px 14px' }}>
+                          <input type="number" min="0" max="12" step="0.5"
+                            value={heEdits[key] ?? 0}
+                            onChange={e => setHeEdits(prev => ({ ...prev, [key]: e.target.value }))}
+                            style={{ width: 80, padding: '6px 8px', border: '1.5px solid #FFCC80', borderRadius: 5,
+                              fontSize: '.85rem', textAlign: 'center', background: '#FFF3E0', fontFamily: 'inherit' }} />
+                          <span style={{ marginLeft: 6, fontSize: '.78rem', color: T.textMid }}>hrs</span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <button onClick={guardarHE} disabled={heSaving}
+              style={{ padding: '10px 22px', background: heSaving ? '#BDBDBD' : T.warn, color: '#fff', border: 'none', borderRadius: 6, fontWeight: 700, fontSize: '.88rem', cursor: heSaving ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+              {heSaving ? 'Guardando…' : '💾 Guardar Horas Extras'}
+            </button>
+          </>
         )}
       </Card>
 
