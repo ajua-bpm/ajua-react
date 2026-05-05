@@ -70,7 +70,7 @@ export default function EntradaBodega() {
   const { data: mainData, loading: lm } = useMainData();
   const { productos, loading: lp }     = useProductosCatalogo();
   const { data: proveedores, loading: lc } = useCollection('proveedores', { orderField: 'nombre', limit: 300 });
-  const { add, remove, saving }        = useWrite('ientradas');
+  const { add, update, remove, saving } = useWrite('ientradas');
 
   // Merge Firestore + ajua_bpm/main ientradas
   // bpm.html fields: productoNombre→producto, lbsBruto/lbsTotal→lbsBrutas
@@ -85,8 +85,28 @@ export default function EntradaBodega() {
       .sort((a, b) => (b.fecha || '') > (a.fecha || '') ? 1 : -1);
   }, [colData, mainData]);
 
-  const [form, setForm] = useState({ ...BLANK });
+  const [form, setForm]     = useState({ ...BLANK });
+  const [editId, setEditId] = useState(null);
   const s = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const startEdit = (r) => {
+    setEditId(r.id);
+    setForm({
+      fecha:      r.fecha       || today(),
+      producto:   r.producto    || r.productoNombre || '',
+      productor:  r.productor   || r.productorNombre || r.origen || '',
+      proveedor:  r.proveedor   || r.proveedorNombre || '',
+      bultos:     String(r.bultos || ''),
+      kgBulto:    String(r.kgBulto || ''),
+      costolb:    String(r.costolb || ''),
+      duca:       r.duca        || '',
+      cotizacion: r.cotizacion  || r.cotizacionNom || '',
+      obs:        r.obs         || '',
+    });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const cancelEdit = () => { setEditId(null); setForm({ ...BLANK }); };
 
   // Auto-calc LBS
   const lbsBrutas = useMemo(() => {
@@ -95,25 +115,33 @@ export default function EntradaBodega() {
     return b * k * LBS_FACTOR;
   }, [form.bultos, form.kgBulto]);
 
+  const buildPayload = () => ({
+    fecha:      form.fecha,
+    producto:   form.producto,
+    productor:  form.productor,
+    proveedor:  form.proveedor,
+    bultos:     parseFloat(form.bultos) || 0,
+    kgBulto:    parseFloat(form.kgBulto) || 0,
+    lbsBrutas,
+    costolb:    parseFloat(form.costolb) || 0,
+    duca:       form.duca,
+    cotizacion: form.cotizacion,
+    obs:        form.obs,
+  });
+
   const handleSave = async () => {
     if (!form.fecha || !form.producto || !form.bultos) {
       toast('Fecha, producto y bultos son requeridos', 'error'); return;
     }
-    await add({
-      fecha:      form.fecha,
-      producto:   form.producto,
-      productor:  form.productor,
-      proveedor:  form.proveedor,
-      bultos:     parseFloat(form.bultos) || 0,
-      kgBulto:    parseFloat(form.kgBulto) || 0,
-      lbsBrutas,
-      costolb:    parseFloat(form.costolb) || 0,
-      duca:       form.duca,
-      cotizacion: form.cotizacion,
-      obs:        form.obs,
-    });
-    toast('Entrada registrada correctamente');
-    setForm({ ...BLANK, fecha: today() });
+    if (editId) {
+      await update(editId, buildPayload());
+      toast('✅ Entrada actualizada');
+      cancelEdit();
+    } else {
+      await add(buildPayload());
+      toast('Entrada registrada correctamente');
+      setForm({ ...BLANK, fecha: today() });
+    }
   };
 
   const handleDelete = async (id) => {
@@ -170,9 +198,14 @@ export default function EntradaBodega() {
       </div>
 
       {/* Form */}
-      <div style={card}>
-        <div style={{ fontWeight: 700, fontSize: '.95rem', color: T.textDark, marginBottom: 20, paddingBottom: 12, borderBottom: '1px solid #F0F0F0' }}>
-          Nueva entrada
+      <div style={{ ...card, border: editId ? `2px solid ${T.warn}` : undefined }}>
+        <div style={{ fontWeight: 700, fontSize: '.95rem', marginBottom: 20, paddingBottom: 12, borderBottom: '1px solid #F0F0F0', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+          <span style={{ color: editId ? T.warn : T.textDark }}>{editId ? '✏️ Editando entrada' : 'Nueva entrada'}</span>
+          {editId && (
+            <button onClick={cancelEdit} style={{ padding:'4px 12px', background:'transparent', border:`1px solid ${T.border}`, borderRadius:4, cursor:'pointer', fontSize:'.75rem', fontFamily:'inherit', color:T.textMid }}>
+              ✕ Cancelar edición
+            </button>
+          )}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(175px, 1fr))', gap: 14, marginBottom: 16 }}>
 
@@ -273,7 +306,7 @@ export default function EntradaBodega() {
             transition: 'background .15s',
           }}
         >
-          {saving ? 'Guardando…' : 'Registrar entrada'}
+          {saving ? 'Guardando…' : editId ? '💾 Actualizar entrada' : 'Registrar entrada'}
         </button>
       </div>
 
@@ -293,8 +326,8 @@ export default function EntradaBodega() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
-                  {['Fecha', 'Producto', 'Origen', 'Bultos', 'LBS brutas', 'Costo/lb', 'DUCA', 'Eliminar'].map(h => (
-                    <th key={h} style={thSt}>{h}</th>
+                  {['Fecha', 'Producto', 'Origen', 'Bultos', 'LBS brutas', 'Costo/lb', 'DUCA', '', ''].map((h,i) => (
+                    <th key={i} style={thSt}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -314,6 +347,17 @@ export default function EntradaBodega() {
                       Q {(r.costolb || 0).toFixed(2)}
                     </td>
                     <td style={{ ...tdSt, color: T.textMid }}>{r.duca || '—'}</td>
+                    <td style={{ ...tdSt, textAlign: 'center' }}>
+                      <button
+                        onClick={() => startEdit(r)}
+                        style={{
+                          padding: '3px 10px', background: 'none', border: `1px solid ${T.secondary}`,
+                          color: T.secondary, borderRadius: 4, cursor: 'pointer', fontSize: '.72rem', fontWeight: 600,
+                        }}
+                      >
+                        ✏️
+                      </button>
+                    </td>
                     <td style={{ ...tdSt, textAlign: 'center' }}>
                       <button
                         onClick={() => handleDelete(r.id)}
