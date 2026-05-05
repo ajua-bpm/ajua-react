@@ -864,32 +864,41 @@ function TabEstadoCuenta() {
   const [hasta,   setHasta]   = useState('');
   const [nomData, setNomData] = useState(null);
 
-  const HORAS = ['10:00','12:00','14:00','16:00'];
+  const AM_HORAS = ['10:00','12:00'];
+  const PM_HORAS = ['14:00','16:00'];
 
   const calcular = () => {
     if (!empSel || !desde || !hasta) { toast('Seleccioná empleado y rango','error'); return; }
     const filtrados = (alData||[]).filter(r => r.fecha >= desde && r.fecha <= hasta);
-    const diasSet = new Set();
+    const diasMap = {};
     const heMap = {};
     const emp    = activos.find(e => e.nombre === empSel);
     filtrados.forEach(r => {
       (r.checks||[]).forEach(row => {
         if (!matchEmpNombre(row.nombre, emp)) return;
-        if (!HORAS.some(h => row.horas && row.horas[h])) return;
-        diasSet.add(r.fecha);
+        const hasAM = AM_HORAS.some(h => row.horas && row.horas[h]);
+        const hasPM = PM_HORAS.some(h => row.horas && row.horas[h]);
+        if (!hasAM && !hasPM) return;
+        const val = (hasAM && hasPM) ? 1 : 0.5;
+        diasMap[r.fecha] = Math.max(diasMap[r.fecha]||0, val);
         if ((row.horasExtras||0) > 0) heMap[r.fecha] = (heMap[r.fecha]||0) + row.horasExtras;
       });
     });
     const sd     = emp?.salarioDia || 0;
     const tHE    = emp?.tarifaHoraExtra || (sd > 0 ? (sd/8)*1.5 : 0);
-    const dias   = diasSet.size;
-    const fechas = [...diasSet].sort().map(f => ({ fecha:f, he:heMap[f]||0 }));
+    const dias   = Object.values(diasMap).reduce((s,v)=>s+v, 0);
+    const fechas = Object.keys(diasMap).sort().map(f => ({ fecha:f, he:heMap[f]||0, val:diasMap[f] }));
     const totalHE = Object.values(heMap).reduce((s,h)=>s+h, 0);
     const pagoHE  = totalHE * tHE;
     const bruto   = dias * sd + pagoHE;
-    const anticsPend  = (anticData||[]).filter(a => a.empleado===empSel && a.estado==='pendiente');
+    const empNorm = empSel.toLowerCase();
+    const anticsPend  = (anticData||[]).filter(a => (a.empleado||'').toLowerCase()===empNorm && a.estado==='pendiente');
     const totalAntPend = anticsPend.reduce((s,a)=>s+(a.monto||0),0);
-    const pagosRealizados = (pagosData||[]).filter(r => r.empleado===empSel && r.fecha>=desde && r.fecha<=hasta);
+    // Filtrar por semana (inicio del período de trabajo) no por fecha de registro del pago
+    const pagosRealizados = (pagosData||[]).filter(r =>
+      (r.empleado||'').toLowerCase()===empNorm &&
+      (r.semana||r.fecha)>=desde && (r.semana||r.fecha)<=hasta
+    );
     const totalPagado = pagosRealizados.reduce((s,r)=>s+(r.monto||0),0);
     const saldo = bruto - totalAntPend - totalPagado;
     setNomData({ sd, tHE, dias, fechas, totalHE, pagoHE, bruto, anticsPend, totalAntPend, pagosRealizados, totalPagado, saldo });
@@ -944,9 +953,9 @@ function TabEstadoCuenta() {
             <div style={{marginBottom:16}}>
               <div style={{fontSize:'.75rem',fontWeight:700,textTransform:'uppercase',color:T.textMid,marginBottom:6}}>Días trabajados</div>
               <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
-                {nomData.fechas.map(({fecha:f,he})=>(
-                  <span key={f} style={{background:he>0?'#FFF3E0':'#E8F5E9',color:he>0?T.warn:T.secondary,border:`1px solid ${he>0?'#FFCC80':'#A5D6A7'}`,borderRadius:4,padding:'3px 8px',fontSize:'.75rem',fontWeight:700}}>
-                    {fmtF(f)}{he>0?` · ${he}HE`:''}
+                {nomData.fechas.map(({fecha:f,he,val})=>(
+                  <span key={f} style={{background:he>0?'#FFF3E0':val<1?'#F3E5F5':'#E8F5E9',color:he>0?T.warn:val<1?'#6A1B9A':T.secondary,border:`1px solid ${he>0?'#FFCC80':val<1?'#CE93D8':'#A5D6A7'}`,borderRadius:4,padding:'3px 8px',fontSize:'.75rem',fontWeight:700}}>
+                    {fmtF(f)}{val<1?' ½':''}{he>0?` · ${he}HE`:''}
                   </span>
                 ))}
                 {nomData.fechas.length===0 && <span style={{color:T.textMid,fontSize:'.82rem'}}>Sin registros en ese período</span>}
