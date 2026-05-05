@@ -1,141 +1,428 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { db, doc, getDoc, setDoc } from '../../firebase';
 import { useToast } from '../../components/Toast';
 
-const T = {
-  primary: '#1B5E20', secondary: '#2E7D32',
-  border: '#E0E0E0', textMid: '#6B6B60', textDark: '#1A1A18',
-};
+const CW = 580;
+const CH = 495;
 
-const ZONAS_DEFAULT = [
-  { id: 'recepcion', label: 'Recepción de Producto',  icon: '📥', color: '#E3F2FD', border: '#1565C0', notas: '' },
-  { id: 'bodega',    label: 'Bodega Principal',        icon: '🏭', color: '#E8F5E9', border: '#2E7D32', notas: '' },
-  { id: 'proceso',   label: 'Área de Proceso',         icon: '⚙️', color: '#FFF3E0', border: '#E65100', notas: '' },
-  { id: 'maquila',   label: 'Maquila Externa',         icon: '🔧', color: '#FFF8E1', border: '#F57F17', notas: '' },
-  { id: 'precarga',  label: 'Pre-carga / Embarque',    icon: '🚛', color: '#F3E5F5', border: '#6A1B9A', notas: '' },
-  { id: 'pallets',   label: 'Área de Pallets',         icon: '📦', color: '#EFEBE9', border: '#4E342E', notas: '' },
-  { id: 'frio',      label: 'Cuarto Frío',             icon: '❄️', color: '#E0F7FA', border: '#00695C', notas: '' },
-  { id: 'oficinas',  label: 'Oficinas',                icon: '🖥️', color: '#FCE4EC', border: '#C62828', notas: '' },
-  { id: 'banos',     label: 'Baños / Vestidores',      icon: '🚿', color: '#F5F5F5', border: '#757575', notas: '' },
+const T = { primary:'#1B5E20', border:'#E0E0E0', textMid:'#6B6B60', textDark:'#1A1A18' };
+
+const PALETTE = [
+  '#FFCC80','#FFE082','#FFF176','#A5D6A7','#66BB6A','#80DEEA',
+  '#90CAF9','#BBDEFB','#CE93D8','#F48FB1','#D7CCC8','#BDBDBD',
+  '#CFD8DC','#B0BEC5','#9E9E9E','#EFEBE9',
 ];
+
+const INITIAL_ZONES = [
+  { id:'bodega',   label:'BODEGA',             sub:'almacén general',             color:'#FFCC80', x:5,   y:5,   w:210, h:100, notes:'' },
+  { id:'banos',    label:'BAÑOS',              sub:'',                            color:'#D7CCC8', x:5,   y:107, w:145, h:85,  notes:'' },
+  { id:'lavamanos',label:'LAVAMANOS',           sub:'',                            color:'#EFEBE9', x:152, y:107, w:64,  h:58,  notes:'' },
+  { id:'oficina',  label:'OFICINA RSG',         sub:'registros',                   color:'#FFE082', x:5,   y:194, w:145, h:93,  notes:'' },
+  { id:'gradas2',  label:'GRADAS',              sub:'2do nivel',                   color:'#BDBDBD', x:5,   y:289, w:145, h:65,  notes:'' },
+  { id:'pasillo',  label:'PASILLO',             sub:'',                            color:'#9E9E9E', x:152, y:167, w:26,  h:292, notes:'' },
+  { id:'cooler2',  label:'COOLER 2',            sub:'-18°C congelación',           color:'#80DEEA', x:223, y:5,   w:305, h:78,  notes:'' },
+  { id:'cooler1',  label:'COOLER 1',            sub:'0-4°C refrigeración',         color:'#FFF176', x:310, y:85,  w:165, h:80,  notes:'' },
+  { id:'acceso',   label:'acceso ext.',         sub:'',                            color:'#A5D6A7', x:477, y:85,  w:52,  h:80,  notes:'' },
+  { id:'trabajo',  label:'TRABAJO / PRE-CARGA', sub:'cebolla y pepe',              color:'#90CAF9', x:223, y:167, w:254, h:145, notes:'' },
+  { id:'parqueo',  label:'PARQUEO INTERIOR',    sub:'camiones yendo al portón 1',  color:'#BBDEFB', x:178, y:314, w:297, h:145, notes:'' },
+  { id:'pallets',  label:'PALLETS',             sub:'tarimas',                     color:'#B0BEC5', x:477, y:314, w:78,  h:97,  notes:'' },
+  { id:'gradas_p', label:'GRADAS',              sub:'PLANTA ELÉC.',                color:'#CFD8DC', x:477, y:413, w:78,  h:46,  notes:'' },
+  { id:'porton',   label:'PORTÓN DE INGRESO',   sub:'',                            color:'#66BB6A', x:178, y:461, w:374, h:28,  notes:'' },
+];
+
+const INITIAL_TRAPS = [
+  { id:'t1',  num:1,  label:'Portón izq.',       x:181, y:453 },
+  { id:'t2',  num:2,  label:'Portón der.',        x:548, y:453 },
+  { id:'t3',  num:3,  label:'Parqueo sup-izq',    x:181, y:306 },
+  { id:'t4',  num:4,  label:'Parqueo sup-der',    x:470, y:406 },
+  { id:'t5',  num:5,  label:'Pre-carga sup-izq',  x:225, y:159 },
+  { id:'t6',  num:6,  label:'Pre-carga sup-der',  x:470, y:159 },
+  { id:'t7',  num:7,  label:'Pre-carga inf-izq',  x:225, y:306 },
+  { id:'t8',  num:8,  label:'Pre-carga inf-der',  x:470, y:306 },
+  { id:'t9',  num:9,  label:'Bodega esq. sup',    x:220, y:3   },
+  { id:'t10', num:10, label:'Bodega esq. inf',    x:152, y:159 },
+  { id:'t11', num:11, label:'Zona pallets',        x:529, y:3   },
+];
+
+const PRESET_AREAS = [
+  { label:'Área de zapatos',      color:'#FFE0B2' },
+  { label:'Basureros',            color:'#EFEBE9' },
+  { label:'Lavado de papas',      color:'#E0F2F1' },
+  { label:'Guardado de cajillas', color:'#FFF9C4' },
+];
+
+const uid = () => Math.random().toString(36).slice(2, 9);
+
+const sanitizeZone = z => ({
+  ...z,
+  sub:   z.sub   ?? '',
+  notes: z.notes ?? '',
+  x: Number(z.x) || 0,
+  y: Number(z.y) || 0,
+  w: Number(z.w) || 100,
+  h: Number(z.h) || 60,
+  color: z.color || '#F5F5F5',
+});
 
 export default function Croquis() {
   const toast = useToast();
-  const [zonas,     setZonas]     = useState(ZONAS_DEFAULT);
-  const [editId,    setEditId]    = useState(null);
-  const [editVal,   setEditVal]   = useState('');
-  const [saving,    setSaving]    = useState(false);
-  const [loading,   setLoading]   = useState(true);
-  const [updatedAt, setUpdatedAt] = useState(null);
+  const [zones,      setZones]      = useState(INITIAL_ZONES);
+  const [traps,      setTraps]      = useState(INITIAL_TRAPS);
+  const [selectedId, setSelectedId] = useState(null);
+  const [mode,       setMode]       = useState('select'); // 'select' | 'traps'
+  const [saving,     setSaving]     = useState(false);
+  const [loading,    setLoading]    = useState(true);
+  const [customArea, setCustomArea] = useState('');
+  const dragRef = useRef(null);
 
+  // Load from Firestore
   useEffect(() => {
     (async () => {
       try {
         const snap = await getDoc(doc(db, 'ajua_bpm', 'croquis_bodega'));
         if (snap.exists()) {
-          const data = snap.data();
-          if (data.zonas?.length) {
-            const savedMap = Object.fromEntries(data.zonas.map(z => [z.id, z]));
-            setZonas(ZONAS_DEFAULT.map(z => ({ ...z, ...(savedMap[z.id] || {}) })));
-          }
-          setUpdatedAt(data.updatedAt || null);
+          const d = snap.data();
+          if (d.zones?.length) setZones(d.zones.map(sanitizeZone));
+          if (d.traps?.length) setTraps(d.traps);
         }
-      } catch (e) { console.warn('Croquis load:', e.message); }
+      } catch(e) { console.warn('Croquis load:', e.message); }
       setLoading(false);
     })();
   }, []);
 
-  const setZona = (id, field, value) =>
-    setZonas(prev => prev.map(z => z.id !== id ? z : { ...z, [field]: value }));
-
-  const startRename = (z) => { setEditId(z.id); setEditVal(z.label); };
-  const commitRename = () => {
-    if (editId && editVal.trim()) setZona(editId, 'label', editVal.trim());
-    setEditId(null);
-  };
+  // Global mouseup so drag doesn't get stuck if cursor leaves window
+  useEffect(() => {
+    const up = () => { dragRef.current = null; };
+    window.addEventListener('mouseup', up);
+    return () => window.removeEventListener('mouseup', up);
+  }, []);
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      const now = new Date().toISOString();
       await setDoc(doc(db, 'ajua_bpm', 'croquis_bodega'), {
-        zonas: zonas.map(({ id, label, notas }) => ({ id, label, notas })),
-        updatedAt: now,
+        zones, traps, updatedAt: new Date().toISOString(),
       });
-      setUpdatedAt(now);
       toast('✓ Croquis guardado');
-    } catch (e) {
-      toast('Error al guardar: ' + e.message, 'error');
-    }
+    } catch(e) { toast('Error: ' + e.message, 'error'); }
     setSaving(false);
   };
 
-  if (loading) return <div style={{ padding: 60, textAlign: 'center', color: T.textMid }}>Cargando…</div>;
+  const handleReset = () => {
+    if (!window.confirm('¿Restaurar el plano original? Se perderán los cambios no guardados.')) return;
+    setZones(INITIAL_ZONES);
+    setTraps(INITIAL_TRAPS);
+    setSelectedId(null);
+  };
 
+  // ── Drag ──────────────────────────────────────────────────────
+  const onMouseDownZone = (e, id) => {
+    if (mode === 'traps') return;
+    e.preventDefault();
+    e.stopPropagation();
+    setSelectedId(id);
+    const zone = zones.find(z => z.id === id);
+    dragRef.current = { type:'zone', id, startX:e.clientX, startY:e.clientY, origX:zone.x, origY:zone.y };
+  };
+
+  const onMouseDownTrap = (e, id) => {
+    if (mode !== 'traps') return;
+    e.preventDefault();
+    e.stopPropagation();
+    const trap = traps.find(t => t.id === id);
+    dragRef.current = { type:'trap', id, startX:e.clientX, startY:e.clientY, origX:trap.x, origY:trap.y };
+  };
+
+  const onMouseMove = useCallback((e) => {
+    if (!dragRef.current) return;
+    const dx = e.clientX - dragRef.current.startX;
+    const dy = e.clientY - dragRef.current.startY;
+    if (dragRef.current.type === 'zone') {
+      setZones(prev => prev.map(z => z.id !== dragRef.current.id ? z : {
+        ...z,
+        x: Math.max(0, Math.min(CW - z.w, dragRef.current.origX + dx)),
+        y: Math.max(0, Math.min(CH - z.h, dragRef.current.origY + dy)),
+      }));
+    } else {
+      setTraps(prev => prev.map(t => t.id !== dragRef.current.id ? t : {
+        ...t,
+        x: Math.max(8, Math.min(CW - 8, dragRef.current.origX + dx)),
+        y: Math.max(8, Math.min(CH - 8, dragRef.current.origY + dy)),
+      }));
+    }
+  }, []);
+
+  const onMouseUp = useCallback(() => { dragRef.current = null; }, []);
+
+  // ── Zone helpers ──────────────────────────────────────────────
+  const updateZone = (id, field, value) =>
+    setZones(prev => prev.map(z => z.id !== id ? z : { ...z, [field]: value }));
+
+  const nudge = (field, delta) => {
+    if (!selectedId) return;
+    setZones(prev => prev.map(z => z.id !== selectedId ? z : { ...z, [field]: Math.max(0, (z[field] || 0) + delta) }));
+  };
+
+  const addArea = (label, color) => {
+    setZones(prev => [...prev, sanitizeZone({
+      id: uid(), label, sub:'', color,
+      x: Math.floor(CW/2) - 60, y: Math.floor(CH/2) - 30, w:120, h:60, notes:'',
+    })]);
+  };
+
+  const deleteZone = () => {
+    if (!selectedId) return;
+    if (!window.confirm('¿Eliminar esta zona?')) return;
+    setZones(prev => prev.filter(z => z.id !== selectedId));
+    setSelectedId(null);
+  };
+
+  const selectedZone = zones.find(z => z.id === selectedId);
+
+  if (loading) return <div style={{ padding:60, textAlign:'center', color:T.textMid }}>Cargando…</div>;
+
+  // ── Render ────────────────────────────────────────────────────
   return (
-    <div style={{ maxWidth: 1100 }}>
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
+    <div style={{ fontFamily:'inherit', display:'flex', gap:14, alignItems:'flex-start' }}>
+
+      {/* ── LEFT PANEL ──────────────────────────────────────── */}
+      <div style={{ width:168, flexShrink:0, display:'flex', flexDirection:'column', gap:12 }}>
+
         <div>
-          <h1 style={{ fontSize: '1.35rem', fontWeight: 700, color: T.primary, margin: 0 }}>Croquis de Bodega</h1>
-          <p style={{ fontSize: '.82rem', color: T.textMid, margin: '4px 0 0' }}>
-            Distribución, zonas y notas internas — Agroindustria Ajúa
-            {updatedAt && (
-              <span style={{ marginLeft: 10 }}>
-                · Guardado: {new Date(updatedAt).toLocaleDateString('es-GT', { day: '2-digit', month: 'short', year: 'numeric' })}
-              </span>
-            )}
-          </p>
+          <div style={{ fontWeight:800, fontSize:'1.05rem', color:T.primary, lineHeight:1.2 }}>Croquis de Bodega</div>
+          <div style={{ fontSize:'.7rem', color:T.textMid, marginTop:2 }}>Editor visual — arrastrá las zonas</div>
         </div>
-        <button
-          onClick={handleSave} disabled={saving}
-          style={{ padding: '10px 24px', background: saving ? '#BDBDBD' : T.primary, color: '#fff', border: 'none', borderRadius: 6, fontWeight: 700, fontSize: '.88rem', cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit', flexShrink: 0 }}
-        >
-          {saving ? 'Guardando…' : 'Guardar Cambios'}
-        </button>
+
+        {/* Actions */}
+        <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
+          <button onClick={() => setMode(m => m === 'traps' ? 'select' : 'traps')}
+            style={{ padding:'7px 10px', fontWeight:700, fontSize:'.75rem', cursor:'pointer', fontFamily:'inherit', borderRadius:6,
+              background: mode==='traps' ? T.primary : '#F5F5F5',
+              color:       mode==='traps' ? '#fff'     : '#333',
+              border:`1.5px solid ${mode==='traps' ? T.primary : '#ccc'}` }}>
+            🎯 {mode==='traps' ? 'Modo trampas activo' : 'Mover trampas'}
+          </button>
+          <button onClick={handleSave} disabled={saving}
+            style={{ padding:'7px 10px', fontWeight:700, fontSize:'.75rem', cursor:'pointer', fontFamily:'inherit',
+              background: saving ? '#ccc' : T.primary, color:'#fff', border:'none', borderRadius:6 }}>
+            {saving ? 'Guardando…' : '💾 Guardar cambios'}
+          </button>
+          <button onClick={() => window.print()}
+            style={{ padding:'7px 10px', fontWeight:600, fontSize:'.74rem', cursor:'pointer', fontFamily:'inherit',
+              background:'#F5F5F5', color:'#555', border:'1.5px solid #ddd', borderRadius:6 }}>
+            🖨️ Imprimir / PDF
+          </button>
+          <button onClick={handleReset}
+            style={{ padding:'5px 10px', fontWeight:600, fontSize:'.72rem', cursor:'pointer', fontFamily:'inherit',
+              background:'none', color:'#999', border:'1px solid #ddd', borderRadius:6 }}>
+            ↩ Restaurar plano
+          </button>
+        </div>
+
+        {/* Predefined areas */}
+        <div>
+          <div style={{ fontSize:'.67rem', fontWeight:700, textTransform:'uppercase', color:T.textMid, letterSpacing:'.06em', marginBottom:5 }}>
+            Áreas predefinidas
+          </div>
+          {PRESET_AREAS.map(p => (
+            <button key={p.label} onClick={() => addArea(p.label, p.color)}
+              style={{ display:'block', width:'100%', textAlign:'left', padding:'5px 8px', marginBottom:3,
+                background:p.color, border:'1.5px solid rgba(0,0,0,.15)', borderRadius:5,
+                fontSize:'.73rem', cursor:'pointer', fontFamily:'inherit', fontWeight:600 }}>
+              + {p.label}
+            </button>
+          ))}
+          <div style={{ display:'flex', gap:4, marginTop:4 }}>
+            <input value={customArea} onChange={e => setCustomArea(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && customArea.trim()) { addArea(customArea.trim(), '#F5F5F5'); setCustomArea(''); }}}
+              placeholder="Área personalizada…"
+              style={{ flex:1, padding:'5px 7px', fontSize:'.72rem', border:'1.5px solid #ddd', borderRadius:5, outline:'none', fontFamily:'inherit' }} />
+            <button onClick={() => { if (customArea.trim()) { addArea(customArea.trim(), '#F5F5F5'); setCustomArea(''); }}}
+              style={{ padding:'5px 8px', background:T.primary, color:'#fff', border:'none', borderRadius:5, cursor:'pointer', fontWeight:700, fontSize:'.8rem' }}>+</button>
+          </div>
+        </div>
+
+        {/* Traps list */}
+        <div>
+          <div style={{ fontSize:'.67rem', fontWeight:700, textTransform:'uppercase', color:T.textMid, letterSpacing:'.06em', marginBottom:5 }}>
+            Trampas ({traps.length})
+          </div>
+          <div style={{ maxHeight:200, overflowY:'auto' }}>
+            {traps.map(t => (
+              <div key={t.id} style={{ display:'flex', alignItems:'center', gap:6, marginBottom:4, fontSize:'.73rem' }}>
+                <div style={{ width:19, height:19, borderRadius:'50%', background:'#D32F2F', border:'2px solid #fff',
+                  boxShadow:'0 1px 3px rgba(0,0,0,.3)', display:'flex', alignItems:'center', justifyContent:'center',
+                  color:'#fff', fontSize:'.6rem', fontWeight:900, flexShrink:0 }}>
+                  {t.num}
+                </div>
+                <span style={{ color:T.textMid, flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{t.label}</span>
+              </div>
+            ))}
+          </div>
+          {mode === 'traps' && (
+            <div style={{ fontSize:'.67rem', color:T.primary, fontWeight:600, marginTop:4, lineHeight:1.4 }}>
+              🔵 Arrastrá los números rojos en el plano para reubicarlos.
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Zone grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))', gap: 16, marginBottom: 20 }}>
-        {zonas.map(z => (
-          <div key={z.id} style={{
-            background: z.color, border: `2px solid ${z.border}`, borderRadius: 10,
-            padding: 16, boxShadow: '0 1px 4px rgba(0,0,0,.08)',
-          }}>
-            {/* Zone title */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-              <span style={{ fontSize: '1.15rem', flexShrink: 0 }}>{z.icon}</span>
-              {editId === z.id ? (
-                <input
-                  autoFocus value={editVal}
-                  onChange={e => setEditVal(e.target.value)}
-                  onBlur={commitRename}
-                  onKeyDown={e => e.key === 'Enter' && commitRename()}
-                  style={{ flex: 1, padding: '4px 8px', border: `1.5px solid ${z.border}`, borderRadius: 5, fontSize: '.88rem', fontFamily: 'inherit', outline: 'none', fontWeight: 700, background: '#fff' }}
-                />
-              ) : (
-                <span style={{ flex: 1, fontWeight: 700, fontSize: '.9rem', color: T.textDark, lineHeight: 1.3 }}>
-                  {z.label}
-                  <button onClick={() => startRename(z)} title="Renombrar zona" style={{ marginLeft: 6, background: 'none', border: 'none', cursor: 'pointer', fontSize: '.7rem', color: T.textMid, padding: '0 2px' }}>✏</button>
-                </span>
+      {/* ── CANVAS ──────────────────────────────────────────── */}
+      <div style={{ flexShrink:0 }}>
+        <div
+          style={{ position:'relative', width:CW, height:CH,
+            background:'#EDE9E3', border:'2px solid #aaa',
+            overflow:'hidden', userSelect:'none',
+            boxShadow:'0 2px 10px rgba(0,0,0,.18)', cursor:'default' }}
+          onMouseMove={onMouseMove}
+          onMouseUp={onMouseUp}
+          onClick={e => { if (e.target === e.currentTarget) setSelectedId(null); }}
+        >
+          {/* Zones */}
+          {zones.map(z => (
+            <div key={z.id}
+              onMouseDown={e => onMouseDownZone(e, z.id)}
+              style={{
+                position:'absolute', left:z.x, top:z.y, width:z.w, height:z.h,
+                background:z.color,
+                border:`2px solid ${z.id === selectedId ? '#000' : 'rgba(0,0,0,.25)'}`,
+                outline: z.id === selectedId ? '2.5px solid rgba(0,0,0,.5)' : 'none',
+                borderRadius:3, boxSizing:'border-box', overflow:'hidden',
+                display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+                padding:'3px 4px',
+                cursor: mode === 'traps' ? 'default' : 'move',
+              }}>
+              <div style={{ fontSize:'.64rem', fontWeight:800, textAlign:'center', lineHeight:1.2, color:'rgba(0,0,0,.75)', pointerEvents:'none', wordBreak:'break-word' }}>
+                {z.label}
+              </div>
+              {z.sub && (
+                <div style={{ fontSize:'.53rem', textAlign:'center', color:'rgba(0,0,0,.5)', lineHeight:1.2, marginTop:1, pointerEvents:'none' }}>
+                  {z.sub}
+                </div>
               )}
             </div>
+          ))}
 
-            {/* Notes */}
-            <textarea
-              value={z.notas}
-              onChange={e => setZona(z.id, 'notas', e.target.value)}
-              placeholder="Notas, observaciones, cambios en esta zona…"
-              rows={3}
-              style={{ width: '100%', padding: '8px 10px', border: `1.5px solid ${z.border}55`, borderRadius: 6, fontSize: '.82rem', fontFamily: 'inherit', outline: 'none', resize: 'vertical', background: 'rgba(255,255,255,.75)', boxSizing: 'border-box', color: T.textDark }}
-            />
+          {/* Trap markers */}
+          {traps.map(t => (
+            <div key={t.id}
+              onMouseDown={e => onMouseDownTrap(e, t.id)}
+              title={`#${t.num} — ${t.label}`}
+              style={{
+                position:'absolute', left:t.x - 11, top:t.y - 11,
+                width:22, height:22, borderRadius:'50%',
+                background:'#C62828', border:'2.5px solid #fff',
+                display:'flex', alignItems:'center', justifyContent:'center',
+                color:'#fff', fontSize:'.6rem', fontWeight:900,
+                cursor: mode === 'traps' ? 'grab' : 'default',
+                userSelect:'none', zIndex:20,
+                boxShadow:'0 1px 5px rgba(0,0,0,.5)',
+                pointerEvents: mode === 'traps' ? 'auto' : 'none',
+              }}>
+              {t.num}
+            </div>
+          ))}
+        </div>
+
+        <div style={{ marginTop:6, fontSize:'.68rem', color:T.textMid }}>
+          {mode === 'traps'
+            ? '🎯 Modo trampas — arrastrá los marcadores rojos para reubicarlos. Guardá cuando terminés.'
+            : 'Clic en zona para seleccionarla · Arrastrá para mover · Panel derecho para editar propiedades'}
+        </div>
+      </div>
+
+      {/* ── RIGHT PANEL ─────────────────────────────────────── */}
+      <div style={{ width:215, flexShrink:0 }}>
+        {selectedZone ? (
+          <div style={{ background:'#fff', border:'1.5px solid #e0e0e0', borderRadius:8, padding:14 }}>
+            <div style={{ fontWeight:700, fontSize:'.78rem', color:T.primary, marginBottom:10, textTransform:'uppercase', letterSpacing:'.04em' }}>
+              Propiedades
+            </div>
+
+            <label style={labelSt}>Nombre
+              <input value={selectedZone.label}
+                onChange={e => updateZone(selectedId, 'label', e.target.value)}
+                style={inputSt} />
+            </label>
+
+            <label style={labelSt}>Subtítulo
+              <input value={selectedZone.sub}
+                onChange={e => updateZone(selectedId, 'sub', e.target.value)}
+                placeholder="Descripción breve…"
+                style={inputSt} />
+            </label>
+
+            <div style={{ fontSize:'.67rem', fontWeight:700, textTransform:'uppercase', color:T.textMid, marginBottom:5 }}>Color</div>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(8,1fr)', gap:3, marginBottom:10 }}>
+              {PALETTE.map(c => (
+                <div key={c} onClick={() => updateZone(selectedId, 'color', c)}
+                  style={{ width:20, height:20, background:c, borderRadius:3, cursor:'pointer',
+                    border:`2px solid ${c === selectedZone.color ? '#222' : 'rgba(0,0,0,.18)'}`,
+                    boxSizing:'border-box' }} />
+              ))}
+            </div>
+
+            <div style={{ fontSize:'.67rem', fontWeight:700, textTransform:'uppercase', color:T.textMid, marginBottom:6 }}>Dimensiones</div>
+            {[['Ancho','w'],['Alto','h'],['Pos. X','x'],['Pos. Y','y']].map(([lbl, f]) => (
+              <div key={f} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:5 }}>
+                <span style={{ fontSize:'.72rem', color:T.textMid, width:40 }}>{lbl}</span>
+                <div style={{ display:'flex', alignItems:'center', gap:3 }}>
+                  <button onClick={() => nudge(f, -5)} style={nudgeBtnSt}>−</button>
+                  <input type="number" value={selectedZone[f]}
+                    onChange={e => updateZone(selectedId, f, Number(e.target.value))}
+                    style={{ width:50, padding:'3px 5px', border:'1.5px solid #ddd', borderRadius:4, fontSize:'.76rem', textAlign:'center', outline:'none', fontFamily:'inherit' }} />
+                  <button onClick={() => nudge(f, 5)} style={nudgeBtnSt}>+</button>
+                  <span style={{ fontSize:'.66rem', color:T.textMid }}>px</span>
+                </div>
+              </div>
+            ))}
+
+            <div style={{ marginTop:10, paddingTop:10, borderTop:'1px solid #f0f0f0' }}>
+              <div style={{ fontSize:'.67rem', fontWeight:700, textTransform:'uppercase', color:T.textMid, marginBottom:5 }}>
+                📋 Notas BPM
+              </div>
+              <textarea value={selectedZone.notes}
+                onChange={e => updateZone(selectedId, 'notes', e.target.value)}
+                rows={3} placeholder="Instrucciones, controles, observaciones…"
+                style={{ width:'100%', padding:'6px 8px', border:'1.5px solid #ddd', borderRadius:5,
+                  fontSize:'.75rem', fontFamily:'inherit', outline:'none', resize:'vertical',
+                  boxSizing:'border-box', color:T.textDark }} />
+            </div>
+
+            <button onClick={deleteZone}
+              style={{ marginTop:10, width:'100%', padding:'7px', background:'none',
+                border:'1.5px solid #C62828', color:'#C62828', borderRadius:5,
+                cursor:'pointer', fontWeight:700, fontSize:'.75rem', fontFamily:'inherit' }}>
+              🗑 Eliminar zona
+            </button>
           </div>
-        ))}
+        ) : (
+          <div style={{ padding:16, background:'#fafafa', border:'1.5px solid #e0e0e0', borderRadius:8, fontSize:'.77rem', color:T.textMid, lineHeight:1.7 }}>
+            <div style={{ fontWeight:700, color:T.primary, marginBottom:8, fontSize:'.82rem' }}>Instrucciones</div>
+            <p style={{ margin:'0 0 6px' }}>• <b>Clic</b> en zona para ver propiedades.</p>
+            <p style={{ margin:'0 0 6px' }}>• <b>Arrastrar</b> zona para moverla.</p>
+            <p style={{ margin:'0 0 6px' }}>• Activar <b>Mover trampas</b> para reubicar marcadores.</p>
+            <p style={{ margin:'0 0 6px' }}>• Panel izquierdo para agregar nuevas áreas.</p>
+            <p style={{ margin:0 }}>• <b>Guardar cambios</b> para persistir.</p>
+          </div>
+        )}
       </div>
 
-      <div style={{ padding: '10px 14px', background: '#F5F5F0', borderRadius: 6, fontSize: '.76rem', color: T.textMid }}>
-        Clic en ✏ para renombrar una zona · Las notas se guardan en Firestore al presionar "Guardar Cambios"
-      </div>
     </div>
   );
 }
+
+// ── Style constants ───────────────────────────────────────────────
+const labelSt = {
+  fontSize:'.67rem', fontWeight:700, textTransform:'uppercase',
+  color:'#6B6B60', display:'flex', flexDirection:'column', gap:3, marginBottom:8,
+};
+const inputSt = {
+  padding:'6px 8px', border:'1.5px solid #ddd', borderRadius:5,
+  fontSize:'.79rem', outline:'none', fontFamily:'inherit', color:'#1A1A18',
+};
+const nudgeBtnSt = {
+  width:22, height:22, border:'1px solid #ddd', borderRadius:4,
+  background:'#f5f5f5', cursor:'pointer', fontWeight:700, fontSize:'.8rem',
+  padding:0, lineHeight:1,
+};
