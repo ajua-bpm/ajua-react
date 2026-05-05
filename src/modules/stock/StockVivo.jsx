@@ -223,7 +223,8 @@ export default function StockVivo() {
       const canonId = resolve(e.productoId, nombre);
       if (!canonId) continue;
       const cat     = prodById[canonId];
-      const esPorUnidad = cat?.unidadCompra === 'unidad' || cat?.unidadCompra === 'pza';
+      const esPorUnidad = cat?.unidadCompra === 'unidad' || cat?.unidadCompra === 'pza'
+        || e.unidad === 'unidad' || e.unidad === 'pza' || e.unidad === 'unidades';
       const lbs  = esPorUnidad ? 0 : (Number(e.lbs) || Number(e.lbsBrutas) || Number(e.lbsNeto) || Number(e.lbsTotal) || Number(e.lbsBruto) || 0);
       const unid = esPorUnidad ? (Number(e.bultos) || Number(e.unidades) || Number(e.cantidad) || 0) : 0;
       mvs.push({
@@ -257,7 +258,8 @@ export default function StockVivo() {
         const canonId = resolve(l.productoId, nombre);
         if (!canonId) continue;
         const cat     = prodById[canonId];
-        const esPorUnidad = cat?.unidadCompra === 'unidad' || cat?.unidadCompra === 'pza';
+        const esPorUnidad = cat?.unidadCompra === 'unidad' || cat?.unidadCompra === 'pza'
+          || l.tipoContenido === 'unidades';
         const cajasForLbs = Number(l.cajas) || Number(l.cajasEnviadas) || Number(l.bultos) || 0;
         const lbs      = esPorUnidad ? 0 : (Number(l.totalLbs) || Number(l.lbs) || (Number(l.lbsBulto) * cajasForLbs) || (Number(l.lbsCaja) * cajasForLbs) || 0);
         const cajasRaw = Number(l.bultos) || Number(l.cajasEnviadas) || Number(l.cajas) || 0;
