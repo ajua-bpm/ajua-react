@@ -188,7 +188,7 @@ export default function Finanzas() {
           <div style={{ overflowX:'auto' }}>
             <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'.82rem' }}>
               <thead><tr style={{ background:T.primary, color:WHITE }}>
-                {['Banco','Fecha','Descripción','Débito','Crédito','Categoría'].map(h=>(
+                {['Banco','Fecha','Descripción','Débito','Crédito','Categoría',''].map(h=>(
                   <th key={h} style={{ padding:'8px 10px', textAlign:'left', whiteSpace:'nowrap' }}>{h}</th>
                 ))}
               </tr></thead>
@@ -200,6 +200,12 @@ export default function Finanzas() {
                   <td style={{ padding:'7px 10px', color:T.danger, textAlign:'right' }}>{m.debito>0?fmtQ(m.debito):''}</td>
                   <td style={{ padding:'7px 10px', color:'#15803d', textAlign:'right' }}>{m.credito>0?fmtQ(m.credito):''}</td>
                   <td style={{ padding:'7px 10px' }}>{m.categoria||<span style={{color:T.danger,fontWeight:600}}>Sin clasificar</span>}</td>
+                  <td style={{ padding:'7px 8px', textAlign:'center' }}>
+                    <button onClick={async()=>{ if(!window.confirm(`¿Eliminar este movimiento?\n${m.fecha} — ${m.descripcion}`))return; await banco.borrarUno(m.id); }}
+                      style={{ padding:'2px 8px', background:'none', border:`1px solid ${T.danger}`, color:T.danger, borderRadius:4, cursor:'pointer', fontSize:'.72rem', fontWeight:700 }}>
+                      ✕
+                    </button>
+                  </td>
                 </tr>
               ))}</tbody>
             </table>

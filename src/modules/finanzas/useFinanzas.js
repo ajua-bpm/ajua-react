@@ -100,7 +100,12 @@ export function useMovimientosBanco() {
     return soloCreditos.length;
   }, []);
 
-  return { data, loading, cargar, clasificar, importar, borrarPorBanco, borrarCreditos };
+  const borrarUno = useCallback(async (id) => {
+    await deleteDoc(doc(db, 'movimientosBanco', id));
+    setData(prev => prev.filter(d => d.id !== id));
+  }, []);
+
+  return { data, loading, cargar, clasificar, importar, borrarPorBanco, borrarCreditos, borrarUno };
 }
 
 // ── Hook facturas FEL ──────────────────────────────────────────────
