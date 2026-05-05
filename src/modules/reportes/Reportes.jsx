@@ -40,7 +40,7 @@ const SECTION_HDR = {
   letterSpacing: '.08em', color: T.primary,
   marginBottom: 14, paddingBottom: 10, borderBottom: `1px solid ${T.border}`,
 };
-const TAB_MODS = ['📊 Estado de Resultados', '✅ Cumplimiento BPM', '📥 Exportar Excel', '🤖 Análisis IA'];
+const TAB_MODS = ['📊 Estado de Resultados', '✅ Cumplimiento BPM', '📥 Exportar Excel', '🤖 Análisis IA', '📦 Trazabilidad Inventario'];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const today = () => new Date().toISOString().slice(0, 10);
@@ -169,8 +169,10 @@ export default function Reportes() {
   const [desde, setDesde] = useState(monthStart());
   const [hasta, setHasta] = useState(today());
   const [tab, setTab] = useState(0);
-  const [exporting, setExporting] = useState(false);
-  const [analyzing, setAnalyzing] = useState(false);
+  const [exporting,    setExporting]    = useState(false);
+  const [analyzing,    setAnalyzing]    = useState(false);
+  const [filtProd,     setFiltProd]     = useState('');
+  const [exportingInv, setExportingInv] = useState(false);
   const [aiResult, setAiResult] = useState('');
   const [aiError, setAiError] = useState('');
 
@@ -180,7 +182,8 @@ export default function Reportes() {
   const { data: vintData                } = useCollection('vintVentas',      { orderField: 'fecha', orderDir: 'desc', limit: 500 });
   const { data: gasData,   loading: lGas } = useCollection('gastosDiarios',  { orderField: 'fecha', orderDir: 'desc', limit: 500 });
   const { data: anticipos, loading: lAnt } = useCollection('iAnticipo',      { orderField: 'fecha', orderDir: 'desc', limit: 200 });
-  const { data: entradas,  loading: lEnt } = useCollection('ientradas',      { orderField: 'fecha', orderDir: 'desc', limit: 200 });
+  const { data: entradas,  loading: lEnt } = useCollection('ientradas',      { orderField: 'fecha', orderDir: 'desc', limit: 2000 });
+  const { data: salidasInv,loading: lSal } = useCollection('isalidas',       { orderField: 'fecha', orderDir: 'desc', limit: 2000 });
   const { data: tlData  }  = useCollection('tl',   { orderField: 'fecha', orderDir: 'desc', limit: 200 });
   const { data: dtData  }  = useCollection('dt',   { orderField: 'fecha', orderDir: 'desc', limit: 200 });
   const { data: alData  }  = useCollection('al',   { orderField: 'fecha', orderDir: 'desc', limit: 200 });
@@ -189,7 +192,7 @@ export default function Reportes() {
   const { data: limpData } = useCollection('limp', { orderField: 'fecha', orderDir: 'desc', limit: 200 });
   const { data: fumData  } = useCollection('fum',  { orderField: 'fecha', orderDir: 'desc', limit: 200 });
 
-  const loading = lWm || lVgt || lGas || lAnt || lEnt;
+  const loading = lWm || lVgt || lGas || lAnt || lEnt || lSal;
 
   // ── Filtered sets ────────────────────────────────────────────────────────
   const wmFilt  = useMemo(() => (wmData  || []).filter(r => {
@@ -446,6 +449,116 @@ export default function Reportes() {
     setExporting(false);
   }, [desde, hasta, ingWalmart, ingGT, totalIngresos, costImport, costProducto, totalCostos,
       utilBruta, totalGastos, utilNeta, gastosSorted, gasFilt, wmData, vgtFilt, bpmResults, diasHabiles]);
+
+  // ── Inventario: movimientos combinados entradas + salidas ────────────────
+  const inventarioMovs = useMemo(() => {
+    const movs = [];
+
+    // Entradas
+    for (const e of (entradas || [])) {
+      const f = e.fecha || '';
+      if (f < desde || f > hasta) continue;
+      const prod = e.producto || e.productoNombre || '';
+      if (filtProd && !prod.toLowerCase().includes(filtProd.toLowerCase())) continue;
+      const lbs = Number(e.lbsBrutas) || Number(e.lbs) || Number(e.lbsTotal) || Number(e.lbsBruto) || (Number(e.kgTotal || e.kgBulto || 0) * 2.20462) || 0;
+      movs.push({ fecha: f, tipo: 'entrada', producto: prod,
+        entidad: e.productor || e.productorNombre || e.proveedor || '—',
+        bultos: Number(e.bultos) || 0, lbs, unid: 0,
+        duca: e.duca || '', ref: e.cotizacion || e.cotizacionNom || '' });
+    }
+
+    // Salidas — flatten lineas/productos
+    for (const s of (salidasInv || [])) {
+      const f = s.fecha || '';
+      if (f < desde || f > hasta) continue;
+      const lineas = Array.isArray(s.lineas)
+        ? s.lineas
+        : Array.isArray(s.productos)
+          ? s.productos
+          : s.producto ? [{ producto: s.producto, cajas: s.cajasEnviadas, totalLbs: s.lbs }] : [];
+      for (const l of lineas) {
+        const prod = l.producto || l.productoNombre || l.descripcion || '';
+        if (filtProd && !prod.toLowerCase().includes(filtProd.toLowerCase())) continue;
+        const cajas = Number(l.cajas) || Number(l.cajasEnviadas) || 0;
+        const lbsCaj = Number(l.lbsCaja) || 0;
+        const lbs = Number(l.totalLbs) || Number(l.lbs) || (lbsCaj * cajas) || 0;
+        const unid = Number(l.totalUnidades) || 0;
+        movs.push({ fecha: f, tipo: 'salida', producto: prod,
+          entidad: s.cliente || 'Walmart Guatemala',
+          bultos: cajas, lbs, unid,
+          duca: '', ref: s.authSAT || s.numOC || '' });
+      }
+    }
+
+    return movs.sort((a, b) => (b.fecha > a.fecha ? 1 : b.fecha < a.fecha ? -1 : 0));
+  }, [entradas, salidasInv, desde, hasta, filtProd]);
+
+  const invTotales = useMemo(() => {
+    let entLbs = 0, salLbs = 0, entBultos = 0, salBultos = 0;
+    for (const m of inventarioMovs) {
+      if (m.tipo === 'entrada') { entLbs += m.lbs; entBultos += m.bultos; }
+      else { salLbs += m.lbs; salBultos += m.bultos; }
+    }
+    return { entLbs, salLbs, balLbs: entLbs - salLbs, entBultos, salBultos };
+  }, [inventarioMovs]);
+
+  // Productos únicos para el selector
+  const prodListInv = useMemo(() => {
+    const s = new Set();
+    for (const e of (entradas || [])) {
+      const p = e.producto || e.productoNombre || '';
+      if (p) s.add(p);
+    }
+    for (const sal of (salidasInv || [])) {
+      const lineas = Array.isArray(sal.lineas) ? sal.lineas : Array.isArray(sal.productos) ? sal.productos : [];
+      for (const l of lineas) {
+        const p = l.producto || l.productoNombre || l.descripcion || '';
+        if (p) s.add(p);
+      }
+    }
+    return [...s].sort();
+  }, [entradas, salidasInv]);
+
+  const exportInventarioExcel = useCallback(() => {
+    setExportingInv(true);
+    try {
+      const wb = XLSX.utils.book_new();
+      const rows = inventarioMovs.map(m => [
+        m.fecha, m.tipo === 'entrada' ? 'ENTRADA' : 'SALIDA',
+        m.producto, m.entidad,
+        m.bultos || '',
+        m.lbs > 0 ? m.lbs.toFixed(2) : '',
+        m.unid > 0 ? m.unid : '',
+        m.duca || '', m.ref || '',
+      ]);
+      const ws = makeSheet(
+        ['Fecha','Tipo','Producto','Proveedor / Cliente','Bultos/Cajas','LBS','Unidades','DUCA','Referencia'],
+        rows,
+        [12,10,20,24,14,12,10,20,20].map(w => ({ wch: w }))
+      );
+      XLSX.utils.book_append_sheet(wb, ws, 'Movimientos Inventario');
+
+      // Hoja resumen por producto
+      const byProd = {};
+      for (const m of inventarioMovs) {
+        if (!byProd[m.producto]) byProd[m.producto] = { entLbs:0, salLbs:0, entBultos:0, salBultos:0 };
+        const slot = byProd[m.producto];
+        if (m.tipo === 'entrada') { slot.entLbs += m.lbs; slot.entBultos += m.bultos; }
+        else { slot.salLbs += m.lbs; slot.salBultos += m.bultos; }
+      }
+      const sumRows = Object.entries(byProd).sort((a,b)=>a[0].localeCompare(b[0])).map(([p,v])=>[
+        p, v.entBultos, v.entLbs.toFixed(2), v.salBultos, v.salLbs.toFixed(2), (v.entLbs-v.salLbs).toFixed(2),
+      ]);
+      const wsSum = makeSheet(
+        ['Producto','Bultos Entrada','LBS Entrada','Cajas Salida','LBS Salida','Balance LBS'],
+        sumRows,
+        [22,14,14,14,14,14].map(w=>({wch:w}))
+      );
+      XLSX.utils.book_append_sheet(wb, wsSum, 'Resumen por Producto');
+      XLSX.writeFile(wb, `Inventario_AJUA_${desde}_${hasta}.xlsx`);
+    } catch(e) { alert('Error: ' + e.message); }
+    setExportingInv(false);
+  }, [inventarioMovs, desde, hasta]);
 
   // ── Análisis IA ──────────────────────────────────────────────────────────
   const runAiAnalysis = useCallback(async () => {
@@ -837,6 +950,118 @@ export default function Reportes() {
             </>
           )}
         </div>
+      )}
+
+      {/* ══════════════════ TAB 4 — Trazabilidad Inventario ════════════════ */}
+      {tab === 4 && (
+        <>
+          {/* Filtros + botón Excel */}
+          <div style={card}>
+            <div style={SECTION_HDR}>Filtros — Período: {desde} al {hasta}</div>
+            <div style={{ display:'flex', gap:12, flexWrap:'wrap', alignItems:'flex-end' }}>
+              <label style={LBL}>
+                Producto (filtrar)
+                <input
+                  list="inv-prod-list"
+                  value={filtProd}
+                  onChange={e => setFiltProd(e.target.value)}
+                  placeholder="Todos los productos"
+                  style={{ ...INP, minWidth: 220 }}
+                />
+                <datalist id="inv-prod-list">
+                  {prodListInv.map(p => <option key={p} value={p} />)}
+                </datalist>
+              </label>
+              {filtProd && (
+                <button onClick={() => setFiltProd('')}
+                  style={{ padding:'8px 14px', background:'transparent', border:`1px solid ${T.border}`, borderRadius:6, cursor:'pointer', fontSize:'.78rem', color:T.textMid, alignSelf:'flex-end', marginBottom:2 }}>
+                  ✕ Limpiar filtro
+                </button>
+              )}
+              <button
+                onClick={exportInventarioExcel}
+                disabled={exportingInv || inventarioMovs.length === 0}
+                style={{ padding:'10px 22px', background: exportingInv ? T.border : T.primary, color:'#fff', border:'none', borderRadius:6, fontWeight:700, fontSize:'.83rem', cursor:'pointer', alignSelf:'flex-end', marginBottom:2 }}>
+                {exportingInv ? 'Generando…' : '📥 Descargar Excel'}
+              </button>
+            </div>
+          </div>
+
+          {/* Métricas resumen */}
+          <div style={{ display:'flex', gap:14, flexWrap:'wrap', marginBottom:20 }}>
+            {[
+              { label:'LBS Entradas', val: invTotales.entLbs.toLocaleString('es-GT',{maximumFractionDigits:0}), color: T.secondary, bg:'#E8F5E9' },
+              { label:'LBS Salidas',  val: invTotales.salLbs.toLocaleString('es-GT',{maximumFractionDigits:0}), color: T.danger,    bg:'#FFEBEE' },
+              { label:'Balance LBS',  val: invTotales.balLbs.toLocaleString('es-GT',{maximumFractionDigits:0}), color: invTotales.balLbs >= 0 ? T.secondary : T.danger, bg: invTotales.balLbs >= 0 ? '#E8F5E9' : '#FFEBEE' },
+              { label:'Bultos Entrada', val: invTotales.entBultos.toLocaleString(), color: T.info, bg:'#E3F2FD' },
+              { label:'Cajas Salida',   val: invTotales.salBultos.toLocaleString(), color: T.warn, bg:'#FFF3E0' },
+              { label:'Movimientos',    val: inventarioMovs.length, color: T.textDark, bg:'#F5F5F5' },
+            ].map(m => (
+              <div key={m.label} style={{ flex:'1 1 140px', background: m.bg, borderRadius:8, padding:'14px 16px', border:`1px solid ${T.border}` }}>
+                <div style={{ fontSize:'.68rem', fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:T.textMid, marginBottom:6 }}>{m.label}</div>
+                <div style={{ fontSize:'1.5rem', fontWeight:800, color: m.color, lineHeight:1 }}>{m.val}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Tabla de movimientos */}
+          <div style={card}>
+            <div style={{ fontWeight:700, fontSize:'.88rem', color:T.primary, marginBottom:14 }}>
+              Movimientos — {inventarioMovs.length} registros {filtProd && `· filtrado: ${filtProd}`}
+            </div>
+            {loading ? <Skeleton rows={10} /> : inventarioMovs.length === 0 ? (
+              <div style={{ textAlign:'center', padding:'40px', color:T.textMid, fontSize:'.88rem' }}>
+                Sin movimientos en el período. Ajusta el rango de fechas.
+              </div>
+            ) : (
+              <div style={{ overflowX:'auto' }}>
+                <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'.8rem' }}>
+                  <thead>
+                    <tr style={{ background: T.primary }}>
+                      {['Fecha','Tipo','Producto','Proveedor / Cliente','Bultos / Cajas','LBS','Unidades','DUCA / Ref'].map(h => (
+                        <th key={h} style={{ color:'#fff', padding:'9px 12px', fontSize:'.68rem', fontWeight:700, textTransform:'uppercase', letterSpacing:'.05em', textAlign:'left', whiteSpace:'nowrap' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {inventarioMovs.slice(0, 1000).map((m, i) => {
+                      const isEnt = m.tipo === 'entrada';
+                      return (
+                        <tr key={i} style={{ background: i%2 ? '#F9FBF9' : '#fff' }}>
+                          <td style={{ padding:'7px 12px', fontWeight:600, color:T.textMid, whiteSpace:'nowrap' }}>{m.fecha}</td>
+                          <td style={{ padding:'7px 12px' }}>
+                            <span style={{ padding:'2px 8px', borderRadius:10, fontSize:'.65rem', fontWeight:700,
+                              background: isEnt ? '#E8F5E9' : '#FFEBEE',
+                              color: isEnt ? T.secondary : T.danger }}>
+                              {isEnt ? '▲ ENTRADA' : '▼ SALIDA'}
+                            </span>
+                          </td>
+                          <td style={{ padding:'7px 12px', fontWeight:600, color: T.textDark }}>{m.producto || '—'}</td>
+                          <td style={{ padding:'7px 12px', color:T.textMid, fontSize:'.77rem' }}>{m.entidad}</td>
+                          <td style={{ padding:'7px 12px', textAlign:'right', fontWeight:600 }}>{m.bultos > 0 ? m.bultos.toLocaleString() : '—'}</td>
+                          <td style={{ padding:'7px 12px', textAlign:'right', fontWeight:700, color: isEnt ? T.secondary : T.danger, whiteSpace:'nowrap' }}>
+                            {m.lbs > 0 ? m.lbs.toLocaleString('es-GT',{minimumFractionDigits:1,maximumFractionDigits:1}) : '—'}
+                          </td>
+                          <td style={{ padding:'7px 12px', textAlign:'right', color:T.info }}>
+                            {m.unid > 0 ? m.unid.toLocaleString() : '—'}
+                          </td>
+                          <td style={{ padding:'7px 12px', color:T.textMid, fontSize:'.72rem', maxWidth:180, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                            {m.duca || m.ref || '—'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                {inventarioMovs.length > 1000 && (
+                  <div style={{ textAlign:'center', padding:'12px', fontSize:'.78rem', color:T.textMid, borderTop:`1px solid ${T.border}` }}>
+                    Mostrando 1,000 de {inventarioMovs.length} registros — descarga el Excel para el listado completo.
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </>
       )}
     </div>
   );
