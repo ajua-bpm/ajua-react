@@ -123,23 +123,28 @@ export default function Croquis() {
     setSaving(false);
   };
 
-  // ── Print via html2canvas ─────────────────────────────────────
+  // ── Print — captura solo el canvas y lo imprime via CSS print ──
   const handlePrint = async () => {
     if (!canvasRef.current) return;
     setPrinting(true);
     try {
       const c = await html2canvas(canvasRef.current, { backgroundColor:'#EDE9E3', scale:2, useCORS:true });
-      const img = c.toDataURL('image/png');
-      const win = window.open('', '_blank');
-      win.document.write(`<!DOCTYPE html><html><head><title>Croquis Bodega — Ajúa</title>
-        <style>*{margin:0;padding:0;box-sizing:border-box}body{display:flex;flex-direction:column;align-items:center;padding:24px;background:#fff;font-family:sans-serif}h2{margin-bottom:12px;font-size:1rem;color:#1B5E20}img{max-width:100%;box-shadow:0 2px 8px rgba(0,0,0,.2)}@media print{body{padding:0}}</style>
-        </head><body>
-        <h2>Croquis de Bodega — Agroindustria Ajúa</h2>
-        <img src="${img}">
-        <script>window.onload=function(){setTimeout(function(){window.print();},400);}<\/script>
-        </body></html>`);
-      win.document.close();
-    } catch(e) { toast('Error al generar imagen: ' + e.message, 'error'); }
+      const imgSrc = c.toDataURL('image/png');
+
+      // CSS: oculta toda la página, muestra solo la imagen del croquis
+      const styleEl = document.createElement('style');
+      styleEl.textContent = `@media print{body{visibility:hidden}#__cqp{visibility:visible;position:fixed;top:0;left:0;width:100%;height:auto}}`;
+      document.head.appendChild(styleEl);
+
+      const imgEl = document.createElement('img');
+      imgEl.id = '__cqp';
+      imgEl.src = imgSrc;
+      document.body.appendChild(imgEl);
+
+      window.print();
+
+      setTimeout(() => { styleEl.remove(); imgEl.remove(); }, 2000);
+    } catch(e) { toast('Error: ' + e.message, 'error'); }
     setPrinting(false);
   };
 
