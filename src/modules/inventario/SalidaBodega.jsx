@@ -3,7 +3,8 @@ import { useCollection, useWrite } from '../../hooks/useFirestore';
 import { useProductosCatalogo } from '../../hooks/useMainData';
 import { useToast } from '../../components/Toast';
 import Skeleton from '../../components/Skeleton';
-import { db, collection, getDocs } from '../../firebase';
+import { db, collection, getDocs, query, where, doc, writeBatch } from '../../firebase';
+import * as XLSX from 'xlsx';
 
 // ── Design tokens ─────────────────────────────────────────────────
 const T = {
@@ -468,6 +469,81 @@ export default function SalidaBodega() {
     toast(`✅ ${ok} importadas · ${skip} duplicadas omitidas${fail ? ` · ${fail} errores` : ''}`);
   };
 
+  // ── Mantenimiento: backup + borrado por rango ─────────────────
+  const [delDesde,    setDelDesde]    = useState('');
+  const [delHasta,    setDelHasta]    = useState('');
+  const [delConfirm,  setDelConfirm]  = useState('');
+  const [delStatus,   setDelStatus]   = useState('');
+  const [backingUp,   setBackingUp]   = useState(false);
+  const [deleting,    setDeleting]    = useState(false);
+  const [previewDocs, setPreviewDocs] = useState(null);
+
+  const handleBackupCompleto = async () => {
+    setBackingUp(true);
+    setDelStatus('');
+    try {
+      const snap = await getDocs(collection(db, 'isalidas'));
+      const rows = [];
+      for (const d of snap.docs) {
+        const r = d.data();
+        const lineas = Array.isArray(r.lineas) ? r.lineas : Array.isArray(r.productos) ? r.productos : [];
+        if (lineas.length === 0) {
+          rows.push([d.id, r.fecha||'', r.cliente||'', r.numOC||'', r.authSAT||'', '', '', '', '', '', r.conIva||0, r.aCobrar||0]);
+        } else {
+          for (const l of lineas) {
+            rows.push([d.id, r.fecha||'', r.cliente||'', r.numOC||'', r.authSAT||'',
+              l.producto||l.descripcion||'', l.cajas||0, l.tipoContenido||'',
+              l.totalLbs||0, l.totalUnidades||0, r.conIva||0, r.aCobrar||0]);
+          }
+        }
+      }
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.aoa_to_sheet([
+        ['ID Firestore','Fecha','Cliente','OC','Auth SAT','Producto','Cajas','Tipo','Total LBS','Total Unid','Con IVA Q','A Cobrar Q'],
+        ...rows,
+      ]);
+      ws['!cols'] = [28,12,20,16,40,24,8,12,12,12,14,14].map(w=>({wch:w}));
+      XLSX.utils.book_append_sheet(wb, ws, 'isalidas_backup');
+      const fecha = new Date().toISOString().slice(0,10);
+      XLSX.writeFile(wb, `BACKUP_isalidas_${fecha}_${snap.size}docs.xlsx`);
+      setDelStatus(`✅ Backup descargado — ${snap.size} documentos`);
+    } catch(e) { setDelStatus('❌ Error: ' + e.message); }
+    setBackingUp(false);
+  };
+
+  const handlePreviewDelete = async () => {
+    if (!delDesde || !delHasta) { setDelStatus('Seleccioná las fechas primero'); return; }
+    setDelStatus('Consultando…');
+    try {
+      const snap = await getDocs(query(collection(db, 'isalidas'), where('fecha', '>=', delDesde), where('fecha', '<=', delHasta)));
+      setPreviewDocs(snap.docs);
+      setDelStatus(`Se encontraron ${snap.size} registros entre ${delDesde} y ${delHasta}`);
+      setDelConfirm('');
+    } catch(e) { setDelStatus('❌ Error: ' + e.message); }
+  };
+
+  const handleDeleteRange = async () => {
+    if (!previewDocs?.length) return;
+    if (delConfirm !== 'BORRAR') { setDelStatus('Escribí BORRAR para confirmar'); return; }
+    setDeleting(true);
+    setDelStatus('Borrando…');
+    try {
+      // Firestore writeBatch: max 500 ops por batch
+      let batch = writeBatch(db);
+      let count = 0;
+      for (const d of previewDocs) {
+        batch.delete(doc(db, 'isalidas', d.id));
+        count++;
+        if (count % 500 === 0) { await batch.commit(); batch = writeBatch(db); }
+      }
+      if (count % 500 !== 0) await batch.commit();
+      setDelStatus(`✅ ${previewDocs.length} registros eliminados`);
+      setPreviewDocs(null);
+      setDelConfirm('');
+    } catch(e) { setDelStatus('❌ Error: ' + e.message); }
+    setDeleting(false);
+  };
+
   // ── Tab styles ────────────────────────────────────────────────
   const mainTabBtn = key => ({
     padding:'9px 22px', fontWeight:600, fontSize:'.83rem', cursor:'pointer', border:'none',
@@ -496,6 +572,7 @@ export default function SalidaBodega() {
         <button style={mainTabBtn('registrar')} onClick={() => setMainTab('registrar')}>Registrar Venta</button>
         <button style={mainTabBtn('historial')} onClick={() => setMainTab('historial')}>Historial ({loading ? '…' : salidas.length})</button>
         <button style={mainTabBtn('masiva')} onClick={() => setMainTab('masiva')}>📁 Carga Masiva</button>
+        <button style={mainTabBtn('mant')} onClick={() => setMainTab('mant')}>⚠️ Mantenimiento</button>
       </div>
 
       {/* ══ TAB REGISTRAR ═══════════════════════════════════════ */}
@@ -767,6 +844,89 @@ export default function SalidaBodega() {
               </table>
             </div>
           )}
+        </div>
+      )}
+      {/* ══ TAB MANTENIMIENTO ══════════════════════════════════ */}
+      {mainTab === 'mant' && (
+        <div>
+          {/* Backup */}
+          <div style={{ ...card, borderTop:`3px solid ${T.info}` }}>
+            <div style={{ fontWeight:700, fontSize:'.9rem', color:T.info, marginBottom:6 }}>
+              📥 Backup completo — isalidas
+            </div>
+            <p style={{ fontSize:'.78rem', color:T.textMid, marginTop:0, marginBottom:14 }}>
+              Descarga <strong>TODOS</strong> los registros de ventas Walmart en un Excel antes de hacer cualquier modificación.
+              Incluye ID Firestore, fecha, cliente, productos, LBS, IVA y monto a cobrar.
+            </p>
+            <button onClick={handleBackupCompleto} disabled={backingUp}
+              style={{ padding:'10px 24px', background: backingUp ? T.border : T.info, color:'#fff', border:'none', borderRadius:6, fontWeight:700, fontSize:'.85rem', cursor: backingUp ? 'not-allowed':'pointer', fontFamily:'inherit' }}>
+              {backingUp ? 'Generando backup…' : '📥 Descargar Backup Excel Completo'}
+            </button>
+          </div>
+
+          {/* Borrado por rango */}
+          <div style={{ ...card, borderTop:`3px solid ${T.danger}` }}>
+            <div style={{ fontWeight:700, fontSize:'.9rem', color:T.danger, marginBottom:6 }}>
+              🗑️ Eliminar registros por rango de fechas
+            </div>
+            <p style={{ fontSize:'.78rem', color:T.textMid, marginTop:0, marginBottom:14 }}>
+              Elimina todos los registros de <code>isalidas</code> en el rango seleccionado.
+              <strong style={{ color:T.danger }}> Esta acción es irreversible. Descargá el backup antes.</strong>
+            </p>
+
+            <div style={{ display:'flex', gap:12, flexWrap:'wrap', alignItems:'flex-end', marginBottom:14 }}>
+              <label style={LS}>Desde *
+                <input type="date" value={delDesde} onChange={e=>setDelDesde(e.target.value)} style={IS}/>
+              </label>
+              <label style={LS}>Hasta *
+                <input type="date" value={delHasta} onChange={e=>setDelHasta(e.target.value)} style={IS}/>
+              </label>
+              <button onClick={handlePreviewDelete}
+                style={{ padding:'9px 18px', background:'#FFF3E0', border:`1.5px solid ${T.warn}`, color:T.warn, borderRadius:6, fontWeight:700, fontSize:'.83rem', cursor:'pointer', fontFamily:'inherit', alignSelf:'flex-end' }}>
+                🔍 Ver cuántos hay
+              </button>
+            </div>
+
+            {previewDocs !== null && previewDocs.length > 0 && (
+              <div style={{ background:'#FFEBEE', border:`1.5px solid ${T.danger}`, borderRadius:8, padding:16, marginBottom:14 }}>
+                <div style={{ fontWeight:700, color:T.danger, marginBottom:8 }}>
+                  ⚠️ Se eliminarán {previewDocs.length} registros ({delDesde} → {delHasta})
+                </div>
+                <div style={{ fontSize:'.8rem', color:T.textMid, marginBottom:12 }}>
+                  Primeros registros a eliminar:
+                  <ul style={{ margin:'6px 0 0 18px', padding:0 }}>
+                    {previewDocs.slice(0,5).map(d => (
+                      <li key={d.id} style={{ fontSize:'.77rem' }}>
+                        {d.data().fecha} · {d.data().authSAT?.slice(0,20) || d.data().numOC || d.id.slice(0,12)}
+                      </li>
+                    ))}
+                    {previewDocs.length > 5 && <li style={{ fontSize:'.75rem', color:T.textMid }}>…y {previewDocs.length-5} más</li>}
+                  </ul>
+                </div>
+                <label style={{ ...LS, marginBottom:8 }}>
+                  Escribí <strong>BORRAR</strong> para confirmar
+                  <input value={delConfirm} onChange={e=>setDelConfirm(e.target.value)}
+                    placeholder="BORRAR" style={{ ...IS, maxWidth:180, borderColor: delConfirm==='BORRAR'?T.danger:T.border }}/>
+                </label>
+                <button onClick={handleDeleteRange} disabled={deleting || delConfirm !== 'BORRAR'}
+                  style={{ padding:'10px 24px', background: delConfirm==='BORRAR'?T.danger:T.border, color:'#fff', border:'none', borderRadius:6, fontWeight:700, fontSize:'.85rem', cursor: delConfirm==='BORRAR'?'pointer':'not-allowed', fontFamily:'inherit' }}>
+                  {deleting ? 'Eliminando…' : `🗑️ Eliminar ${previewDocs.length} registros`}
+                </button>
+              </div>
+            )}
+
+            {previewDocs !== null && previewDocs.length === 0 && (
+              <div style={{ padding:'10px 14px', background:'#E8F5E9', borderRadius:6, fontSize:'.82rem', color:T.secondary }}>
+                ✅ No hay registros en ese rango de fechas.
+              </div>
+            )}
+
+            {delStatus && (
+              <div style={{ marginTop:12, padding:'8px 14px', background:'#F5F5F5', borderRadius:6, fontSize:'.82rem', color:T.textDark }}>
+                {delStatus}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
