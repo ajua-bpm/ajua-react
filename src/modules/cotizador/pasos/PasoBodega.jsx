@@ -3,6 +3,7 @@ import { useToast } from '../../../components/Toast';
 import { useConfirmarBodega } from '../hooks/useConfirmarBodega';
 import { useConductores } from '../../../hooks/useMainData';
 import { today, fmt } from '../hooks/useCotizador';
+import { db, collection, getDocs, query, where, doc, updateDoc } from '../../../firebase';
 
 const T = { primary:'#1B5E20', secondary:'#2E7D32', border:'#E0E0E0', white:'#FFFFFF', textMid:'#6B6B60', textDark:'#1A1A18' };
 const IS = { padding:'8px 10px', border:`1.5px solid ${T.border}`, borderRadius:6, fontSize:'.83rem', fontFamily:'inherit', width:'100%', color:T.textDark, background:T.white, boxSizing:'border-box', marginTop:2 };
@@ -25,6 +26,26 @@ export default function PasoBodega({ cot, update }) {
   }));
 
   const alreadyDone = cot.estado === 'bodega' && !!cot.bodegaInfo;
+  const [editingFecha, setEditingFecha] = useState(false);
+  const [newFecha, setNewFecha] = useState('');
+  const [savingFecha, setSavingFecha] = useState(false);
+
+  const handleCambiarFecha = async () => {
+    if (!newFecha) { toast('Seleccioná una fecha'); return; }
+    setSavingFecha(true);
+    try {
+      // 1. Actualizar bodegaInfo en la cotización
+      await update({ bodegaInfo: { ...cot.bodegaInfo, fecha: newFecha } });
+      // 2. Actualizar todas las ientradas de esta cotización
+      const snap = await getDocs(query(collection(db, 'ientradas'), where('cotizacionId', '==', cot.id)));
+      for (const d of snap.docs) {
+        await updateDoc(doc(db, 'ientradas', d.id), { fecha: newFecha });
+      }
+      toast(`✅ Fecha actualizada a ${newFecha} (${snap.size} entrada${snap.size!==1?'s':''})`);
+      setEditingFecha(false);
+    } catch(err) { toast('Error: ' + err.message); }
+    finally { setSavingFecha(false); }
+  };
 
   const handleConfirm = async () => {
     if (!form.fecha || !form.responsable.trim()) { toast('Fecha y responsable requeridos'); return; }
@@ -43,10 +64,29 @@ export default function PasoBodega({ cot, update }) {
       <div style={{ padding:20 }}>
         <div style={{ padding:'12px 16px', background:'rgba(46,125,50,.08)', border:'1px solid rgba(46,125,50,.25)', borderRadius:8, marginBottom:20 }}>
           <div style={{ fontWeight:700, color:T.secondary, marginBottom:4 }}>✅ Recepción en bodega confirmada</div>
-          <div style={{ fontSize:'.82rem', color:T.textMid }}>
-            <span>Fecha: {bi.fecha}</span> · <span>Responsable: {bi.responsable}</span>
+          <div style={{ fontSize:'.82rem', color:T.textMid, marginBottom:8 }}>
+            <span>Fecha: <strong>{bi.fecha}</strong></span> · <span>Responsable: {bi.responsable}</span>
             {bi.obs && <span> · {bi.obs}</span>}
           </div>
+          {!editingFecha ? (
+            <button onClick={() => { setNewFecha(bi.fecha); setEditingFecha(true); }}
+              style={{ padding:'4px 12px', background:'transparent', border:`1px solid ${T.secondary}`, borderRadius:4, color:T.secondary, cursor:'pointer', fontSize:'.75rem', fontWeight:700, fontFamily:'inherit' }}>
+              ✏️ Cambiar fecha
+            </button>
+          ) : (
+            <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap', marginTop:4 }}>
+              <input type="date" value={newFecha} onChange={e => setNewFecha(e.target.value)}
+                style={{ padding:'5px 8px', border:`1.5px solid ${T.secondary}`, borderRadius:5, fontSize:'.83rem', fontFamily:'inherit' }} />
+              <button onClick={handleCambiarFecha} disabled={savingFecha}
+                style={{ padding:'5px 14px', background:T.primary, color:T.white, border:'none', borderRadius:4, fontWeight:700, fontSize:'.78rem', cursor:'pointer', fontFamily:'inherit' }}>
+                {savingFecha ? 'Guardando…' : '✓ Guardar'}
+              </button>
+              <button onClick={() => setEditingFecha(false)}
+                style={{ padding:'5px 10px', background:'transparent', border:`1px solid ${T.border}`, borderRadius:4, cursor:'pointer', fontSize:'.78rem', fontFamily:'inherit' }}>
+                Cancelar
+              </button>
+            </div>
+          )}
         </div>
         <h4 style={{ color:T.primary, margin:'0 0 10px' }}>Productos ingresados:</h4>
         <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'.8rem' }}>
