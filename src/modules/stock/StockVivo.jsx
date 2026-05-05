@@ -258,7 +258,8 @@ export default function StockVivo() {
         if (!canonId) continue;
         const cat     = prodById[canonId];
         const esPorUnidad = cat?.unidadCompra === 'unidad' || cat?.unidadCompra === 'pza';
-        const lbs      = esPorUnidad ? 0 : (Number(l.totalLbs) || Number(l.lbs) || (Number(l.lbsBulto) * (Number(l.bultos) || 0)) || 0);
+        const cajasForLbs = Number(l.cajas) || Number(l.cajasEnviadas) || Number(l.bultos) || 0;
+        const lbs      = esPorUnidad ? 0 : (Number(l.totalLbs) || Number(l.lbs) || (Number(l.lbsBulto) * cajasForLbs) || (Number(l.lbsCaja) * cajasForLbs) || 0);
         const cajasRaw = Number(l.bultos) || Number(l.cajasEnviadas) || Number(l.cajas) || 0;
         // New records have totalUnidades; fallback for old records uses cantidadCaja or cantPorCajaMap
         const unid = esPorUnidad
