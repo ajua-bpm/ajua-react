@@ -45,20 +45,20 @@ export default function PasoDuca({ cot, update }) {
     try {
       const ducaInfo = { ...f, ts: new Date().toISOString() };
       await update({ ducaInfo, estado: 'duca', duca: f.numeroDuca });
-      // Propagar productor y proveedor a todas las ientradas de esta cotización
-      const snap = await getDocs(query(collection(db, 'ientradas'), where('cotizacionId', '==', cot.id)));
-      for (const d of snap.docs) {
-        await updateDoc(doc(db, 'ientradas', d.id), {
-          productorId:     f.productorId     || '',
-          productorNombre: f.productorNombre || '',
-          proveedorId:     f.proveedorId     || '',
-          proveedorNombre: f.proveedorNombre || '',
-          duca:            f.numeroDuca      || '',
-          factProveedor:   f.factProveedor   || '',
-          factProductor:   f.factProductor   || '',
-        });
-      }
-      toast(`✅ DUCA guardada${snap.size > 0 ? ` · ${snap.size} entrada${snap.size!==1?'s':''}  actualizadas` : ''}`);
+      // Buscar ientradas por cotizacionId, cotizacionNom o duca (fallbacks para registros viejos)
+      const campos = { productorId: f.productorId||'', productorNombre: f.productorNombre||'',
+        proveedorId: f.proveedorId||'', proveedorNombre: f.proveedorNombre||'',
+        duca: f.numeroDuca||'', factProveedor: f.factProveedor||'', factProductor: f.factProductor||'' };
+      const docsToUpdate = new Map();
+      const addDocs = snap => snap.docs.forEach(d => docsToUpdate.set(d.id, d));
+      const [s1, s2, s3] = await Promise.all([
+        getDocs(query(collection(db, 'ientradas'), where('cotizacionId',  '==', cot.id))),
+        getDocs(query(collection(db, 'ientradas'), where('cotizacionNom', '==', cot.nombre||''))),
+        f.numeroDuca ? getDocs(query(collection(db, 'ientradas'), where('duca', '==', f.numeroDuca))) : Promise.resolve({ docs: [] }),
+      ]);
+      addDocs(s1); addDocs(s2); addDocs(s3);
+      for (const d of docsToUpdate.values()) await updateDoc(doc(db, 'ientradas', d.id), campos);
+      toast(`✅ DUCA guardada${docsToUpdate.size > 0 ? ` · ${docsToUpdate.size} entrada${docsToUpdate.size!==1?'s':''} actualizadas` : ''}`);
     } catch(err) { toast('Error: ' + err.message); }
     finally { setSaving(false); }
   };
