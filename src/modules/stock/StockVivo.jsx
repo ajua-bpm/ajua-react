@@ -86,27 +86,35 @@ export default function StockVivo() {
     [prodById, prodByName, prodByFirstWord]
   );
 
-  // Map: canonId → unidades por caja
-  // Handles two schemas: Cotizador (cantidadCaja + tipoContenido) and Lista de Precios (descripcion "4 unidades × ...")
-  const cantPorCajaMap = useMemo(() => {
-    const m = {};
+  // Map: canonId → unidades por caja (for unit-tracked products like repollo)
+  // Map: canonId → lbs por caja   (for lbs-tracked products like papa, zanahoria, cebolla)
+  // Map: presentacionId → presentation record (for per-linea lookup)
+  const { cantPorCajaMap, lbsPerCajaByCanon, presById } = useMemo(() => {
+    const cantM = {};
+    const lbsM  = {};
+    const byId  = {};
     for (const p of (presData || [])) {
-      // Get qty: structured field OR parse "4 unidades" from descripcion/nombre
-      const qty = Number(p.cantidadCaja)
-        || Number((p.descripcion || p.nombre || '').match(/^(\d+)\s*unidades?/i)?.[1])
-        || 0;
-      if (!qty) continue;
-      // Resolve canonical product ID: by productoId (Lista de Precios) or by name string (Cotizador)
+      byId[p.id] = p;
       const canonId = (p.productoId && prodById[p.productoId])
         ? p.productoId
         : resolve(null, p.producto || '');
       if (!canonId) continue;
-      // Only apply to products tracked by unit (esPorUnidad)
       const cat = prodById[canonId];
-      if (!cat || (cat.unidadCompra !== 'unidad' && cat.unidadCompra !== 'pza')) continue;
-      if (!m[canonId]) m[canonId] = qty;
+      const isUnit = cat?.unidadCompra === 'unidad' || cat?.unidadCompra === 'pza';
+
+      if (isUnit) {
+        // unidades/caja — structured field OR parse "4 unidades" from descripcion/nombre
+        const qty = Number(p.cantidadCaja)
+          || Number((p.descripcion || p.nombre || '').match(/^(\d+)\s*unidades?/i)?.[1])
+          || 0;
+        if (qty && !cantM[canonId]) cantM[canonId] = qty;
+      } else {
+        // lbs/caja — from correctly-configured presentation
+        const lbs = Number(p.totalLbsCaja) || Number(p.lbsUnidad) || Number(p.lbsCaja) || 0;
+        if (lbs && !lbsM[canonId]) lbsM[canonId] = lbs;
+      }
     }
-    return m;
+    return { cantPorCajaMap: cantM, lbsPerCajaByCanon: lbsM, presById: byId };
   }, [presData, prodById, resolve]);
 
   // Merge Firestore ientradas + legacy ajua_bpm/main ientradas
@@ -188,14 +196,21 @@ export default function StockVivo() {
             slot.salUnid += cajas * cantPorCaja;
           }
         } else {
-          const lbs = Number(l.totalLbs) || Number(l.lbs) || (Number(l.lbsBulto) * (Number(l.bultos) || 0)) || 0;
+          const cajasN = Number(l.cajas) || Number(l.cajasEnviadas) || Number(l.bultos) || 0;
+          // Presentation-based fallback: use corrected totalLbsCaja when record has totalLbs=0
+          const presLbs = l.presentacionId && presById[l.presentacionId]
+            ? (Number(presById[l.presentacionId].totalLbsCaja) || 0) * cajasN
+            : (lbsPerCajaByCanon[canonId] || 0) * cajasN;
+          const lbs = Number(l.totalLbs) || Number(l.lbs)
+            || (Number(l.lbsBulto) * cajasN) || (Number(l.lbsCaja) * cajasN)
+            || presLbs || 0;
           slot.salLbs += lbs;
         }
       }
     }
 
     return m;
-  }, [entradas, salidas, prodById, resolve, cantPorCajaMap]);
+  }, [entradas, salidas, prodById, resolve, cantPorCajaMap, lbsPerCajaByCanon, presById]);
 
   const productos = useMemo(() =>
     Object.entries(stockMap)
@@ -258,10 +273,15 @@ export default function StockVivo() {
         const canonId = resolve(l.productoId, nombre);
         if (!canonId) continue;
         const cat     = prodById[canonId];
-        const esPorUnidad = cat?.unidadCompra === 'unidad' || cat?.unidadCompra === 'pza'
-          || l.tipoContenido === 'unidades';
+        // Catalog is authoritative; only fall back to tipoContenido when catalog is missing
+        const esPorUnidad = cat
+          ? (cat.unidadCompra === 'unidad' || cat.unidadCompra === 'pza')
+          : (l.tipoContenido === 'unidades');
         const cajasForLbs = Number(l.cajas) || Number(l.cajasEnviadas) || Number(l.bultos) || 0;
-        const lbs      = esPorUnidad ? 0 : (Number(l.totalLbs) || Number(l.lbs) || (Number(l.lbsBulto) * cajasForLbs) || (Number(l.lbsCaja) * cajasForLbs) || 0);
+        const presLbs = l.presentacionId && presById[l.presentacionId]
+          ? (Number(presById[l.presentacionId].totalLbsCaja) || 0) * cajasForLbs
+          : (lbsPerCajaByCanon[canonId] || 0) * cajasForLbs;
+        const lbs = esPorUnidad ? 0 : (Number(l.totalLbs) || Number(l.lbs) || (Number(l.lbsBulto) * cajasForLbs) || (Number(l.lbsCaja) * cajasForLbs) || presLbs || 0);
         const cajasRaw = Number(l.bultos) || Number(l.cajasEnviadas) || Number(l.cajas) || 0;
         // New records have totalUnidades; fallback for old records uses cantidadCaja or cantPorCajaMap
         const unid = esPorUnidad
@@ -297,7 +317,7 @@ export default function StockVivo() {
     }
 
     return mvs.reverse();
-  }, [entradas, salidas, prodById, resolve, cantPorCajaMap]);
+  }, [entradas, salidas, prodById, resolve, cantPorCajaMap, lbsPerCajaByCanon, presById]);
 
   const filtMvs = useMemo(() =>
     filtProd ? movements.filter(m => m.canonId === filtProd) : movements,
