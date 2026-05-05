@@ -192,8 +192,14 @@ function TabProductos() {
 
   const [sub, setSub] = useState('productos');
 
-  const BLANK_P  = { codigo:'', nombre:'', categoria:'', activo:true };
-  const BLANK_PR = { codigo:'', productoId:'', descripcion:'', unidad:'caja', precioBase:'', activo:true };
+  const BLANK_P  = { codigo:'', nombre:'', categoria:'', unidadCompra:'kg', activo:true };
+  const BLANK_PR = {
+    codigo:'', productoId:'', nombre:'', codigoSAP:'', canal:'Walmart Guatemala',
+    descripcion:'', unidad:'caja',
+    tipoContenido:'granel',
+    cantidadCaja:'', lbsUnidad:'', lbsCajaDirecto:'',
+    precioBase:'', activo:true,
+  };
   const [formP,  setFormP ] = useState({...BLANK_P});
   const [formPr, setFormPr] = useState({...BLANK_PR});
   const [editP,  setEditP ] = useState(null);
@@ -208,9 +214,29 @@ function TabProductos() {
     setFormP({...BLANK_P});
   };
 
+  const prTotalLbs = () => {
+    const cant = parseFloat(formPr.cantidadCaja) || 0;
+    const lbu  = parseFloat(formPr.lbsUnidad)    || 0;
+    const lbg  = parseFloat(formPr.lbsCajaDirecto) || 0;
+    if (formPr.tipoContenido === 'unidades') return 0;
+    if (formPr.tipoContenido === 'granel')   return lbg;
+    return cant * lbu;
+  };
+
   const handleSavePres = async () => {
-    if (!formPr.descripcion.trim()||!formPr.productoId) { toast('Producto y descripción requeridos','error'); return; }
-    const data = {...formPr, precioBase: parseFloat(formPr.precioBase)||0};
+    if (!formPr.productoId) { toast('Producto requerido','error'); return; }
+    if (!formPr.nombre.trim() && !formPr.descripcion.trim()) { toast('Nombre requerido','error'); return; }
+    const totalLbsCaja = prTotalLbs();
+    const data = {
+      ...formPr,
+      nombre:       formPr.nombre || formPr.descripcion,
+      cantidadCaja: parseFloat(formPr.cantidadCaja) || 0,
+      lbsUnidad:    parseFloat(formPr.lbsUnidad)    || 0,
+      lbsCaja:      totalLbsCaja,
+      totalLbsCaja,
+      precioBase:   parseFloat(formPr.precioBase)   || 0,
+    };
+    delete data.lbsCajaDirecto;
     if (editPr) { await updPres(editPr, data); toast('✓ Presentación actualizada'); setEditPr(null); }
     else        { await addPres(data);          toast('✓ Presentación agregada'); }
     setFormPr({...BLANK_PR});
@@ -236,6 +262,13 @@ function TabProductos() {
               <label style={LS}>Código<input value={formP.codigo} onChange={e=>setFormP(f=>({...f,codigo:e.target.value}))} style={IS}/></label>
               <label style={LS}>Nombre *<input value={formP.nombre} onChange={e=>setFormP(f=>({...f,nombre:e.target.value}))} style={IS}/></label>
               <label style={LS}>Categoría<input value={formP.categoria} onChange={e=>setFormP(f=>({...f,categoria:e.target.value}))} style={IS}/></label>
+              <label style={LS}>Unidad de compra
+                <select value={formP.unidadCompra||'kg'} onChange={e=>setFormP(f=>({...f,unidadCompra:e.target.value}))} style={IS}>
+                  <option value="kg">kg / lb (a peso)</option>
+                  <option value="unidad">Unidad (ej. repollo)</option>
+                  <option value="pza">Pieza</option>
+                </select>
+              </label>
               <label style={LS}>Estado
                 <select value={formP.activo?'1':'0'} onChange={e=>setFormP(f=>({...f,activo:e.target.value==='1'}))} style={IS}>
                   <option value="1">Activo</option>
@@ -287,17 +320,66 @@ function TabProductos() {
         <div>
           <div style={{background:'#fff',border:`1px solid ${C.sand}`,borderRadius:8,padding:20,marginBottom:16,borderLeft:`4px solid ${editPr?'#E65100':C.acc}`}}>
             <div style={{fontWeight:700,color:C.green,marginBottom:12}}>{editPr?'Editar presentación':'Nueva presentación'}</div>
-            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))',gap:10,marginBottom:10}}>
-              <label style={LS}>Código<input value={formPr.codigo} onChange={e=>setFormPr(f=>({...f,codigo:e.target.value}))} style={IS}/></label>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:10,marginBottom:10}}>
+              {/* Fila 1 — identificación */}
+              <label style={LS}>Código SAP / Material<input value={formPr.codigoSAP||''} onChange={e=>setFormPr(f=>({...f,codigoSAP:e.target.value}))} style={IS} placeholder="Ej. 80000611"/></label>
               <label style={LS}>Producto *
                 <select value={formPr.productoId} onChange={e=>setFormPr(f=>({...f,productoId:e.target.value}))} style={IS}>
                   <option value="">— Seleccionar —</option>
                   {productos.map(p=><option key={p.id} value={p.id}>{p.nombre}</option>)}
                 </select>
               </label>
-              <label style={LS}>Descripción *<input value={formPr.descripcion} onChange={e=>setFormPr(f=>({...f,descripcion:e.target.value}))} style={IS}/></label>
-              <label style={LS}>Unidad<input value={formPr.unidad} onChange={e=>setFormPr(f=>({...f,unidad:e.target.value}))} style={IS}/></label>
-              <label style={LS}>Precio base (Q)<input type="number" min="0" step="0.01" value={formPr.precioBase} onChange={e=>setFormPr(f=>({...f,precioBase:e.target.value}))} style={IS}/></label>
+              <label style={LS}>Nombre exacto presentación *<input value={formPr.nombre||''} onChange={e=>setFormPr(f=>({...f,nombre:e.target.value}))} style={IS} placeholder="Ej. CEBOLLA BLANCA UXC_30"/></label>
+              <label style={LS}>Canal de venta
+                <select value={formPr.canal||'Walmart Guatemala'} onChange={e=>setFormPr(f=>({...f,canal:e.target.value}))} style={IS}>
+                  <option value="Walmart Guatemala">Walmart Guatemala</option>
+                  <option value="Local GT">Local GT</option>
+                  <option value="Exportación">Exportación</option>
+                  <option value="">Sin canal</option>
+                </select>
+              </label>
+              <label style={LS}>Código interno<input value={formPr.codigo||''} onChange={e=>setFormPr(f=>({...f,codigo:e.target.value}))} style={IS}/></label>
+              <label style={LS}>Descripción FEL<input value={formPr.descripcion||''} onChange={e=>setFormPr(f=>({...f,descripcion:e.target.value}))} style={IS} placeholder="Texto en FEL/XML"/></label>
+
+              {/* Fila 2 — contenido de la caja */}
+              <label style={{...LS,gridColumn:'span 2'}}>Tipo de contenido *
+                <select value={formPr.tipoContenido||'granel'} onChange={e=>setFormPr(f=>({...f,tipoContenido:e.target.value,cantidadCaja:'',lbsUnidad:'',lbsCajaDirecto:''}))} style={IS}>
+                  <option value="granel">A granel — producto suelto en la caja</option>
+                  <option value="redes">Redes dentro de la caja</option>
+                  <option value="bolsas">Bolsas dentro de la caja</option>
+                  <option value="unidades">Unidades dentro de la caja (ej. repollos)</option>
+                </select>
+              </label>
+
+              {/* Granel: solo LBS por caja */}
+              {(formPr.tipoContenido==='granel'||!formPr.tipoContenido) && (
+                <label style={LS}>LBS por caja
+                  <input type="number" min="0" step="0.1" value={formPr.lbsCajaDirecto||''} onChange={e=>setFormPr(f=>({...f,lbsCajaDirecto:e.target.value}))} style={IS} placeholder="Ej. 50"/>
+                </label>
+              )}
+
+              {/* Redes / Bolsas: cantidad + lbs por unidad → auto total */}
+              {(formPr.tipoContenido==='redes'||formPr.tipoContenido==='bolsas') && (<>
+                <label style={LS}>{formPr.tipoContenido==='redes'?'Redes':'Bolsas'} por caja
+                  <input type="number" min="0" step="1" value={formPr.cantidadCaja||''} onChange={e=>setFormPr(f=>({...f,cantidadCaja:e.target.value}))} style={IS} placeholder="Ej. 8"/>
+                </label>
+                <label style={LS}>LBS por {formPr.tipoContenido==='redes'?'red':'bolsa'}
+                  <input type="number" min="0" step="0.1" value={formPr.lbsUnidad||''} onChange={e=>setFormPr(f=>({...f,lbsUnidad:e.target.value}))} style={IS} placeholder="Ej. 3"/>
+                </label>
+                <label style={LS}>Total LBS por caja (auto)
+                  <input readOnly value={prTotalLbs()>0?prTotalLbs().toFixed(1):''} style={{...IS,background:'#F5F5F5',fontWeight:700,color:C.acc}} placeholder="Automático"/>
+                </label>
+              </>)}
+
+              {/* Unidades: solo cantidad por caja */}
+              {formPr.tipoContenido==='unidades' && (
+                <label style={LS}>Unidades por caja
+                  <input type="number" min="0" step="1" value={formPr.cantidadCaja||''} onChange={e=>setFormPr(f=>({...f,cantidadCaja:e.target.value}))} style={IS} placeholder="Ej. 30"/>
+                </label>
+              )}
+
+              {/* Precio */}
+              <label style={LS}>Precio base (Q)<input type="number" min="0" step="0.01" value={formPr.precioBase||''} onChange={e=>setFormPr(f=>({...f,precioBase:e.target.value}))} style={IS}/></label>
             </div>
             <div style={{display:'flex',gap:10}}>
               <button onClick={handleSavePres} disabled={savPres} style={{padding:'10px 24px',background:savPres?'#ccc':(editPr?'#E65100':C.acc),color:'#fff',border:'none',borderRadius:6,fontWeight:700,fontSize:'.85rem',cursor:savPres?'not-allowed':'pointer'}}>
@@ -310,19 +392,36 @@ function TabProductos() {
             {lpr?<LoadingSpinner/>:(
               <table style={{width:'100%',borderCollapse:'collapse',fontSize:'.8rem'}}>
                 <thead><tr style={{background:C.bg}}>
-                  {['Código','Producto','Descripción','Unidad','Precio Base',''].map(h=><th key={h} style={{padding:'7px 10px',textAlign:'left',fontWeight:700,color:'#6B8070',borderBottom:`1px solid ${C.sand}`}}>{h}</th>)}
+                  {['Código SAP','Producto','Nombre','Tipo contenido','LBS/caja','Precio Base',''].map(h=><th key={h} style={{padding:'7px 10px',textAlign:'left',fontWeight:700,color:'#6B8070',borderBottom:`1px solid ${C.sand}`}}>{h}</th>)}
                 </tr></thead>
                 <tbody>
                   {presentaciones.map(p=>(
                     <tr key={p.id} style={{borderBottom:`1px solid ${C.sand}`}}>
-                      <td style={{padding:'7px 10px',fontFamily:'monospace',color:'#6B8070'}}>{p.codigo||'—'}</td>
+                      <td style={{padding:'7px 10px',fontFamily:'monospace',color:'#6B8070',fontSize:'.75rem'}}>{p.codigoSAP||p.codigo||'—'}</td>
                       <td style={{padding:'7px 10px',fontWeight:600,color:C.green}}>{prodMap[p.productoId]?.nombre||p.producto||'—'}</td>
-                      <td style={{padding:'7px 10px',color:'#6B8070'}}>{p.descripcion||p.nombre||'—'}</td>
-                      <td style={{padding:'7px 10px',color:'#6B8070'}}>{p.unidad||'—'}</td>
+                      <td style={{padding:'7px 10px',color:'#6B8070',fontSize:'.78rem'}}>{p.nombre||p.descripcion||'—'}</td>
+                      <td style={{padding:'7px 10px',color:'#6B8070',fontSize:'.75rem'}}>{p.tipoContenido||'—'}</td>
+                      <td style={{padding:'7px 10px',fontWeight:600,color:p.totalLbsCaja>0?C.acc:'#6B8070'}}>
+                        {p.tipoContenido==='unidades'?`${p.cantidadCaja||0} unid/caja`:p.totalLbsCaja>0?`${p.totalLbsCaja} lbs`:'—'}
+                      </td>
                       <td style={{padding:'7px 10px',fontWeight:600,color:C.green}}>Q {Number(p.precioBase||0).toFixed(2)}</td>
                       <td style={{padding:'7px 10px'}}>
                         <div style={{display:'flex',gap:6}}>
-                          <button onClick={()=>{setFormPr({codigo:p.codigo||'',productoId:p.productoId||'',descripcion:p.descripcion||p.nombre||'',unidad:p.unidad||'caja',precioBase:String(p.precioBase||''),activo:p.activo!==false});setEditPr(p.id);}} style={{padding:'3px 10px',background:'rgba(74,158,106,.1)',color:C.green,border:`1px solid ${C.acc}`,borderRadius:4,fontSize:'.72rem',cursor:'pointer',fontWeight:600}}>✏</button>
+                          <button onClick={()=>{
+                            const tipo = p.tipoContenido||'granel';
+                            setFormPr({
+                              codigo:p.codigo||'', productoId:p.productoId||'',
+                              nombre:p.nombre||p.descripcion||'', codigoSAP:p.codigoSAP||'',
+                              canal:p.canal||'Walmart Guatemala', descripcion:p.descripcion||'',
+                              unidad:p.unidad||'caja', tipoContenido:tipo,
+                              cantidadCaja: String(p.cantidadCaja||''),
+                              lbsUnidad:    String(p.lbsUnidad||''),
+                              lbsCajaDirecto: tipo==='granel'?String(p.totalLbsCaja||p.lbsCaja||''):'',
+                              precioBase:String(p.precioBase||''), activo:p.activo!==false,
+                            });
+                            setEditPr(p.id);
+                            window.scrollTo({top:0,behavior:'smooth'});
+                          }} style={{padding:'3px 10px',background:'rgba(74,158,106,.1)',color:C.green,border:`1px solid ${C.acc}`,borderRadius:4,fontSize:'.72rem',cursor:'pointer',fontWeight:600}}>✏</button>
                           <button onClick={async()=>{if(!window.confirm('¿Eliminar?'))return;await delPres(p.id);toast('Eliminado');}} style={{padding:'3px 10px',background:'rgba(192,57,43,.1)',color:C.danger,border:`1px solid ${C.danger}`,borderRadius:4,fontSize:'.72rem',cursor:'pointer',fontWeight:600}}>✕</button>
                         </div>
                       </td>
