@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useCollection, useWrite } from '../../hooks/useFirestore';
 import { useProductosCatalogo } from '../../hooks/useMainData';
 import { useToast } from '../../components/Toast';
@@ -118,8 +118,17 @@ export default function SalidaBodega() {
   // Historial — filtro + selección para borrado masivo
   const [histDesde,    setHistDesde]    = useState('');
   const [histHasta,    setHistHasta]    = useState('');
-  const [selected,     setSelected]     = useState(new Set());
+  const [selected,     setSelected]     = useState({});
   const [bulkDeleting, setBulkDeleting] = useState(false);
+
+  // Mantenimiento: backup + borrado por rango
+  const [delDesde,    setDelDesde]    = useState('');
+  const [delHasta,    setDelHasta]    = useState('');
+  const [delConfirm,  setDelConfirm]  = useState('');
+  const [delStatus,   setDelStatus]   = useState('');
+  const [backingUp,   setBackingUp]   = useState(false);
+  const [deleting,    setDeleting]    = useState(false);
+  const [previewDocs, setPreviewDocs] = useState(null);
 
   const sf = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -475,15 +484,6 @@ export default function SalidaBodega() {
     toast(`✅ ${ok} importadas · ${skip} duplicadas omitidas${fail ? ` · ${fail} errores` : ''}`);
   };
 
-  // ── Mantenimiento: backup + borrado por rango ─────────────────
-  const [delDesde,    setDelDesde]    = useState('');
-  const [delHasta,    setDelHasta]    = useState('');
-  const [delConfirm,  setDelConfirm]  = useState('');
-  const [delStatus,   setDelStatus]   = useState('');
-  const [backingUp,   setBackingUp]   = useState(false);
-  const [deleting,    setDeleting]    = useState(false);
-  const [previewDocs, setPreviewDocs] = useState(null);
-
   const handleBackupCompleto = async () => {
     setBackingUp(true);
     setDelStatus('');
@@ -549,6 +549,49 @@ export default function SalidaBodega() {
     } catch(e) { setDelStatus('❌ Error: ' + e.message); }
     setDeleting(false);
   };
+
+  // ── Historial derived state ───────────────────────────────────
+  const salidasFilt = useMemo(() => {
+    const sorted = [...salidas].sort((a,b) => (b.fecha||'') > (a.fecha||'') ? 1 : -1);
+    return sorted.filter(r => {
+      const f = r.fecha || '';
+      if (histDesde && f < histDesde) return false;
+      if (histHasta && f > histHasta) return false;
+      return true;
+    });
+  }, [salidas, histDesde, histHasta]);
+
+  const allIds       = useMemo(() => salidasFilt.map(r => r.id), [salidasFilt]);
+  const allChecked   = useMemo(() => allIds.length > 0 && allIds.every(id => !!selected[id]), [allIds, selected]);
+  const selectedCount = useMemo(() => Object.values(selected).filter(Boolean).length, [selected]);
+
+  const toggleAll = useCallback(() => {
+    setSelected(allChecked ? {} : Object.fromEntries(allIds.map(id => [id, true])));
+  }, [allChecked, allIds]);
+
+  const toggleOne = useCallback(id => {
+    setSelected(prev => ({ ...prev, [id]: !prev[id] }));
+  }, []);
+
+  const handleBulkDelete = useCallback(async () => {
+    const toDelete = Object.keys(selected).filter(id => selected[id] && salidasFilt.some(r => r.id === id));
+    if (!toDelete.length) return;
+    if (!window.confirm(`¿Eliminar ${toDelete.length} facturas seleccionadas? Esta acción es irreversible.`)) return;
+    setBulkDeleting(true);
+    try {
+      let batch = writeBatch(db);
+      let count = 0;
+      for (const id of toDelete) {
+        batch.delete(doc(db, 'isalidas', id));
+        count++;
+        if (count % 500 === 0) { await batch.commit(); batch = writeBatch(db); }
+      }
+      if (count % 500 !== 0) await batch.commit();
+      setSelected({});
+      toast(`✅ ${toDelete.length} facturas eliminadas`);
+    } catch(e) { toast('Error: ' + e.message, 'error'); }
+    setBulkDeleting(false);
+  }, [selected, salidasFilt, toast]);
 
   // ── Tab styles ────────────────────────────────────────────────
   const mainTabBtn = key => ({
@@ -804,120 +847,86 @@ export default function SalidaBodega() {
       )}
 
       {/* ══ TAB HISTORIAL ═══════════════════════════════════════ */}
-      {mainTab === 'historial' && (() => {
-        const salidasSorted = [...salidas].sort((a,b) => (b.fecha||'') > (a.fecha||'') ? 1 : -1);
-        const salidasFilt   = salidasSorted.filter(r => {
-          const f = r.fecha||'';
-          if (histDesde && f < histDesde) return false;
-          if (histHasta && f > histHasta) return false;
-          return true;
-        });
-        const allIds     = salidasFilt.map(r => r.id);
-        const allChecked = allIds.length > 0 && allIds.every(id => selected.has(id));
-        const toggleAll  = () => setSelected(allChecked ? new Set() : new Set(allIds));
-        const toggleOne  = id => setSelected(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
-
-        const handleBulkDelete = async () => {
-          const toDelete = [...selected].filter(id => salidasFilt.some(r => r.id === id));
-          if (!toDelete.length) return;
-          if (!window.confirm(`¿Eliminar ${toDelete.length} facturas seleccionadas? Esta acción es irreversible.`)) return;
-          setBulkDeleting(true);
-          try {
-            let batch = writeBatch(db);
-            let count = 0;
-            for (const id of toDelete) {
-              batch.delete(doc(db, 'isalidas', id));
-              count++;
-              if (count % 500 === 0) { await batch.commit(); batch = writeBatch(db); }
-            }
-            if (count % 500 !== 0) await batch.commit();
-            setSelected(new Set());
-            toast(`✅ ${toDelete.length} facturas eliminadas`);
-          } catch(e) { toast('Error: ' + e.message, 'error'); }
-          setBulkDeleting(false);
-        };
-
-        return (
-          <div style={card}>
-            {/* Filtros + acciones */}
-            <div style={{ display:'flex', gap:10, flexWrap:'wrap', alignItems:'flex-end', marginBottom:16 }}>
-              <label style={LS}>Desde
-                <input type="date" value={histDesde} onChange={e=>{setHistDesde(e.target.value);setSelected(new Set());}} style={{...IS,width:140}}/>
-              </label>
-              <label style={LS}>Hasta
-                <input type="date" value={histHasta} onChange={e=>{setHistHasta(e.target.value);setSelected(new Set());}} style={{...IS,width:140}}/>
-              </label>
-              {(histDesde||histHasta) && (
-                <button onClick={()=>{setHistDesde('');setHistHasta('');setSelected(new Set());}}
-                  style={{ padding:'8px 12px', background:'transparent', border:`1px solid ${T.border}`, borderRadius:6, cursor:'pointer', fontSize:'.78rem', color:T.textMid, alignSelf:'flex-end' }}>
-                  ✕ Limpiar
-                </button>
-              )}
-              <div style={{ flex:1 }}/>
-              {selected.size > 0 && (
-                <button onClick={handleBulkDelete} disabled={bulkDeleting}
-                  style={{ padding:'8px 18px', background: bulkDeleting ? T.border : T.danger, color:'#fff', border:'none', borderRadius:6, fontWeight:700, fontSize:'.82rem', cursor:'pointer', fontFamily:'inherit' }}>
-                  {bulkDeleting ? 'Eliminando…' : `🗑️ Eliminar ${selected.size} seleccionadas`}
-                </button>
-              )}
-            </div>
-
-            {/* Contador */}
-            <div style={{ fontSize:'.78rem', color:T.textMid, marginBottom:10 }}>
-              {salidasFilt.length} de {salidas.length} registros
-              {selected.size > 0 && <span style={{ marginLeft:10, color:T.danger, fontWeight:700 }}> · {selected.size} seleccionadas</span>}
-            </div>
-
-            {loading ? <Skeleton rows={8} /> : salidasFilt.length === 0 ? (
-              <div style={{ textAlign:'center', padding:'52px 0', color:T.textMid, fontSize:'.88rem' }}>Sin ventas en ese rango.</div>
-            ) : (
-              <div style={{ overflowX:'auto' }}>
-                <table style={{ width:'100%', borderCollapse:'collapse', minWidth:900 }}>
-                  <thead>
-                    <tr>
-                      <th style={{ ...thSt, width:36, textAlign:'center' }}>
-                        <input type="checkbox" checked={allChecked} onChange={toggleAll} style={{ cursor:'pointer' }}/>
-                      </th>
-                      {['Fecha','Productos','LBS','Neto Q','Con IVA','A cobrar Q','OC','Auth SAT',''].map(h=>(
-                        <th key={h} style={thSt}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {salidasFilt.map((r,i) => {
-                      const prodList = (r.lineas||r.productos||[]).map(l=>l.producto||l.nombre).filter(Boolean).join(', ');
-                      const isChecked = selected.has(r.id);
-                      return (
-                        <tr key={r.id} style={{ background: isChecked ? '#FFF8E1' : i%2?'#F9FBF9':'#fff' }}>
-                          <td style={{ ...tdSt, textAlign:'center' }}>
-                            <input type="checkbox" checked={isChecked} onChange={()=>toggleOne(r.id)} style={{ cursor:'pointer' }}/>
-                          </td>
-                          <td style={{ ...tdSt, whiteSpace:'nowrap', fontWeight:600 }}>{r.fecha||'—'}</td>
-                          <td style={{ ...tdSt, fontSize:'.74rem', color:T.textMid, maxWidth:200, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                            {prodList || `${(r.lineas||r.productos||[]).length} línea(s)`}
-                          </td>
-                          <td style={{ ...tdSt, textAlign:'right', fontWeight:600 }}>{(r.totalLbs||0).toLocaleString('es-GT',{maximumFractionDigits:1})}</td>
-                          <td style={{ ...tdSt, textAlign:'right', whiteSpace:'nowrap' }}>{fmtQ(r.neto)}</td>
-                          <td style={{ ...tdSt, textAlign:'right', fontWeight:600, whiteSpace:'nowrap' }}>{fmtQ(r.conIva)}</td>
-                          <td style={{ ...tdSt, textAlign:'right', fontWeight:800, color:T.info, whiteSpace:'nowrap' }}>{fmtQ(r.aCobrar)}</td>
-                          <td style={{ ...tdSt, fontSize:'.76rem', whiteSpace:'nowrap' }}>{r.numOC||'—'}</td>
-                          <td style={{ ...tdSt, fontSize:'.72rem', color:T.textMid, maxWidth:140, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.authSAT||'—'}</td>
-                          <td style={{ ...tdSt, textAlign:'center' }}>
-                            <button onClick={async()=>{ if(!window.confirm('¿Eliminar esta venta?'))return; try{await remove(r.id);toast('Eliminado');}catch{toast('Error','error');} }}
-                              style={{ padding:'3px 10px', background:'none', border:`1px solid ${T.danger}`, color:T.danger, borderRadius:4, cursor:'pointer', fontSize:'.72rem', fontWeight:600 }}>
-                              ✕
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+      {mainTab === 'historial' && (
+        <div style={card}>
+          {/* Filtros + acciones */}
+          <div style={{ display:'flex', gap:10, flexWrap:'wrap', alignItems:'flex-end', marginBottom:16 }}>
+            <label style={LS}>Desde
+              <input type="date" value={histDesde} onChange={e=>{setHistDesde(e.target.value);setSelected({});}} style={{...IS,width:140}}/>
+            </label>
+            <label style={LS}>Hasta
+              <input type="date" value={histHasta} onChange={e=>{setHistHasta(e.target.value);setSelected({});}} style={{...IS,width:140}}/>
+            </label>
+            {(histDesde||histHasta) && (
+              <button onClick={()=>{setHistDesde('');setHistHasta('');setSelected({});}}
+                style={{ padding:'8px 12px', background:'transparent', border:`1px solid ${T.border}`, borderRadius:6, cursor:'pointer', fontSize:'.78rem', color:T.textMid, alignSelf:'flex-end' }}>
+                ✕ Limpiar
+              </button>
+            )}
+            <div style={{ flex:1 }}/>
+            {selectedCount > 0 && (
+              <button onClick={handleBulkDelete} disabled={bulkDeleting}
+                style={{ padding:'8px 18px', background: bulkDeleting ? T.border : T.danger, color:'#fff', border:'none', borderRadius:6, fontWeight:700, fontSize:'.82rem', cursor:'pointer', fontFamily:'inherit' }}>
+                {bulkDeleting ? 'Eliminando…' : `🗑️ Eliminar ${selectedCount} seleccionadas`}
+              </button>
             )}
           </div>
-        );
-      })()}
+
+          {/* Contador */}
+          <div style={{ fontSize:'.78rem', color:T.textMid, marginBottom:10 }}>
+            {salidasFilt.length} de {salidas.length} registros
+            {selectedCount > 0 && <span style={{ marginLeft:10, color:T.danger, fontWeight:700 }}> · {selectedCount} seleccionadas</span>}
+          </div>
+
+          {loading ? <Skeleton rows={8} /> : salidasFilt.length === 0 ? (
+            <div style={{ textAlign:'center', padding:'52px 0', color:T.textMid, fontSize:'.88rem' }}>Sin ventas en ese rango.</div>
+          ) : (
+            <div style={{ overflowX:'auto' }}>
+              <table style={{ width:'100%', borderCollapse:'collapse', minWidth:900 }}>
+                <thead>
+                  <tr>
+                    <th style={{ ...thSt, width:36, textAlign:'center' }}>
+                      <input type="checkbox" checked={allChecked} onChange={toggleAll} style={{ cursor:'pointer' }}/>
+                    </th>
+                    {['Fecha','Productos','LBS','Neto Q','Con IVA','A cobrar Q','OC','Auth SAT',''].map(h=>(
+                      <th key={h} style={thSt}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {salidasFilt.map((r,i) => {
+                    const prodList = (r.lineas||r.productos||[]).map(l=>l.producto||l.nombre).filter(Boolean).join(', ');
+                    const isChecked = !!selected[r.id];
+                    return (
+                      <tr key={r.id} style={{ background: isChecked ? '#FFF8E1' : i%2?'#F9FBF9':'#fff' }}>
+                        <td style={{ ...tdSt, textAlign:'center' }}>
+                          <input type="checkbox" checked={isChecked} onChange={()=>toggleOne(r.id)} style={{ cursor:'pointer' }}/>
+                        </td>
+                        <td style={{ ...tdSt, whiteSpace:'nowrap', fontWeight:600 }}>{r.fecha||'—'}</td>
+                        <td style={{ ...tdSt, fontSize:'.74rem', color:T.textMid, maxWidth:200, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                          {prodList || `${(r.lineas||r.productos||[]).length} línea(s)`}
+                        </td>
+                        <td style={{ ...tdSt, textAlign:'right', fontWeight:600 }}>{(r.totalLbs||0).toLocaleString('es-GT',{maximumFractionDigits:1})}</td>
+                        <td style={{ ...tdSt, textAlign:'right', whiteSpace:'nowrap' }}>{fmtQ(r.neto)}</td>
+                        <td style={{ ...tdSt, textAlign:'right', fontWeight:600, whiteSpace:'nowrap' }}>{fmtQ(r.conIva)}</td>
+                        <td style={{ ...tdSt, textAlign:'right', fontWeight:800, color:T.info, whiteSpace:'nowrap' }}>{fmtQ(r.aCobrar)}</td>
+                        <td style={{ ...tdSt, fontSize:'.76rem', whiteSpace:'nowrap' }}>{r.numOC||'—'}</td>
+                        <td style={{ ...tdSt, fontSize:'.72rem', color:T.textMid, maxWidth:140, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.authSAT||'—'}</td>
+                        <td style={{ ...tdSt, textAlign:'center' }}>
+                          <button onClick={async()=>{ if(!window.confirm('¿Eliminar esta venta?'))return; try{await remove(r.id);toast('Eliminado');}catch{toast('Error','error');} }}
+                            style={{ padding:'3px 10px', background:'none', border:`1px solid ${T.danger}`, color:T.danger, borderRadius:4, cursor:'pointer', fontSize:'.72rem', fontWeight:600 }}>
+                            ✕
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
       {/* ══ TAB MANTENIMIENTO ══════════════════════════════════ */}
       {mainTab === 'mant' && (
         <div>
