@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useToast } from '../../../components/Toast';
 import { useProveedores } from '../../../hooks/useMainData';
+import { db, collection, getDocs, query, where, doc, updateDoc } from '../../../firebase';
 
 const T = { primary:'#1B5E20', secondary:'#2E7D32', border:'#E0E0E0', white:'#FFFFFF', textMid:'#6B6B60', textDark:'#1A1A18' };
 const IS = { padding:'9px 12px', border:`1.5px solid ${T.border}`, borderRadius:6, fontSize:'.85rem', fontFamily:'inherit', width:'100%', color:T.textDark, background:T.white, boxSizing:'border-box', marginTop:2 };
@@ -44,7 +45,20 @@ export default function PasoDuca({ cot, update }) {
     try {
       const ducaInfo = { ...f, ts: new Date().toISOString() };
       await update({ ducaInfo, estado: 'duca', duca: f.numeroDuca });
-      toast('✅ Información DUCA guardada');
+      // Propagar productor y proveedor a todas las ientradas de esta cotización
+      const snap = await getDocs(query(collection(db, 'ientradas'), where('cotizacionId', '==', cot.id)));
+      for (const d of snap.docs) {
+        await updateDoc(doc(db, 'ientradas', d.id), {
+          productorId:     f.productorId     || '',
+          productorNombre: f.productorNombre || '',
+          proveedorId:     f.proveedorId     || '',
+          proveedorNombre: f.proveedorNombre || '',
+          duca:            f.numeroDuca      || '',
+          factProveedor:   f.factProveedor   || '',
+          factProductor:   f.factProductor   || '',
+        });
+      }
+      toast(`✅ DUCA guardada${snap.size > 0 ? ` · ${snap.size} entrada${snap.size!==1?'s':''}  actualizadas` : ''}`);
     } catch(err) { toast('Error: ' + err.message); }
     finally { setSaving(false); }
   };
