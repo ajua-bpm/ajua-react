@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, Fragment } from 'react';
 import { useEmpleados } from '../../hooks/useMainData';
 import { useCollection, useWrite } from '../../hooks/useFirestore';
 import { useToast } from '../../components/Toast';
@@ -70,6 +70,7 @@ export default function ControlPersonal() {
   const [resp,   setResp]   = useState('');
   const [accion, setAccion] = useState('');
   const [rows,   setRows]   = useState([]);
+  const [expandedIdCP, setExpandedIdCP] = useState(null);
 
   // Init rows only once when mujeres first loads — don't reinit on listener refresh
   useEffect(() => {
@@ -289,7 +290,7 @@ export default function ControlPersonal() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: T.primary }}>
-                  {['Fecha', 'Turno', 'Responsable', 'Trabajaron', 'Aprobadas', 'Resultado', ''].map(h => (
+                  {['Fecha', 'Turno', 'Responsable', 'Trabajaron', 'Aprobadas', 'Resultado', '', ''].map(h => (
                     <th key={h} style={{
                       padding: '9px 12px', color: T.white, fontSize: '.7rem', fontWeight: 700,
                       textTransform: 'uppercase', letterSpacing: '.05em', textAlign: 'left', whiteSpace: 'nowrap',
@@ -300,34 +301,75 @@ export default function ControlPersonal() {
               <tbody>
                 {(historial || []).slice(0, 100).map((r, i) => {
                   const ok = r.resultado === 'APROBADO';
+                  const isExp = expandedIdCP === r.id;
+                  const trabajaron = (r.empleados || []).filter(e => e.trabajoHoy);
                   return (
-                    <tr key={r.id} style={{ background: i % 2 === 0 ? '#fff' : '#F9FBF9' }}>
-                      <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0', fontWeight: 600, color: T.textMid }}>{r.fecha}</td>
-                      <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0' }}>{r.turno || '—'}</td>
-                      <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0' }}>{r.resp || '—'}</td>
-                      <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0', fontWeight: 700, color: T.textDark }}>
-                        {r.totalTrabajaron ?? r.total ?? '—'}
-                      </td>
-                      <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0', fontWeight: 700, color: T.secondary }}>
-                        {(r.aprobadas ?? r.aprobados) != null
-                          ? `${r.aprobadas ?? r.aprobados}${r.totalTrabajaron ? ' / ' + r.totalTrabajaron : ''}`
-                          : '—'}
-                      </td>
-                      <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }}>
-                        <span style={{
-                          padding: '3px 10px', borderRadius: 20, fontSize: '.68rem', fontWeight: 700,
-                          background: ok ? T.green2 : '#FFEBEE', color: ok ? T.secondary : T.danger,
-                        }}>
-                          {ok ? '✅ APROBADO' : '❌ RECHAZADO'}
-                        </span>
-                      </td>
-                      <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }}>
-                        <button onClick={() => remove(r.id)} style={{
-                          background: 'none', border: `1px solid ${T.border}`, borderRadius: 4,
-                          padding: '3px 8px', cursor: 'pointer', fontSize: '.72rem', color: T.textMid,
-                        }}>✕</button>
-                      </td>
-                    </tr>
+                    <Fragment key={r.id}>
+                      <tr style={{ background: isExp ? '#F1F8E9' : i % 2 === 0 ? '#fff' : '#F9FBF9', cursor: 'pointer' }}
+                        onClick={() => setExpandedIdCP(prev => prev === r.id ? null : r.id)}>
+                        <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0', fontWeight: 600, color: T.textMid }}>{r.fecha}</td>
+                        <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0' }}>{r.turno || '—'}</td>
+                        <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0' }}>{r.resp || '—'}</td>
+                        <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0', fontWeight: 700, color: T.textDark }}>
+                          {r.totalTrabajaron ?? r.total ?? '—'}
+                        </td>
+                        <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0', fontWeight: 700, color: T.secondary }}>
+                          {(r.aprobadas ?? r.aprobados) != null
+                            ? `${r.aprobadas ?? r.aprobados}${r.totalTrabajaron ? ' / ' + r.totalTrabajaron : ''}`
+                            : '—'}
+                        </td>
+                        <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }}>
+                          <span style={{
+                            padding: '3px 10px', borderRadius: 20, fontSize: '.68rem', fontWeight: 700,
+                            background: ok ? T.green2 : '#FFEBEE', color: ok ? T.secondary : T.danger,
+                          }}>
+                            {ok ? '✅ APROBADO' : '❌ RECHAZADO'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0', textAlign: 'center', color: T.secondary, fontWeight: 700, fontSize: '.8rem' }}>
+                          {isExp ? '▲' : '▼'}
+                        </td>
+                        <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }} onClick={e => e.stopPropagation()}>
+                          <button onClick={() => remove(r.id)} style={{
+                            background: 'none', border: `1px solid ${T.border}`, borderRadius: 4,
+                            padding: '3px 8px', cursor: 'pointer', fontSize: '.72rem', color: T.textMid,
+                          }}>✕</button>
+                        </td>
+                      </tr>
+                      {isExp && (
+                        <tr>
+                          <td colSpan={8} style={{ padding: 0, borderBottom: '2px solid #A5D6A7' }}>
+                            <div style={{ padding: '14px 18px', background: '#F9FEF9', borderLeft: '4px solid #2E7D32' }}>
+                              <div style={{ fontWeight: 700, fontSize: '.72rem', color: T.secondary, textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 10 }}>
+                                Detalle — {trabajaron.length} empleada{trabajaron.length !== 1 ? 's' : ''} que trabajaron
+                              </div>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                                {trabajaron.map((e, ei) => (
+                                  <div key={ei} style={{
+                                    padding: '7px 14px', borderRadius: 8, minWidth: 160,
+                                    background: e.cumplio === true ? '#E8F5E9' : e.cumplio === false ? '#FFEBEE' : '#F5F5F5',
+                                    border: `1.5px solid ${e.cumplio === true ? '#A5D6A7' : e.cumplio === false ? '#FFCDD2' : T.border}`,
+                                  }}>
+                                    <div style={{ fontWeight: 700, fontSize: '.82rem', color: T.textDark }}>{e.nombre}</div>
+                                    {e.area && <div style={{ fontSize: '.68rem', color: T.textMid }}>{e.area}</div>}
+                                    <div style={{ fontSize: '.74rem', fontWeight: 700, marginTop: 4,
+                                      color: e.cumplio === true ? T.secondary : e.cumplio === false ? T.danger : T.textMid }}>
+                                      {e.cumplio === true ? '✅ Cumplió' : e.cumplio === false ? '❌ No cumplió' : '—'}
+                                    </div>
+                                    {e.obs && <div style={{ fontSize: '.68rem', color: T.textMid, marginTop: 3, fontStyle: 'italic' }}>{e.obs}</div>}
+                                  </div>
+                                ))}
+                              </div>
+                              {r.accion && (
+                                <div style={{ marginTop: 10, fontSize: '.78rem', color: T.warn }}>
+                                  ⚡ Acción: {r.accion}
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                   );
                 })}
               </tbody>

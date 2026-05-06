@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, Fragment } from 'react';
 import { useEmpleados } from '../../hooks/useMainData';
 import { useCollection, useWrite } from '../../hooks/useFirestore';
 import { useToast } from '../../components/Toast';
@@ -269,6 +269,7 @@ export default function VYP() {
   };
 
   const [filtRes, setFiltRes] = useState('');
+  const [expandedInspId, setExpandedInspId] = useState(null);
   const filtHist = (historial || []).filter(r => !filtRes || r.resultado === filtRes);
 
   // Inventario
@@ -411,7 +412,7 @@ export default function VYP() {
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr style={{ background: T.primary }}>
-                      {['Fecha', 'Responsable', 'Áreas', 'Hallazgos', 'Resultado', 'Foto', ''].map(h => (
+                      {['Fecha', 'Responsable', 'Áreas', 'Hallazgos', 'Resultado', 'Foto', '', ''].map(h => (
                         <th key={h} style={{ padding: '9px 12px', color: T.white, fontSize: '.7rem',
                           fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em',
                           textAlign: 'left', whiteSpace: 'nowrap' }}>{h}</th>
@@ -426,45 +427,89 @@ export default function VYP() {
                       const inspAreas = r.areas
                         ? AREAS.filter(a => r.areas[a]?.inspeccionada).join(', ')
                         : '—';
+                      const isExp = expandedInspId === r.id;
                       return (
-                        <tr key={r.id} style={{ background: i % 2 === 0 ? '#fff' : '#F9FBF9' }}>
-                          <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0',
-                            fontWeight: 600, color: T.textMid, whiteSpace: 'nowrap' }}>{r.fecha}</td>
-                          <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0' }}>{r.resp || '—'}</td>
-                          <td style={{ padding: '8px 12px', fontSize: '.75rem', borderBottom: '1px solid #F0F0F0',
-                            color: T.textMid }}>{inspAreas}</td>
-                          <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }}>
-                            {hallazgos.length === 0 ? (
-                              <span style={{ color: T.border, fontSize: '.72rem' }}>—</span>
-                            ) : (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                                {hallazgos.map((h, j) => (
-                                  <span key={j} style={{ fontSize: '.68rem', padding: '2px 7px', borderRadius: 10,
-                                    background: '#E3F2FD', color: T.info, fontWeight: 600, whiteSpace: 'nowrap' }}>
-                                    {h.area} · {h.tipo}
-                                    {h.accion === 'Pendiente' && <span style={{ color: T.danger }}> ⚠</span>}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-                          </td>
-                          <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0', whiteSpace: 'nowrap' }}>
-                            <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: '.68rem',
-                              fontWeight: 800, background: rb.bg, color: rb.color }}>
-                              {rb.label}
-                            </span>
-                          </td>
-                          <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }}>
-                            {fotos.length > 0
-                              ? <img src={fotos[0].foto} alt="" style={{ height: 28, borderRadius: 3, cursor: 'pointer' }} title="Ver foto" />
-                              : <span style={{ color: T.border, fontSize: '.72rem' }}>—</span>}
-                          </td>
-                          <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }}>
-                            <button onClick={() => remove(r.id)}
-                              style={{ background: 'none', border: `1px solid ${T.border}`, borderRadius: 4,
-                                padding: '3px 8px', cursor: 'pointer', fontSize: '.72rem', color: T.textMid }}>✕</button>
-                          </td>
-                        </tr>
+                        <Fragment key={r.id}>
+                          <tr style={{ background: isExp ? '#F1F8E9' : i % 2 === 0 ? '#fff' : '#F9FBF9', cursor: 'pointer' }}
+                            onClick={() => setExpandedInspId(prev => prev === r.id ? null : r.id)}>
+                            <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0',
+                              fontWeight: 600, color: T.textMid, whiteSpace: 'nowrap' }}>{r.fecha}</td>
+                            <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0' }}>{r.resp || '—'}</td>
+                            <td style={{ padding: '8px 12px', fontSize: '.75rem', borderBottom: '1px solid #F0F0F0',
+                              color: T.textMid }}>{inspAreas}</td>
+                            <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }}>
+                              {hallazgos.length === 0 ? (
+                                <span style={{ color: T.border, fontSize: '.72rem' }}>—</span>
+                              ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                  {hallazgos.map((h, j) => (
+                                    <span key={j} style={{ fontSize: '.68rem', padding: '2px 7px', borderRadius: 10,
+                                      background: '#E3F2FD', color: T.info, fontWeight: 600, whiteSpace: 'nowrap' }}>
+                                      {h.area} · {h.tipo}
+                                      {h.accion === 'Pendiente' && <span style={{ color: T.danger }}> ⚠</span>}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </td>
+                            <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0', whiteSpace: 'nowrap' }}>
+                              <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: '.68rem',
+                                fontWeight: 800, background: rb.bg, color: rb.color }}>
+                                {rb.label}
+                              </span>
+                            </td>
+                            <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }}>
+                              {fotos.length > 0
+                                ? <img src={fotos[0].foto} alt="" style={{ height: 28, borderRadius: 3, cursor: 'pointer' }} title="Ver foto" />
+                                : <span style={{ color: T.border, fontSize: '.72rem' }}>—</span>}
+                            </td>
+                            <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0', textAlign: 'center', color: T.secondary, fontWeight: 700, fontSize: '.8rem' }}>
+                              {isExp ? '▲' : '▼'}
+                            </td>
+                            <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }} onClick={e => e.stopPropagation()}>
+                              <button onClick={() => remove(r.id)}
+                                style={{ background: 'none', border: `1px solid ${T.border}`, borderRadius: 4,
+                                  padding: '3px 8px', cursor: 'pointer', fontSize: '.72rem', color: T.textMid }}>✕</button>
+                            </td>
+                          </tr>
+                          {isExp && (
+                            <tr>
+                              <td colSpan={8} style={{ padding: 0, borderBottom: '2px solid #A5D6A7' }}>
+                                <div style={{ padding: '14px 18px', background: '#F9FEF9', borderLeft: '4px solid #2E7D32' }}>
+                                  <div style={{ fontWeight: 700, fontSize: '.72rem', color: T.secondary, textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 10 }}>
+                                    Detalle por área — {r.fecha}
+                                  </div>
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                                    {AREAS.map(a => {
+                                      const d = r.areas?.[a];
+                                      if (!d?.inspeccionada) return null;
+                                      const aColor = !d.hallazgo ? T.secondary : d.accion === 'Pendiente' ? T.danger : '#F57F17';
+                                      const aBg    = !d.hallazgo ? '#E8F5E9'  : d.accion === 'Pendiente' ? '#FFEBEE' : '#FFF9C4';
+                                      return (
+                                        <div key={a} style={{ padding: '8px 14px', borderRadius: 8, minWidth: 170,
+                                          background: aBg, border: `1.5px solid ${aColor}40` }}>
+                                          <div style={{ fontWeight: 700, fontSize: '.82rem', color: T.textDark }}>{a}</div>
+                                          <div style={{ fontSize: '.74rem', fontWeight: 700, color: aColor, marginTop: 3 }}>
+                                            {!d.hallazgo ? '✅ Limpio' : `⚠ Hallazgo — ${d.tipo || ''}`}
+                                          </div>
+                                          {d.hallazgo && (
+                                            <>
+                                              {d.cantidad && <div style={{ fontSize: '.7rem', color: T.textMid, marginTop: 2 }}>Cant: {d.cantidad}</div>}
+                                              {d.desc    && <div style={{ fontSize: '.7rem', color: T.textMid }}>{d.desc}</div>}
+                                              {d.accion  && <div style={{ fontSize: '.7rem', fontWeight: 600, color: aColor }}>Acción: {d.accion}</div>}
+                                              {d.foto    && <img src={d.foto} alt="" style={{ marginTop: 6, height: 50, borderRadius: 4, objectFit: 'cover' }} />}
+                                            </>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                  {r.obs && <div style={{ marginTop: 10, fontSize: '.78rem', color: T.textMid }}>📝 {r.obs}</div>}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
                       );
                     })}
                   </tbody>

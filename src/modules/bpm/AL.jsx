@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 import { useCollection, useWrite } from '../../hooks/useFirestore';
 import { useEmpleados } from '../../hooks/useMainData';
 import { useToast } from '../../components/Toast';
@@ -168,6 +168,9 @@ export default function AL() {
     } catch(e) { toast('Error: ' + e.message, 'error'); }
     setHeSaving(false);
   };
+
+  const [expandedId, setExpandedId] = useState(null);
+  const toggleExpand = (id) => setExpandedId(prev => prev === id ? null : id);
 
   const TD = { padding: '9px 14px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0', whiteSpace: 'nowrap' };
 
@@ -456,45 +459,99 @@ export default function AL() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: T.primary }}>
-                  {['Fecha', 'Turno', 'H. Ingreso', 'H. Salida', 'Empleados', 'Lavados', ''].map(h => (
+                  {['Fecha', 'Turno', 'H. Ingreso', 'H. Salida', 'Empleados', 'Lavados', '', ''].map(h => (
                     <th key={h} style={{ padding: '9px 14px', textAlign: 'left', color: '#fff', fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {(registros || []).slice(0, 100).map((r, i) => {
-                  const totalEmp      = (r.checks || []).length;
-                  const totalCompl    = (r.checks || []).filter(row => row.horas && Object.values(row.horas).every(v => v)).length;
-                  const pctComp       = totalEmp > 0 ? Math.round(totalCompl / totalEmp * 100) : 0;
-                  const compColor     = pctComp >= 100 ? T.accent : pctComp >= 75 ? T.warn : T.danger;
-                  const compBg        = pctComp >= 100 ? '#E8F5E9' : pctComp >= 75 ? '#FFF3E0' : '#FFEBEE';
+                  const totalEmp   = (r.checks || []).length;
+                  const totalCompl = (r.checks || []).filter(row => row.horas && Object.values(row.horas).every(v => v)).length;
+                  const pctComp    = totalEmp > 0 ? Math.round(totalCompl / totalEmp * 100) : 0;
+                  const compColor  = pctComp >= 100 ? T.accent : pctComp >= 75 ? T.warn : T.danger;
+                  const compBg     = pctComp >= 100 ? '#E8F5E9' : pctComp >= 75 ? '#FFF3E0' : '#FFEBEE';
+                  const isExp = expandedId === r.id;
                   return (
-                    <tr key={r.id} style={{ background: i % 2 === 0 ? '#fff' : '#F9FBF9' }}>
-                      <td style={{ ...TD, fontWeight: 600 }}>{r.fecha || '—'}</td>
-                      <td style={TD}>
-                        <span style={{ padding: '2px 9px', borderRadius: 100, fontSize: '.7rem', fontWeight: 700, background: r.turno === 'AM' ? '#E3F2FD' : r.turno === 'PM' ? '#EDE7F6' : '#E8F5E9', color: r.turno === 'AM' ? '#1565C0' : r.turno === 'PM' ? '#4527A0' : T.secondary }}>
-                          {r.turno || '—'}
-                        </span>
-                      </td>
-                      <td style={TD}>{r.hi || r.hora || '—'}</td>
-                      <td style={TD}>{r.hs || '—'}</td>
-                      <td style={TD}>
-                        <span style={{ padding: '2px 9px', borderRadius: 100, fontSize: '.7rem', fontWeight: 700, background: '#E8F5E9', color: T.secondary }}>
-                          {totalEmp} personas
-                        </span>
-                      </td>
-                      <td style={TD}>
-                        <span style={{ padding: '2px 9px', borderRadius: 100, fontSize: '.7rem', fontWeight: 700, background: compBg, color: compColor }}>
-                          {totalCompl}/{totalEmp} · {pctComp}%
-                        </span>
-                      </td>
-                      <td style={TD}>
-                        <button onClick={() => { if (window.confirm('¿Eliminar este registro?')) remove(r.id); }}
-                          style={{ padding: '3px 10px', borderRadius: 5, border: `1.5px solid ${T.danger}`, background: '#fff', color: T.danger, cursor: 'pointer', fontSize: '.75rem', fontWeight: 700, fontFamily: 'inherit' }}>
-                          ✕
-                        </button>
-                      </td>
-                    </tr>
+                    <Fragment key={r.id}>
+                      <tr style={{ background: isExp ? '#F1F8E9' : i % 2 === 0 ? '#fff' : '#F9FBF9', cursor: 'pointer' }}
+                        onClick={() => toggleExpand(r.id)}>
+                        <td style={{ ...TD, fontWeight: 600 }}>{r.fecha || '—'}</td>
+                        <td style={TD}>
+                          <span style={{ padding: '2px 9px', borderRadius: 100, fontSize: '.7rem', fontWeight: 700, background: r.turno === 'AM' ? '#E3F2FD' : r.turno === 'PM' ? '#EDE7F6' : '#E8F5E9', color: r.turno === 'AM' ? '#1565C0' : r.turno === 'PM' ? '#4527A0' : T.secondary }}>
+                            {r.turno || '—'}
+                          </span>
+                        </td>
+                        <td style={TD}>{r.hi || r.hora || '—'}</td>
+                        <td style={TD}>{r.hs || '—'}</td>
+                        <td style={TD}>
+                          <span style={{ padding: '2px 9px', borderRadius: 100, fontSize: '.7rem', fontWeight: 700, background: '#E8F5E9', color: T.secondary }}>
+                            {totalEmp} personas
+                          </span>
+                        </td>
+                        <td style={TD}>
+                          <span style={{ padding: '2px 9px', borderRadius: 100, fontSize: '.7rem', fontWeight: 700, background: compBg, color: compColor }}>
+                            {totalCompl}/{totalEmp} · {pctComp}%
+                          </span>
+                        </td>
+                        <td style={{ ...TD, textAlign: 'center', color: T.secondary, fontWeight: 700, fontSize: '.8rem' }}>
+                          {isExp ? '▲' : '▼'}
+                        </td>
+                        <td style={TD} onClick={e => e.stopPropagation()}>
+                          <button onClick={() => { if (window.confirm('¿Eliminar este registro?')) remove(r.id); }}
+                            style={{ padding: '3px 10px', borderRadius: 5, border: `1.5px solid ${T.danger}`, background: '#fff', color: T.danger, cursor: 'pointer', fontSize: '.75rem', fontWeight: 700, fontFamily: 'inherit' }}>
+                            ✕
+                          </button>
+                        </td>
+                      </tr>
+                      {isExp && (
+                        <tr>
+                          <td colSpan={8} style={{ padding: 0, borderBottom: '2px solid #A5D6A7' }}>
+                            <div style={{ padding: '14px 18px', background: '#F9FEF9', borderLeft: '4px solid #2E7D32' }}>
+                              <div style={{ fontWeight: 700, fontSize: '.72rem', color: T.secondary, textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 10 }}>
+                                Detalle lavado de manos — {r.fecha} · {r.turno}
+                              </div>
+                              <div style={{ overflowX: 'auto' }}>
+                                <table style={{ borderCollapse: 'collapse', fontSize: '.78rem' }}>
+                                  <thead>
+                                    <tr style={{ background: '#E8F5E9' }}>
+                                      <th style={{ padding: '5px 12px', textAlign: 'left', fontWeight: 700, color: T.secondary, whiteSpace: 'nowrap' }}>Empleado</th>
+                                      {HORAS.map(h => (
+                                        <th key={h} style={{ padding: '5px 10px', textAlign: 'center', fontWeight: 700, color: T.secondary }}>{HORA_LABELS[h] || h}</th>
+                                      ))}
+                                      <th style={{ padding: '5px 10px', textAlign: 'center', fontWeight: 700, color: T.warn }}>H. Extra</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {(r.checks || []).map((c, ci) => {
+                                      const allOk = HORAS.every(h => c.horas?.[h]);
+                                      return (
+                                        <tr key={c.empleadoId || c.nombre} style={{ background: ci % 2 === 0 ? '#fff' : '#F9FBF9' }}>
+                                          <td style={{ padding: '5px 12px', fontWeight: 600, whiteSpace: 'nowrap', color: allOk ? T.secondary : T.textDark }}>
+                                            {c.nombre}
+                                          </td>
+                                          {HORAS.map(h => (
+                                            <td key={h} style={{ padding: '5px 10px', textAlign: 'center' }}>
+                                              {c.horas?.[h]
+                                                ? <span style={{ color: T.accent, fontWeight: 700 }}>✓</span>
+                                                : <span style={{ color: T.danger, fontWeight: 700 }}>✗</span>}
+                                            </td>
+                                          ))}
+                                          <td style={{ padding: '5px 10px', textAlign: 'center', color: T.warn, fontWeight: 600 }}>
+                                            {c.horasExtras > 0 ? c.horasExtras + ' h' : '—'}
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+                              {r.obs && <div style={{ marginTop: 10, fontSize: '.78rem', color: T.textMid }}>📝 {r.obs}</div>}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                   );
                 })}
               </tbody>

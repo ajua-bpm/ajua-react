@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 import { useCollection, useWrite } from '../../hooks/useFirestore';
 import { useEmpleados } from '../../hooks/useMainData';
 import { useToast } from '../../components/Toast';
@@ -151,6 +151,9 @@ export default function ROD() {
       toast('Error al guardar: ' + e.message, 'error');
     }
   };
+
+  const [expandedId, setExpandedId] = useState(null);
+  const toggleExpand = (id) => setExpandedId(prev => prev === id ? null : id);
 
   return (
     <div style={{ color: T.textDark, maxWidth: 900, margin: '0 auto' }}>
@@ -411,7 +414,7 @@ export default function ROD() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: T.primary }}>
-                  {['Fecha', 'Hora', 'Responsable', 'Revisadas', 'Novedades', 'Resultado'].map(h => (
+                  {['Fecha', 'Hora', 'Responsable', 'Revisadas', 'Novedades', 'Resultado', ''].map(h => (
                     <th key={h} style={{ padding: '10px 14px', textAlign: 'left', color: '#fff', fontSize: '.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
@@ -421,15 +424,50 @@ export default function ROD() {
                   const traps = r.traps || r.trampas || [];
                   const rev  = traps.filter(t => t.estado !== 'sin_revisar').length;
                   const nov  = traps.filter(t => t.estado === 'novedad').length;
+                  const isExp = expandedId === r.id;
                   return (
-                    <tr key={r.id} style={{ background: i % 2 === 0 ? '#fff' : '#F9FBF9' }}>
-                      <td style={TD}>{r.fecha || '—'}</td>
-                      <td style={TD}>{r.hora || '—'}</td>
-                      <td style={TD}>{r.responsable || r.resp || '—'}</td>
-                      <td style={{ ...TD, textAlign: 'center', color: T.secondary, fontWeight: 600 }}>{rev}/{traps.length}</td>
-                      <td style={{ ...TD, textAlign: 'center', color: nov > 0 ? T.danger : T.textMid, fontWeight: nov > 0 ? 700 : 400 }}>{nov}</td>
-                      <td style={TD}><ResultadoBadge resultado={r.resultado} /></td>
-                    </tr>
+                    <Fragment key={r.id}>
+                      <tr style={{ background: isExp ? '#F1F8E9' : i % 2 === 0 ? '#fff' : '#F9FBF9', cursor: 'pointer' }}
+                        onClick={() => toggleExpand(r.id)}>
+                        <td style={TD}>{r.fecha || '—'}</td>
+                        <td style={TD}>{r.hora || '—'}</td>
+                        <td style={TD}>{r.responsable || r.resp || '—'}</td>
+                        <td style={{ ...TD, textAlign: 'center', color: T.secondary, fontWeight: 600 }}>{rev}/{traps.length}</td>
+                        <td style={{ ...TD, textAlign: 'center', color: nov > 0 ? T.danger : T.textMid, fontWeight: nov > 0 ? 700 : 400 }}>{nov}</td>
+                        <td style={TD}><ResultadoBadge resultado={r.resultado} /></td>
+                        <td style={{ ...TD, textAlign: 'center', color: T.secondary, fontWeight: 700, fontSize: '.8rem' }}>
+                          {isExp ? '▲' : '▼'}
+                        </td>
+                      </tr>
+                      {isExp && (
+                        <tr>
+                          <td colSpan={7} style={{ padding: 0, borderBottom: '2px solid #A5D6A7' }}>
+                            <div style={{ padding: '14px 18px', background: '#F9FEF9', borderLeft: '4px solid #2E7D32' }}>
+                              <div style={{ fontWeight: 700, fontSize: '.72rem', color: T.secondary, textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 10 }}>
+                                Detalle de Trampas
+                              </div>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                                {traps.map(t => (
+                                  <div key={t.id} style={{
+                                    padding: '7px 12px', borderRadius: 7, minWidth: 130,
+                                    background: t.estado === 'novedad' ? '#FFEBEE' : t.estado === 'en_lugar' ? '#E8F5E9' : '#F5F5F5',
+                                    border: `1px solid ${t.estado === 'novedad' ? '#FFCDD2' : t.estado === 'en_lugar' ? '#C8E6C9' : T.border}`,
+                                  }}>
+                                    <div style={{ fontWeight: 700, fontSize: '.78rem', color: T.textDark }}>{t.id} · {t.nombre}</div>
+                                    <div style={{ fontSize: '.7rem', fontWeight: 600, marginTop: 2,
+                                      color: t.estado === 'novedad' ? T.danger : t.estado === 'en_lugar' ? T.secondary : T.textMid }}>
+                                      {t.estado === 'en_lugar' ? '✓ En lugar' : t.estado === 'novedad' ? '⚠ Novedad' : '— Sin revisar'}
+                                    </div>
+                                    {t.obs && <div style={{ fontSize: '.66rem', color: T.textMid, marginTop: 3, fontStyle: 'italic' }}>{t.obs}</div>}
+                                  </div>
+                                ))}
+                              </div>
+                              {r.obs && <div style={{ marginTop: 10, fontSize: '.78rem', color: T.textMid }}>📝 {r.obs}</div>}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                   );
                 })}
               </tbody>

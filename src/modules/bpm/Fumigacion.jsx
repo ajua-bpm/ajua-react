@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, Fragment } from 'react';
 import { useEmpleados } from '../../hooks/useMainData';
 import { useCollection, useWrite } from '../../hooks/useFirestore';
 import { useToast } from '../../components/Toast';
@@ -156,6 +156,8 @@ export default function Fumigacion() {
   };
 
   const resColor = (v) => v === 'realizado' ? T.accent : v === 'pendiente' ? T.warn : T.textMid;
+  const [expandedId, setExpandedId] = useState(null);
+  const toggleExpand = (id) => setExpandedId(prev => prev === id ? null : id);
 
   return (
     <div style={{ fontFamily: 'Inter, system-ui, sans-serif', color: T.textDark, maxWidth: 900, margin: '0 auto' }}>
@@ -274,30 +276,73 @@ export default function Fumigacion() {
                   </tr>
                 </thead>
                 <tbody>
-                  {(registros || []).slice(0, 100).map((r, i) => (
-                    <tr key={r.id} style={{ background: i % 2 === 0 ? T.white : '#F9FBF9' }}>
-                      <TdCell style={{ fontSize: '.78rem' }}>{r.instalacion || '—'}</TdCell>
-                      <TdCell>{r.mes || '—'}</TdCell>
-                      <TdCell style={{ textAlign: 'center' }}>{r.semana || '—'}</TdCell>
-                      <TdCell>{r.resp || '—'}</TdCell>
-                      <TdCell style={{ fontWeight: 600 }}>{r.fecha || '—'}</TdCell>
-                      <TdCell style={{ fontSize: '.75rem' }}>{r.tipo || '—'}</TdCell>
-                      <TdCell>
-                        <span style={{ padding: '3px 8px', borderRadius: 100, fontSize: '.68rem', fontWeight: 600,
-                          background: r.resultado === 'realizado' ? T.green2 : r.resultado === 'pendiente' ? '#FFF3E0' : '#F5F5F5',
-                          color: resColor(r.resultado) }}>
-                          {RESULTADOS.find(x => x.value === r.resultado)?.label || r.resultado || '—'}
-                        </span>
-                      </TdCell>
-                      <TdCell style={{ fontSize: '.72rem', maxWidth: 140 }}>{r.obs || '—'}</TdCell>
-                      <TdCell>
-                        <button onClick={() => remove(r.id)}
-                          style={{ background: 'none', border: `1px solid ${T.border}`,
-                            borderRadius: 4, padding: '3px 8px', cursor: 'pointer',
-                            fontSize: '.75rem', color: T.textMid }}>✕</button>
-                      </TdCell>
-                    </tr>
-                  ))}
+                  {(registros || []).slice(0, 100).map((r, i) => {
+                    const isExp = expandedId === r.id;
+                    const hasDetail = (r.cloro && r.cloro.length > 0) || r.obs;
+                    return (
+                    <Fragment key={r.id}>
+                      <tr style={{ background: isExp ? '#F1F8E9' : i % 2 === 0 ? T.white : '#F9FBF9', cursor: hasDetail ? 'pointer' : 'default' }}
+                        onClick={() => hasDetail && toggleExpand(r.id)}>
+                        <TdCell style={{ fontSize: '.78rem' }}>{r.instalacion || '—'}</TdCell>
+                        <TdCell>{r.mes || '—'}</TdCell>
+                        <TdCell style={{ textAlign: 'center' }}>{r.semana || '—'}</TdCell>
+                        <TdCell>{r.resp || '—'}</TdCell>
+                        <TdCell style={{ fontWeight: 600 }}>{r.fecha || '—'}</TdCell>
+                        <TdCell style={{ fontSize: '.75rem' }}>{r.tipo || '—'}</TdCell>
+                        <TdCell>
+                          <span style={{ padding: '3px 8px', borderRadius: 100, fontSize: '.68rem', fontWeight: 600,
+                            background: r.resultado === 'realizado' ? T.green2 : r.resultado === 'pendiente' ? '#FFF3E0' : '#F5F5F5',
+                            color: resColor(r.resultado) }}>
+                            {RESULTADOS.find(x => x.value === r.resultado)?.label || r.resultado || '—'}
+                          </span>
+                        </TdCell>
+                        <TdCell style={{ fontSize: '.72rem', maxWidth: 140 }}>{r.obs ? r.obs.slice(0, 40) + (r.obs.length > 40 ? '…' : '') : '—'}</TdCell>
+                        <TdCell style={{ textAlign: 'center' }}>
+                          <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
+                            {hasDetail && (
+                              <span style={{ color: T.secondary, fontWeight: 700, fontSize: '.8rem' }}>{isExp ? '▲' : '▼'}</span>
+                            )}
+                            <button onClick={e => { e.stopPropagation(); remove(r.id); }}
+                              style={{ background: 'none', border: `1px solid ${T.border}`,
+                                borderRadius: 4, padding: '3px 8px', cursor: 'pointer',
+                                fontSize: '.75rem', color: T.textMid }}>✕</button>
+                          </div>
+                        </TdCell>
+                      </tr>
+                      {isExp && (
+                        <tr>
+                          <td colSpan={9} style={{ padding: 0, borderBottom: '2px solid #A5D6A7' }}>
+                            <div style={{ padding: '14px 18px', background: '#F9FEF9', borderLeft: '4px solid #2E7D32' }}>
+                              {r.cloro && r.cloro.length > 0 && (
+                                <div style={{ marginBottom: 8 }}>
+                                  <span style={{ fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', color: T.secondary, letterSpacing: '.06em' }}>
+                                    🧴 Áreas desinfectadas con Cloro
+                                  </span>
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+                                    {r.cloro.map((c, j) => (
+                                      <span key={j} style={{ padding: '3px 12px', borderRadius: 20, fontSize: '.75rem', fontWeight: 600,
+                                        background: '#E3F2FD', color: '#1565C0' }}>{c.area}</span>
+                                    ))}
+                                  </div>
+                                  {r.cloroConc && (
+                                    <div style={{ marginTop: 6, fontSize: '.78rem', color: T.textMid }}>
+                                      Concentración: <strong>{r.cloroConc}%</strong>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                              {r.obs && (
+                                <div style={{ fontSize: '.78rem', color: T.textMid }}>
+                                  📝 {r.obs}
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

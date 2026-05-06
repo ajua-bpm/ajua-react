@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 import { useCollection, useWrite } from '../../hooks/useFirestore';
 import { useEmpleados } from '../../hooks/useMainData';
 import { useToast } from '../../components/Toast';
@@ -67,6 +67,8 @@ export default function BAS() {
   const { add: addCal, saving: savingCal } = useWrite('bas_calibraciones');
 
   const [tab, setTab] = useState('revision');
+  const [expandedId, setExpandedId] = useState(null);
+  const toggleExpand = (id) => setExpandedId(prev => prev === id ? null : id);
 
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   useEffect(() => {
@@ -314,7 +316,7 @@ export default function BAS() {
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr style={{ background: T.primary }}>
-                      {['Fecha', 'Hora', 'Responsable', 'OK', 'Falla', 'Resultado', 'Obs', ''].map(h => (
+                      {['Fecha', 'Hora', 'Responsable', 'OK', 'Falla', 'Resultado', 'Obs', '', ''].map(h => (
                         <th key={h} style={{ padding: '10px 12px', textAlign: 'left', color: T.white, fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', whiteSpace: 'nowrap' }}>{h}</th>
                       ))}
                     </tr>
@@ -324,31 +326,67 @@ export default function BAS() {
                       const bas = r.basculas || [];
                       const okCount   = bas.filter(b => b.estado === 'ok').length;
                       const failCount = bas.filter(b => b.estado === 'variacion').length;
+                      const isExp = expandedId === r.id;
                       return (
-                        <tr key={r.id} style={{ background: i % 2 === 0 ? T.white : '#F9FBF9' }}>
-                          <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0', fontWeight: 600 }}>{r.fecha || '—'}</td>
-                          <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0' }}>{r.hora || '—'}</td>
-                          <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0' }}>{r.responsable || '—'}</td>
-                          <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0', textAlign: 'center' }}>
-                            <span style={{ padding: '2px 9px', borderRadius: 100, fontSize: '.7rem', fontWeight: 700, background: T.bgGreen, color: T.secondary }}>{okCount}</span>
-                          </td>
-                          <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0', textAlign: 'center' }}>
-                            {failCount > 0
-                              ? <span style={{ padding: '2px 9px', borderRadius: 100, fontSize: '.7rem', fontWeight: 700, background: '#FFEBEE', color: T.danger }}>
-                                  {failCount}{bas.filter(b => b.estado === 'variacion' && b.variacionGramos).map(b => ` ±${b.variacionGramos} lbs`).join('')}
-                                </span>
-                              : <span style={{ color: T.textMid, fontSize: '.75rem' }}>—</span>}
-                          </td>
-                          <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }}><Badge resultado={r.resultado} /></td>
-                          <td style={{ padding: '8px 12px', fontSize: '.75rem', borderBottom: '1px solid #F0F0F0', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.obs || '—'}</td>
-                          <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }}>
-                            <button
-                              onClick={() => { if (window.confirm('¿Eliminar esta revisión?')) removeBas(r.id); }}
-                              title="Eliminar"
-                              style={{ padding: '4px 10px', borderRadius: 5, border: `1.5px solid ${T.danger}`, background: T.white, color: T.danger, cursor: 'pointer', fontSize: '.75rem', fontWeight: 700, fontFamily: 'inherit' }}
-                            >✕</button>
-                          </td>
-                        </tr>
+                        <Fragment key={r.id}>
+                          <tr style={{ background: isExp ? '#F1F8E9' : i % 2 === 0 ? T.white : '#F9FBF9', cursor: 'pointer' }}
+                            onClick={() => toggleExpand(r.id)}>
+                            <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0', fontWeight: 600 }}>{r.fecha || '—'}</td>
+                            <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0' }}>{r.hora || '—'}</td>
+                            <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0' }}>{r.responsable || '—'}</td>
+                            <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0', textAlign: 'center' }}>
+                              <span style={{ padding: '2px 9px', borderRadius: 100, fontSize: '.7rem', fontWeight: 700, background: T.bgGreen, color: T.secondary }}>{okCount}</span>
+                            </td>
+                            <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0', textAlign: 'center' }}>
+                              {failCount > 0
+                                ? <span style={{ padding: '2px 9px', borderRadius: 100, fontSize: '.7rem', fontWeight: 700, background: '#FFEBEE', color: T.danger }}>
+                                    {failCount}{bas.filter(b => b.estado === 'variacion' && b.variacionGramos).map(b => ` ±${b.variacionGramos} lbs`).join('')}
+                                  </span>
+                                : <span style={{ color: T.textMid, fontSize: '.75rem' }}>—</span>}
+                            </td>
+                            <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }}><Badge resultado={r.resultado} /></td>
+                            <td style={{ padding: '8px 12px', fontSize: '.75rem', borderBottom: '1px solid #F0F0F0', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.obs || '—'}</td>
+                            <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0', textAlign: 'center', color: T.secondary, fontWeight: 700, fontSize: '.8rem' }}>
+                              {isExp ? '▲' : '▼'}
+                            </td>
+                            <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }} onClick={e => e.stopPropagation()}>
+                              <button
+                                onClick={() => { if (window.confirm('¿Eliminar esta revisión?')) removeBas(r.id); }}
+                                title="Eliminar"
+                                style={{ padding: '4px 10px', borderRadius: 5, border: `1.5px solid ${T.danger}`, background: T.white, color: T.danger, cursor: 'pointer', fontSize: '.75rem', fontWeight: 700, fontFamily: 'inherit' }}
+                              >✕</button>
+                            </td>
+                          </tr>
+                          {isExp && (
+                            <tr>
+                              <td colSpan={9} style={{ padding: 0, borderBottom: '2px solid #A5D6A7' }}>
+                                <div style={{ padding: '14px 18px', background: '#F9FEF9', borderLeft: '4px solid #2E7D32' }}>
+                                  <div style={{ fontWeight: 700, fontSize: '.72rem', color: T.secondary, textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 10 }}>
+                                    Detalle por Báscula — Masa madre: 10 lbs
+                                  </div>
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                                    {bas.map(b => (
+                                      <div key={b.id} style={{
+                                        padding: '10px 16px', borderRadius: 8, minWidth: 160,
+                                        background: b.estado === 'ok' ? '#E8F5E9' : b.estado === 'variacion' ? '#FFF3E0' : '#F5F5F5',
+                                        border: `1.5px solid ${b.estado === 'ok' ? '#A5D6A7' : b.estado === 'variacion' ? '#FFCC80' : T.border}`,
+                                      }}>
+                                        <div style={{ fontWeight: 700, fontSize: '.82rem', color: T.textDark }}>{b.nombre || b.id}</div>
+                                        <div style={{ fontSize: '.74rem', fontWeight: 700, marginTop: 4,
+                                          color: b.estado === 'ok' ? T.secondary : b.estado === 'variacion' ? T.warn : T.textMid }}>
+                                          {b.estado === 'ok' ? '✓ OK' : b.estado === 'variacion'
+                                            ? `⚠ Variación: ${b.variacionGramos ? b.variacionGramos + ' lbs' : 'sin dato'}`
+                                            : '— No revisada'}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                  {r.obs && <div style={{ marginTop: 10, fontSize: '.78rem', color: T.textMid }}>📝 {r.obs}</div>}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
                       );
                     })}
                   </tbody>
