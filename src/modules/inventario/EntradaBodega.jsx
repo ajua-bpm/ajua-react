@@ -72,18 +72,25 @@ export default function EntradaBodega() {
   const { data: proveedores, loading: lc } = useCollection('proveedores', { orderField: 'nombre', limit: 300 });
   const { add, update, remove, saving } = useWrite('ientradas');
 
+  // IDs que existen como documentos reales en Firestore 'ientradas'
+  const realIds = useMemo(() => new Set(colData.map(r => r.id)), [colData]);
+
+  // IDs de registros legacy que fueron reemplazados por edición (ocultarlos del merge)
+  const [hiddenLegacyIds, setHiddenLegacyIds] = useState([]);
+
   // Merge Firestore + ajua_bpm/main ientradas
   // bpm.html fields: productoNombre→producto, lbsBruto/lbsTotal→lbsBrutas
   const data = useMemo(() => {
+    const hiddenSet = new Set(hiddenLegacyIds);
     const mainEnt = (mainData?.ientradas || []).map(r => ({
       ...r,
       producto:  r.producto || r.productoNombre || '',
       lbsBrutas: Number(r.lbsBrutas) || Number(r.lbsTotal) || Number(r.lbsBruto) || 0,
+      _isLegacy: true,
     }));
-    const seen = new Set(colData.map(r => r.id));
-    return [...colData, ...mainEnt.filter(r => r.id && !seen.has(r.id))]
+    return [...colData, ...mainEnt.filter(r => r.id && !realIds.has(r.id) && !hiddenSet.has(r.id))]
       .sort((a, b) => (b.fecha || '') > (a.fecha || '') ? 1 : -1);
-  }, [colData, mainData]);
+  }, [colData, mainData, realIds, hiddenLegacyIds]);
 
   const [form, setForm]     = useState({ ...BLANK });
   const [editId, setEditId] = useState(null);
@@ -133,12 +140,19 @@ export default function EntradaBodega() {
     if (!form.fecha || !form.producto || !form.bultos) {
       toast('Fecha, producto y bultos son requeridos', 'error'); return;
     }
+    const payload = buildPayload();
     if (editId) {
-      await update(editId, buildPayload());
+      if (!realIds.has(editId)) {
+        // Registro legacy (de ajua_bpm/main) — crear nuevo doc real y ocultar el legacy
+        await add(payload);
+        setHiddenLegacyIds(prev => [...prev, editId]);
+      } else {
+        await update(editId, payload);
+      }
       toast('✅ Entrada actualizada');
       cancelEdit();
     } else {
-      await add(buildPayload());
+      await add(payload);
       toast('Entrada registrada correctamente');
       setForm({ ...BLANK, fecha: today() });
     }
@@ -146,7 +160,12 @@ export default function EntradaBodega() {
 
   const handleDelete = async (id) => {
     if (!window.confirm('Eliminar este registro?')) return;
-    await remove(id);
+    if (!realIds.has(id)) {
+      // Registro legacy — solo ocultar de la vista (no existe en Firestore)
+      setHiddenLegacyIds(prev => [...prev, id]);
+    } else {
+      await remove(id);
+    }
     toast('Registro eliminado');
   };
 
