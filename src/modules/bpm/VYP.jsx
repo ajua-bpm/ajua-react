@@ -19,21 +19,20 @@ const T = {
   green2:    '#E8F5E9',
 };
 
-const AREAS = ['Cooler 1', 'Cooler 2', 'Pre-carga', 'Maquila', 'Parqueo'];
-const TIPOS    = ['Vidrio', 'Plástico', 'Ambos'];
-const ACCIONES = ['Retirado', 'Reportado', 'Pendiente'];
+const AREAS     = ['Cooler 1', 'Cooler 2', 'Pre-carga', 'Maquila', 'Parqueo'];
+const INV_AREAS = ['Cooler 1 (grande)', 'Cooler 2 (pequeño)', 'Pre-Carga/Seco'];
+const TIPOS     = ['Vidrio', 'Plástico', 'Ambos'];
+const ACCIONES  = ['Retirado', 'Reportado', 'Pendiente'];
 
 const today = () => new Date().toISOString().slice(0, 10);
 
 const blankArea = () => ({
-  inspeccionada: false,
-  hallazgo: false,
-  tipo: 'Vidrio',
-  desc: '',
-  cantidad: '',
-  accion: 'Retirado',
-  foto: null,
+  inspeccionada: false, hallazgo: false,
+  tipo: 'Vidrio', desc: '', cantidad: '', accion: 'Retirado', foto: null,
 });
+const blankInvArea = () => ({ vidrio: '', plastico: '', obs: '' });
+const initAreas    = () => Object.fromEntries(AREAS.map(a => [a, blankArea()]));
+const initInvAreas = () => Object.fromEntries(INV_AREAS.map(a => [a, blankInvArea()]));
 
 // ── UI helpers ────────────────────────────────────────────────────
 const inputStyle = {
@@ -66,7 +65,6 @@ function Toggle({ checked, onChange, label }) {
 // ── Area inspection row ───────────────────────────────────────────
 function AreaRow({ nombre, data, onChange }) {
   const fotoRef = useRef(null);
-
   const set = (patch) => onChange({ ...data, ...patch });
 
   const handleFoto = (e) => {
@@ -85,11 +83,10 @@ function AreaRow({ nombre, data, onChange }) {
 
   const res = areaResult();
   const resBadge = {
-    LIMPIO:       { label: '✅ LIMPIO',        bg: T.green2,   color: T.secondary },
-    'CON HALLAZGO': { label: '⚠️ CON HALLAZGO', bg: '#FFF9C4',  color: '#F57F17' },
-    PENDIENTE:    { label: '🔴 PENDIENTE',     bg: '#FFEBEE',  color: T.danger },
+    LIMPIO:           { label: '✅ LIMPIO',        bg: T.green2,  color: T.secondary },
+    'CON HALLAZGO':   { label: '⚠️ CON HALLAZGO', bg: '#FFF9C4', color: '#F57F17' },
+    PENDIENTE:        { label: '🔴 PENDIENTE',     bg: '#FFEBEE', color: T.danger },
   };
-
   const badge = res ? resBadge[res] : null;
 
   return (
@@ -101,19 +98,14 @@ function AreaRow({ nombre, data, onChange }) {
       borderRadius: 8, padding: '14px 16px', marginBottom: 10,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
-        {/* Area name */}
         <div style={{ fontWeight: 700, fontSize: '.88rem', color: T.textDark, minWidth: 100 }}>
           {nombre}
         </div>
-
-        {/* Inspected toggle */}
         <Toggle
           checked={data.inspeccionada}
           onChange={v => set({ inspeccionada: v, hallazgo: v ? data.hallazgo : false })}
           label={data.inspeccionada ? '✓ Inspeccionada' : 'Marcar inspeccionada'}
         />
-
-        {/* Finding toggle — only if inspected */}
         {data.inspeccionada && (
           <Toggle
             checked={data.hallazgo}
@@ -121,8 +113,6 @@ function AreaRow({ nombre, data, onChange }) {
             label={data.hallazgo ? '⚠ Con hallazgo' : 'Sin hallazgo'}
           />
         )}
-
-        {/* Result badge */}
         {badge && (
           <span style={{ padding: '4px 12px', borderRadius: 20, fontSize: '.72rem',
             fontWeight: 800, background: badge.bg, color: badge.color }}>
@@ -131,7 +121,6 @@ function AreaRow({ nombre, data, onChange }) {
         )}
       </div>
 
-      {/* Hallazgo detail — only if hallazgo = true */}
       {data.inspeccionada && data.hallazgo && (
         <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${T.border}` }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(130px,1fr))', gap: 10, marginBottom: 10 }}>
@@ -153,17 +142,13 @@ function AreaRow({ nombre, data, onChange }) {
               </select>
             </Lbl>
           </div>
-
           <div style={{ marginBottom: 10 }}>
             <Lbl text="Descripción del hallazgo">
               <textarea value={data.desc} onChange={e => set({ desc: e.target.value })}
                 placeholder="Qué se encontró, posible origen, estado..."
-                rows={2}
-                style={{ ...inputStyle, resize: 'vertical', fontSize: '.82rem' }} />
+                rows={2} style={{ ...inputStyle, resize: 'vertical', fontSize: '.82rem' }} />
             </Lbl>
           </div>
-
-          {/* Foto */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <span style={{ fontSize: '.68rem', fontWeight: 700, textTransform: 'uppercase',
               letterSpacing: '.07em', color: T.secondary }}>Foto (opcional)</span>
@@ -187,6 +172,53 @@ function AreaRow({ nombre, data, onChange }) {
   );
 }
 
+// ── Inventory area row ────────────────────────────────────────────
+function InvAreaRow({ nombre, data, onChange }) {
+  const set = (k, v) => onChange({ ...data, [k]: v });
+  const totalV  = parseInt(data.vidrio)   || 0;
+  const totalP  = parseInt(data.plastico) || 0;
+  const hasItems = totalV + totalP > 0;
+
+  return (
+    <div style={{
+      background: hasItems ? '#FFFDE7' : '#F9FBF9',
+      border: `1.5px solid ${hasItems ? '#FDD835' : T.border}`,
+      borderRadius: 8, padding: '16px 18px', marginBottom: 12,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <span style={{ fontWeight: 700, fontSize: '.92rem', color: T.textDark }}>{nombre}</span>
+        {hasItems && (
+          <span style={{ fontSize: '.72rem', fontWeight: 800, color: '#F57F17',
+            background: '#FFF9C4', padding: '3px 10px', borderRadius: 20 }}>
+            ⚠ {totalV + totalP} artículo{totalV + totalP !== 1 ? 's' : ''} registrados
+          </span>
+        )}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '120px 120px 1fr', gap: 12, alignItems: 'end' }}>
+        <Lbl text="Vidrio (cant.)">
+          <input type="number" min="0" step="1" value={data.vidrio}
+            onChange={e => set('vidrio', e.target.value)}
+            placeholder="0"
+            style={{ ...inputStyle, fontSize: '.88rem', textAlign: 'center' }} />
+        </Lbl>
+        <Lbl text="Plástico (cant.)">
+          <input type="number" min="0" step="1" value={data.plastico}
+            onChange={e => set('plastico', e.target.value)}
+            placeholder="0"
+            style={{ ...inputStyle, fontSize: '.88rem', textAlign: 'center' }} />
+        </Lbl>
+        <Lbl text="Observaciones">
+          <input type="text" value={data.obs}
+            onChange={e => set('obs', e.target.value)}
+            placeholder="Descripción de artículos encontrados..."
+            style={{ ...inputStyle, fontSize: '.82rem' }} />
+        </Lbl>
+      </div>
+    </div>
+  );
+}
+
 // ── Compute overall result ────────────────────────────────────────
 function overallResult(areas) {
   const inspected = AREAS.filter(a => areas[a]?.inspeccionada);
@@ -201,6 +233,8 @@ function overallResult(areas) {
 export default function VYP() {
   const toast = useToast();
   const { empleados, loading: empLoading } = useEmpleados();
+
+  // Inspección
   const { data: historial, loading: histLoading } = useCollection('vyp', {
     orderField: 'fecha', orderDir: 'desc', limit: 200,
   });
@@ -209,29 +243,23 @@ export default function VYP() {
   const [fecha, setFecha] = useState(today());
   const [resp, setResp]   = useState('');
   const [obs, setObs]     = useState('');
-
-  const initAreas = () => Object.fromEntries(AREAS.map(a => [a, blankArea()]));
   const [areas, setAreas] = useState(initAreas);
-
   const setArea = (nombre, data) => setAreas(prev => ({ ...prev, [nombre]: data }));
 
   const result = overallResult(areas);
   const resultBadges = {
-    LIMPIO:         { label: '✅ LIMPIO — Sin hallazgos',          bg: T.green2,  color: T.secondary },
-    'CON HALLAZGO': { label: '⚠️ CON HALLAZGO — Retirados',       bg: '#FFF9C4', color: '#F57F17' },
-    PENDIENTE:      { label: '🔴 PENDIENTE — Requiere atención',   bg: '#FFEBEE', color: T.danger },
+    LIMPIO:         { label: '✅ LIMPIO — Sin hallazgos',        bg: T.green2,  color: T.secondary },
+    'CON HALLAZGO': { label: '⚠️ CON HALLAZGO — Retirados',     bg: '#FFF9C4', color: '#F57F17' },
+    PENDIENTE:      { label: '🔴 PENDIENTE — Requiere atención', bg: '#FFEBEE', color: T.danger },
   };
 
   const handleSave = async () => {
     if (!fecha || !resp) { toast('Complete fecha y responsable', 'error'); return; }
     const inspCount = AREAS.filter(a => areas[a].inspeccionada).length;
     if (inspCount === 0) { toast('Marque al menos un área inspeccionada', 'error'); return; }
-
-    // Build hallazgos array for history display
     const hallazgos = AREAS
       .filter(a => areas[a].inspeccionada && areas[a].hallazgo)
       .map(a => ({ area: a, ...areas[a] }));
-
     try {
       await add({ fecha, resp, obs, areas, hallazgos, resultado: result });
       toast('Inspección guardada');
@@ -240,169 +268,338 @@ export default function VYP() {
     } catch (e) { toast('Error: ' + e.message, 'error'); }
   };
 
-  // Historial filter
   const [filtRes, setFiltRes] = useState('');
   const filtHist = (historial || []).filter(r => !filtRes || r.resultado === filtRes);
+
+  // Inventario
+  const { data: invData, loading: invLoading } = useCollection('vypInventario', {
+    orderField: 'fecha', orderDir: 'desc', limit: 100,
+  });
+  const { add: addInv, remove: removeInv, saving: savingInv } = useWrite('vypInventario');
+
+  const [invFecha, setInvFecha] = useState(today());
+  const [invResp, setInvResp]   = useState('');
+  const [invAreas, setInvAreas] = useState(initInvAreas);
+  const setInvArea = (nombre, data) => setInvAreas(prev => ({ ...prev, [nombre]: data }));
+
+  const handleSaveInv = async () => {
+    if (!invFecha || !invResp) { toast('Complete fecha y responsable', 'error'); return; }
+    try {
+      const totalGlobal = INV_AREAS.reduce((s, a) => {
+        const d = invAreas[a];
+        return s + (parseInt(d.vidrio) || 0) + (parseInt(d.plastico) || 0);
+      }, 0);
+      await addInv({ fecha: invFecha, resp: invResp, areas: invAreas, totalArticulos: totalGlobal });
+      toast('✓ Inventario guardado');
+      setInvAreas(initInvAreas());
+    } catch (e) { toast('Error: ' + e.message, 'error'); }
+  };
+
+  // Tab
+  const [tab, setTab] = useState('inspeccion');
+
+  const tabBtn = (key, label) => (
+    <button key={key} onClick={() => setTab(key)} style={{
+      padding: '9px 20px', border: 'none', background: 'none', cursor: 'pointer',
+      fontFamily: 'inherit', fontSize: '.88rem',
+      fontWeight: tab === key ? 700 : 500,
+      color: tab === key ? T.primary : T.textMid,
+      borderBottom: `3px solid ${tab === key ? T.primary : 'transparent'}`,
+      marginBottom: -2, transition: 'all .12s',
+    }}>{label}</button>
+  );
 
   return (
     <div style={{ fontFamily: 'inherit', maxWidth: 900 }}>
       {/* Header */}
-      <div style={{ marginBottom: 22 }}>
+      <div style={{ marginBottom: 16 }}>
         <h1 style={{ fontSize: '1.45rem', fontWeight: 800, color: T.primary, margin: 0 }}>
           Vidrio y Plástico
         </h1>
         <p style={{ fontSize: '.83rem', color: T.textMid, marginTop: 4 }}>
-          Inspección diaria por área · Hallazgos de contaminación · Cooler, Pre-carga, Maquila, Parqueo
+          Inspección diaria por área · Inventario por área · Control de contaminación
         </p>
       </div>
 
-      {/* Form card */}
-      <div style={{ background: '#fff', borderRadius: 8, boxShadow: '0 1px 3px rgba(0,0,0,.10)', padding: 22, marginBottom: 20 }}>
-        {/* Top row */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 14, marginBottom: 18 }}>
-          <Lbl text="Fecha">
-            <input type="date" value={fecha} onChange={e => setFecha(e.target.value)} style={inputStyle} />
-          </Lbl>
-          <Lbl text="Responsable">
-            {empLoading ? <Skeleton height={36} /> : (
-              <select value={resp} onChange={e => setResp(e.target.value)}
-                style={{ ...inputStyle, cursor: 'pointer' }}>
-                <option value="">— Seleccionar —</option>
-                {empleados.map(e => (
-                  <option key={e.id || e.nombre} value={e.nombre}>
-                    {e.nombre}{e.cargo ? ' · ' + e.cargo : ''}
-                  </option>
-                ))}
-              </select>
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: 2, borderBottom: `2px solid ${T.border}`, marginBottom: 24 }}>
+        {tabBtn('inspeccion', '🔍 Inspección Diaria')}
+        {tabBtn('inventario', '📦 Inventario por Área')}
+      </div>
+
+      {/* ── TAB: INSPECCIÓN ───────────────────────────────────── */}
+      {tab === 'inspeccion' && (
+        <>
+          {/* Form card */}
+          <div style={{ background: '#fff', borderRadius: 8, boxShadow: '0 1px 3px rgba(0,0,0,.10)', padding: 22, marginBottom: 20 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 14, marginBottom: 18 }}>
+              <Lbl text="Fecha">
+                <input type="date" value={fecha} onChange={e => setFecha(e.target.value)} style={inputStyle} />
+              </Lbl>
+              <Lbl text="Responsable">
+                {empLoading ? <Skeleton height={36} /> : (
+                  <select value={resp} onChange={e => setResp(e.target.value)}
+                    style={{ ...inputStyle, cursor: 'pointer' }}>
+                    <option value="">— Seleccionar —</option>
+                    {empleados.map(e => (
+                      <option key={e.id || e.nombre} value={e.nombre}>
+                        {e.nombre}{e.cargo ? ' · ' + e.cargo : ''}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </Lbl>
+            </div>
+
+            {result && (
+              <div style={{ marginBottom: 16, padding: '10px 16px', borderRadius: 8,
+                background: resultBadges[result].bg, color: resultBadges[result].color,
+                fontWeight: 800, fontSize: '.88rem' }}>
+                {resultBadges[result].label}
+              </div>
             )}
-          </Lbl>
-        </div>
 
-        {/* Overall result banner */}
-        {result && (
-          <div style={{ marginBottom: 16, padding: '10px 16px', borderRadius: 8,
-            background: resultBadges[result].bg, color: resultBadges[result].color,
-            fontWeight: 800, fontSize: '.88rem' }}>
-            {resultBadges[result].label}
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase',
+                letterSpacing: '.07em', color: T.secondary, marginBottom: 10 }}>
+                Inspección por Área
+              </div>
+              {AREAS.map(a => (
+                <AreaRow key={a} nombre={a} data={areas[a]} onChange={d => setArea(a, d)} />
+              ))}
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <Lbl text="Observaciones generales (opcional)">
+                <textarea value={obs} onChange={e => setObs(e.target.value)}
+                  placeholder="Notas adicionales sobre la inspección..."
+                  rows={2} style={{ ...inputStyle, resize: 'vertical' }} />
+              </Lbl>
+            </div>
+
+            <button onClick={handleSave} disabled={saving}
+              style={{ padding: '10px 22px', background: saving ? '#BDBDBD' : T.primary,
+                color: T.white, border: 'none', borderRadius: 6, fontWeight: 700,
+                fontSize: '.88rem', cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+              {saving ? 'Guardando...' : 'Guardar Inspección'}
+            </button>
           </div>
-        )}
 
-        {/* Area rows */}
-        <div style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase',
-            letterSpacing: '.07em', color: T.secondary, marginBottom: 10 }}>
-            Inspección por Área
-          </div>
-          {AREAS.map(a => (
-            <AreaRow key={a} nombre={a} data={areas[a]} onChange={d => setArea(a, d)} />
-          ))}
-        </div>
+          {/* Historial */}
+          <div style={{ background: '#fff', borderRadius: 8, boxShadow: '0 1px 3px rgba(0,0,0,.10)', padding: 22 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+              <div style={{ fontWeight: 700, fontSize: '.9rem', color: T.primary }}>
+                Historial de Inspecciones ({filtHist.length})
+              </div>
+              <select value={filtRes} onChange={e => setFiltRes(e.target.value)}
+                style={{ padding: '6px 12px', border: `1.5px solid ${T.border}`, borderRadius: 6,
+                  fontSize: '.82rem', outline: 'none', fontFamily: 'inherit', color: T.textDark, background: T.white }}>
+                <option value="">Todos los resultados</option>
+                <option value="LIMPIO">✅ LIMPIO</option>
+                <option value="CON HALLAZGO">⚠️ CON HALLAZGO</option>
+                <option value="PENDIENTE">🔴 PENDIENTE</option>
+              </select>
+            </div>
 
-        {/* Observaciones generales */}
-        <div style={{ marginBottom: 16 }}>
-          <Lbl text="Observaciones generales (opcional)">
-            <textarea value={obs} onChange={e => setObs(e.target.value)}
-              placeholder="Notas adicionales sobre la inspección..."
-              rows={2}
-              style={{ ...inputStyle, resize: 'vertical' }} />
-          </Lbl>
-        </div>
-
-        <button onClick={handleSave} disabled={saving}
-          style={{ padding: '10px 22px', background: saving ? '#BDBDBD' : T.primary,
-            color: T.white, border: 'none', borderRadius: 6, fontWeight: 700,
-            fontSize: '.88rem', cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
-          {saving ? 'Guardando...' : 'Guardar Inspección'}
-        </button>
-      </div>
-
-      {/* Historial */}
-      <div style={{ background: '#fff', borderRadius: 8, boxShadow: '0 1px 3px rgba(0,0,0,.10)', padding: 22 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
-          <div style={{ fontWeight: 700, fontSize: '.9rem', color: T.primary }}>
-            Historial de Inspecciones ({filtHist.length})
-          </div>
-          <select value={filtRes} onChange={e => setFiltRes(e.target.value)}
-            style={{ padding: '6px 12px', border: `1.5px solid ${T.border}`, borderRadius: 6,
-              fontSize: '.82rem', outline: 'none', fontFamily: 'inherit', color: T.textDark, background: T.white }}>
-            <option value="">Todos los resultados</option>
-            <option value="LIMPIO">✅ LIMPIO</option>
-            <option value="CON HALLAZGO">⚠️ CON HALLAZGO</option>
-            <option value="PENDIENTE">🔴 PENDIENTE</option>
-          </select>
-        </div>
-
-        {histLoading ? <Skeleton rows={5} /> : filtHist.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '32px 0', color: T.textMid, fontSize: '.85rem' }}>
-            Sin inspecciones registradas
-          </div>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ background: T.primary }}>
-                  {['Fecha', 'Responsable', 'Áreas', 'Hallazgos', 'Resultado', 'Foto', ''].map(h => (
-                    <th key={h} style={{ padding: '9px 12px', color: T.white, fontSize: '.7rem',
-                      fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em',
-                      textAlign: 'left', whiteSpace: 'nowrap' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filtHist.slice(0, 100).map((r, i) => {
-                  const rb = resultBadges[r.resultado] || { label: r.resultado || '—', bg: T.bgLight, color: T.textMid };
-                  const hallazgos = r.hallazgos || [];
-                  const fotos = hallazgos.filter(h => h.foto);
-                  const inspAreas = r.areas
-                    ? AREAS.filter(a => r.areas[a]?.inspeccionada).join(', ')
-                    : '—';
-                  return (
-                    <tr key={r.id} style={{ background: i % 2 === 0 ? '#fff' : '#F9FBF9' }}>
-                      <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0',
-                        fontWeight: 600, color: T.textMid, whiteSpace: 'nowrap' }}>{r.fecha}</td>
-                      <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0' }}>{r.resp || '—'}</td>
-                      <td style={{ padding: '8px 12px', fontSize: '.75rem', borderBottom: '1px solid #F0F0F0',
-                        color: T.textMid }}>{inspAreas}</td>
-                      <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }}>
-                        {hallazgos.length === 0 ? (
-                          <span style={{ color: T.border, fontSize: '.72rem' }}>—</span>
-                        ) : (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                            {hallazgos.map((h, j) => (
-                              <span key={j} style={{ fontSize: '.68rem', padding: '2px 7px', borderRadius: 10,
-                                background: '#E3F2FD', color: T.info, fontWeight: 600, whiteSpace: 'nowrap' }}>
-                                {h.area} · {h.tipo}
-                                {h.accion === 'Pendiente' && <span style={{ color: T.danger }}> ⚠</span>}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </td>
-                      <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0', whiteSpace: 'nowrap' }}>
-                        <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: '.68rem',
-                          fontWeight: 800, background: rb.bg, color: rb.color }}>
-                          {rb.label}
-                        </span>
-                      </td>
-                      <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }}>
-                        {fotos.length > 0
-                          ? <img src={fotos[0].foto} alt="" style={{ height: 28, borderRadius: 3, cursor: 'pointer' }} title="Ver foto" />
-                          : <span style={{ color: T.border, fontSize: '.72rem' }}>—</span>}
-                      </td>
-                      <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }}>
-                        <button onClick={() => remove(r.id)}
-                          style={{ background: 'none', border: `1px solid ${T.border}`, borderRadius: 4,
-                            padding: '3px 8px', cursor: 'pointer', fontSize: '.72rem', color: T.textMid }}>✕</button>
-                      </td>
+            {histLoading ? <Skeleton rows={5} /> : filtHist.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '32px 0', color: T.textMid, fontSize: '.85rem' }}>
+                Sin inspecciones registradas
+              </div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ background: T.primary }}>
+                      {['Fecha', 'Responsable', 'Áreas', 'Hallazgos', 'Resultado', 'Foto', ''].map(h => (
+                        <th key={h} style={{ padding: '9px 12px', color: T.white, fontSize: '.7rem',
+                          fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em',
+                          textAlign: 'left', whiteSpace: 'nowrap' }}>{h}</th>
+                      ))}
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                  </thead>
+                  <tbody>
+                    {filtHist.slice(0, 100).map((r, i) => {
+                      const rb = resultBadges[r.resultado] || { label: r.resultado || '—', bg: T.bgLight, color: T.textMid };
+                      const hallazgos = r.hallazgos || [];
+                      const fotos = hallazgos.filter(h => h.foto);
+                      const inspAreas = r.areas
+                        ? AREAS.filter(a => r.areas[a]?.inspeccionada).join(', ')
+                        : '—';
+                      return (
+                        <tr key={r.id} style={{ background: i % 2 === 0 ? '#fff' : '#F9FBF9' }}>
+                          <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0',
+                            fontWeight: 600, color: T.textMid, whiteSpace: 'nowrap' }}>{r.fecha}</td>
+                          <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0' }}>{r.resp || '—'}</td>
+                          <td style={{ padding: '8px 12px', fontSize: '.75rem', borderBottom: '1px solid #F0F0F0',
+                            color: T.textMid }}>{inspAreas}</td>
+                          <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }}>
+                            {hallazgos.length === 0 ? (
+                              <span style={{ color: T.border, fontSize: '.72rem' }}>—</span>
+                            ) : (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                {hallazgos.map((h, j) => (
+                                  <span key={j} style={{ fontSize: '.68rem', padding: '2px 7px', borderRadius: 10,
+                                    background: '#E3F2FD', color: T.info, fontWeight: 600, whiteSpace: 'nowrap' }}>
+                                    {h.area} · {h.tipo}
+                                    {h.accion === 'Pendiente' && <span style={{ color: T.danger }}> ⚠</span>}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </td>
+                          <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0', whiteSpace: 'nowrap' }}>
+                            <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: '.68rem',
+                              fontWeight: 800, background: rb.bg, color: rb.color }}>
+                              {rb.label}
+                            </span>
+                          </td>
+                          <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }}>
+                            {fotos.length > 0
+                              ? <img src={fotos[0].foto} alt="" style={{ height: 28, borderRadius: 3, cursor: 'pointer' }} title="Ver foto" />
+                              : <span style={{ color: T.border, fontSize: '.72rem' }}>—</span>}
+                          </td>
+                          <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }}>
+                            <button onClick={() => remove(r.id)}
+                              style={{ background: 'none', border: `1px solid ${T.border}`, borderRadius: 4,
+                                padding: '3px 8px', cursor: 'pointer', fontSize: '.72rem', color: T.textMid }}>✕</button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </>
+      )}
+
+      {/* ── TAB: INVENTARIO ───────────────────────────────────── */}
+      {tab === 'inventario' && (
+        <>
+          {/* Form card */}
+          <div style={{ background: '#fff', borderRadius: 8, boxShadow: '0 1px 3px rgba(0,0,0,.10)', padding: 22, marginBottom: 20 }}>
+            <div style={{ fontWeight: 700, fontSize: '.88rem', color: T.secondary,
+              textTransform: 'uppercase', letterSpacing: '.06em',
+              paddingBottom: 12, borderBottom: `1px solid ${T.border}`, marginBottom: 18 }}>
+              Nuevo Registro de Inventario
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 14, marginBottom: 20 }}>
+              <Lbl text="Fecha">
+                <input type="date" value={invFecha} onChange={e => setInvFecha(e.target.value)} style={inputStyle} />
+              </Lbl>
+              <Lbl text="Responsable">
+                {empLoading ? <Skeleton height={36} /> : (
+                  <select value={invResp} onChange={e => setInvResp(e.target.value)}
+                    style={{ ...inputStyle, cursor: 'pointer' }}>
+                    <option value="">— Seleccionar —</option>
+                    {empleados.map(e => (
+                      <option key={e.id || e.nombre} value={e.nombre}>
+                        {e.nombre}{e.cargo ? ' · ' + e.cargo : ''}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </Lbl>
+            </div>
+
+            <div style={{ fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase',
+              letterSpacing: '.07em', color: T.secondary, marginBottom: 12 }}>
+              Artículos por Área — registre la cantidad de vidrio y plástico encontrados
+            </div>
+
+            {INV_AREAS.map(a => (
+              <InvAreaRow key={a} nombre={a} data={invAreas[a]} onChange={d => setInvArea(a, d)} />
+            ))}
+
+            <button onClick={handleSaveInv} disabled={savingInv}
+              style={{ marginTop: 8, padding: '10px 24px',
+                background: savingInv ? '#BDBDBD' : T.primary,
+                color: T.white, border: 'none', borderRadius: 6, fontWeight: 700,
+                fontSize: '.88rem', cursor: savingInv ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+              {savingInv ? 'Guardando...' : '💾 Guardar Inventario'}
+            </button>
+          </div>
+
+          {/* Historial inventario */}
+          <div style={{ background: '#fff', borderRadius: 8, boxShadow: '0 1px 3px rgba(0,0,0,.10)', padding: 22 }}>
+            <div style={{ fontWeight: 700, fontSize: '.9rem', color: T.primary, marginBottom: 16 }}>
+              Historial de Inventario ({(invData || []).length})
+            </div>
+
+            {invLoading ? <Skeleton rows={5} /> : (invData || []).length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '32px 0', color: T.textMid, fontSize: '.85rem' }}>
+                Sin registros de inventario
+              </div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ background: T.primary }}>
+                      {['Fecha', 'Responsable', 'Cooler 1 (grande)', 'Cooler 2 (pequeño)', 'Pre-Carga/Seco', 'Total', ''].map(h => (
+                        <th key={h} style={{ padding: '9px 12px', color: T.white, fontSize: '.7rem',
+                          fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em',
+                          textAlign: 'left', whiteSpace: 'nowrap' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(invData || []).slice(0, 100).map((r, i) => {
+                      const areaCell = (nombre) => {
+                        const d = r.areas?.[nombre];
+                        if (!d) return <span style={{ color: T.border }}>—</span>;
+                        const v = parseInt(d.vidrio)   || 0;
+                        const p = parseInt(d.plastico) || 0;
+                        const tot = v + p;
+                        return (
+                          <div>
+                            <span style={{ fontSize: '.78rem', color: tot > 0 ? T.warn : T.textMid, fontWeight: tot > 0 ? 700 : 400 }}>
+                              {tot > 0 ? `${v}V + ${p}P` : '—'}
+                            </span>
+                            {d.obs && (
+                              <div style={{ fontSize: '.68rem', color: T.textMid, marginTop: 2, maxWidth: 140, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                                title={d.obs}>
+                                {d.obs}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      };
+
+                      const total = r.totalArticulos ?? INV_AREAS.reduce((s, a) => {
+                        const d = r.areas?.[a];
+                        return s + (parseInt(d?.vidrio) || 0) + (parseInt(d?.plastico) || 0);
+                      }, 0);
+
+                      return (
+                        <tr key={r.id} style={{ background: i % 2 === 0 ? '#fff' : '#F9FBF9' }}>
+                          <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0',
+                            fontWeight: 600, color: T.textMid, whiteSpace: 'nowrap' }}>{r.fecha}</td>
+                          <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0' }}>{r.resp || '—'}</td>
+                          <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }}>{areaCell('Cooler 1 (grande)')}</td>
+                          <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }}>{areaCell('Cooler 2 (pequeño)')}</td>
+                          <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }}>{areaCell('Pre-Carga/Seco')}</td>
+                          <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0', fontWeight: 700,
+                            color: total > 0 ? T.warn : T.textMid }}>
+                            {total > 0 ? total : '—'}
+                          </td>
+                          <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }}>
+                            <button onClick={() => { if (window.confirm('¿Eliminar este registro?')) removeInv(r.id); }}
+                              style={{ background: 'none', border: `1px solid ${T.border}`, borderRadius: 4,
+                                padding: '3px 8px', cursor: 'pointer', fontSize: '.72rem', color: T.textMid }}>✕</button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }
