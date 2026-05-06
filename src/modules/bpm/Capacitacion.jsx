@@ -60,7 +60,7 @@ export default function Capacitacion() {
   const { data: colData, loading } = useCollection('cap', { orderField: 'fecha', orderDir: 'desc', limit: 200 });
   const { empleados, loading: empLoading } = useEmpleados();
   const { data: mainData, loading: mainLoading } = useMainData();
-  const { add, saving } = useWrite('cap');
+  const { add, update, remove, saving } = useWrite('cap');
 
   // Merge Firestore collection + legacy data from ajua_bpm/main
   // bpm.html field mapping: prof→instructor, temas→tema, dur→duracion, asistentes→participantes
@@ -80,8 +80,26 @@ export default function Capacitacion() {
     return merged.sort((a, b) => (b.fecha || '') > (a.fecha || '') ? 1 : -1);
   }, [colData, mainData]);
 
-  const [form, setForm] = useState(INIT());
+  const [form,         setForm]         = useState(INIT());
   const [manualNombre, setManualNombre] = useState('');
+  const [editId,       setEditId]       = useState(null); // null = nueva, string = editando
+
+  const startEdit = (r) => {
+    setEditId(r.id);
+    setForm({
+      fecha:        r.fecha        || today(),
+      tema:         TEMAS.includes(r.tema) ? r.tema : (r.tema ? 'Otro' : ''),
+      temaOtro:     TEMAS.includes(r.tema) ? '' : (r.tema || ''),
+      instructor:   r.instructor   || '',
+      duracion:     r.duracion     || '',
+      resultado:    r.resultado    || 'Aprobado',
+      participantes: Array.isArray(r.participantes) ? r.participantes : [],
+      obs:          r.obs          || '',
+    });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const cancelEdit = () => { setEditId(null); setForm(INIT()); setManualNombre(''); };
 
   // Add participant from employee dropdown
   const addFromEmp = (nombre) => {
@@ -105,8 +123,15 @@ export default function Capacitacion() {
       toast('Fecha, tema e instructor son requeridos', 'error'); return;
     }
     const temaFinal = form.tema === 'Otro' ? (form.temaOtro || 'Otro') : form.tema;
-    await add({ ...form, tema: temaFinal });
-    toast('Capacitación registrada');
+    const payload   = { ...form, tema: temaFinal };
+    if (editId) {
+      await update(editId, payload);
+      toast('Capacitación actualizada');
+    } else {
+      await add(payload);
+      toast('Capacitación registrada');
+    }
+    setEditId(null);
     setForm(INIT());
     setManualNombre('');
   };
@@ -134,8 +159,15 @@ export default function Capacitacion() {
 
       {/* ── Form ── */}
       <div style={card}>
-        <div style={{ fontSize: '.78rem', fontWeight: 700, color: T.primary, textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 14, paddingBottom: 10, borderBottom: `1px solid ${T.border}` }}>
-          Nueva Capacitación
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: 14, paddingBottom: 10, borderBottom: `1px solid ${T.border}` }}>
+          <div style={{ fontSize: '.78rem', fontWeight: 700, color: editId ? T.warn : T.primary, textTransform: 'uppercase', letterSpacing: '.08em' }}>
+            {editId ? '✏️ Editando Capacitación' : 'Nueva Capacitación'}
+          </div>
+          {editId && (
+            <button onClick={cancelEdit} style={{ padding:'5px 14px', background:'none', border:`1px solid ${T.border}`, borderRadius:6, fontSize:'.78rem', color:T.textMid, cursor:'pointer', fontFamily:'inherit', fontWeight:600 }}>
+              ✕ Cancelar
+            </button>
+          )}
         </div>
 
         {/* Row 1 */}
@@ -244,7 +276,7 @@ export default function Capacitacion() {
           fontWeight: 700, fontSize: '.88rem', cursor: saving ? 'not-allowed' : 'pointer',
           fontFamily: 'inherit',
         }}>
-          {saving ? 'Guardando...' : 'Guardar Capacitación'}
+          {saving ? 'Guardando...' : editId ? '✓ Guardar Cambios' : 'Guardar Capacitación'}
         </button>
       </div>
 
@@ -257,7 +289,7 @@ export default function Capacitacion() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: T.primary }}>
-                {['Fecha', 'Tema', 'Instructor', 'Horas', 'Participantes', 'Resultado'].map(h => (
+                {['Fecha', 'Tema', 'Instructor', 'Horas', 'Participantes', 'Resultado', 'Observaciones', ''].map(h => (
                   <th key={h} style={{
                     padding: '9px 14px', textAlign: 'left', color: '#fff',
                     fontSize: '.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em',
@@ -283,11 +315,29 @@ export default function Capacitacion() {
                         {r.resultado || '—'}
                       </span>
                     </td>
+                    <td style={{ padding: '9px 14px', fontSize: '.78rem', color: T.textMid, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                      title={r.obs || ''}>
+                      {r.obs || '—'}
+                    </td>
+                    <td style={{ padding: '9px 10px', whiteSpace: 'nowrap' }}>
+                      {!String(r.id).startsWith('main_') && (
+                        <div style={{ display:'flex', gap:4 }}>
+                          <button onClick={() => startEdit(r)}
+                            style={{ padding:'3px 9px', background:'none', border:`1px solid ${T.secondary}`, color:T.secondary, borderRadius:4, cursor:'pointer', fontSize:'.72rem', fontWeight:700 }}>
+                            ✏️
+                          </button>
+                          <button onClick={async () => { if(!window.confirm('¿Eliminar esta capacitación?'))return; await remove(r.id); toast('Eliminado'); }}
+                            style={{ padding:'3px 9px', background:'none', border:`1px solid ${T.danger}`, color:T.danger, borderRadius:4, cursor:'pointer', fontSize:'.72rem', fontWeight:700 }}>
+                            ✕
+                          </button>
+                        </div>
+                      )}
+                    </td>
                   </tr>
                 );
               })}
               {data.length === 0 && (
-                <tr><td colSpan={6} style={{ padding: '40px', textAlign: 'center', color: T.textMid, fontSize: '.83rem' }}>
+                <tr><td colSpan={8} style={{ padding: '40px', textAlign: 'center', color: T.textMid, fontSize: '.83rem' }}>
                   Sin registros aún
                 </td></tr>
               )}
