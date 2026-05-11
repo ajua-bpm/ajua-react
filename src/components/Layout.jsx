@@ -26,6 +26,7 @@ const NAV = [
   { to: '/bpm/control-personal',   mod: 'control-personal',  icon: '🧴', label: 'Control Personal' },
   { to: '/bpm/cloro',              mod: 'cloro',             icon: '💧', label: 'Control Cloro' },
   { to: '/bpm/temperatura',        mod: 'temperatura',       icon: '🌡️', label: 'Temperatura' },
+  { to: '/bpm/inspecciones',       mod: 'inspecciones',      icon: '📝', label: 'Inspecciones + CAPA' },
   { section: 'Inventario' },
   { to: '/stock',                  mod: 'stock',             icon: '📦', label: 'Stock en Vivo' },
   { to: '/inventario/entrada',     mod: 'entrada',           icon: '📥', label: 'Ingresos / Recepción' },

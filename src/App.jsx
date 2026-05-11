@@ -41,6 +41,7 @@ const LavadoProducto     = lazy(() => import('./modules/bpm/LavadoProducto'));
 const ControlPersonal    = lazy(() => import('./modules/bpm/ControlPersonal'));
 const ControlCloro       = lazy(() => import('./modules/bpm/ControlCloro'));
 const ControlTemperatura = lazy(() => import('./modules/bpm/ControlTemperatura'));
+const Inspecciones       = lazy(() => import('./modules/bpm/Inspecciones'));
 
 // Inventario
 const StockVivo          = lazy(() => import('./modules/stock/StockVivo'));
@@ -136,6 +137,7 @@ export default function App() {
           <Route path="bpm/control-personal"   element={<ControlPersonal />} />
           <Route path="bpm/cloro"             element={<ControlCloro />} />
           <Route path="bpm/temperatura"       element={<ControlTemperatura />} />
+          <Route path="bpm/inspecciones"      element={<Inspecciones />} />
 
           {/* Inventario */}
           <Route path="stock"                  element={<StockVivo />} />
