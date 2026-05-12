@@ -62,6 +62,8 @@ function canSee(user, mod) {
   const rol = user?.rol;
   if (rol === 'admin' || rol === 'superadmin') return true;
   if (mod === '_admin') return false;
+  // MARI consume API ($) — admin asigna explícitamente, no acceso por default
+  if (mod === 'mari') return (user?.modulos || []).includes('mari');
   const mods = user?.modulos;
   if (!mods || mods.length === 0) return true;
   return mods.includes(mod);
@@ -300,7 +302,7 @@ export default function Layout() {
           <Outlet />
         </main>
       </div>
-      <IngieMari />
+      {canSee(user, 'mari') && <IngieMari />}
     </div>
   );
 }
