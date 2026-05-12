@@ -56,6 +56,8 @@ Tenés tools para REGISTRAR formularios BPM. Cuando el usuario te diga "anotá",
 - registrar_empleado_enfermo — empleado con síntomas
 - registrar_capacitacion — capacitación BPM
 - registrar_lavado_producto — lavado de producto
+- registrar_recepcion_proveedor — compra/recepción de producto a proveedor (cuentas por pagar)
+- registrar_pago_proveedor — pago a proveedor
 
 REGLAS DE TOOLS:
 - Si te falta un dato OBLIGATORIO, NO llamés la tool — pediselo al usuario primero
@@ -242,7 +244,46 @@ const TOOLS = [
       ppm:      { type: 'number', description: 'Cloro libre en ppm. Rango BPM: 0.5-2 ppm' },
       obs:      { type: 'string' },
     }, required: ['producto','ppm'] }},
+  { name: 'registrar_recepcion_proveedor',
+    description: 'Registra una recepción de producto comprado a un proveedor (entra a cuentas proveedores). Usalo cuando dicen "compré X libras de Y a Z quetzales al proveedor W", "recibí producto de X", "anotá compra de X".',
+    input_schema: { type: 'object', properties: {
+      ...dateTimeProps,
+      proveedor:  { type: 'string', description: 'Nombre del proveedor (parcial OK). Ej: "Colo", "Sergio Colo", "Juan"' },
+      producto:   { type: 'string', description: 'Producto recibido. Ej: repollo, brócoli, zanahoria' },
+      cantidad:   { type: 'number', description: 'Cantidad recibida' },
+      unidad:     { type: 'string', enum: ['lb','kg','qq','caja','bulto','unidad'], description: 'Unidad. Default lb.' },
+      precioUnit: { type: 'number', description: 'Precio unitario en Q. Si dan total y cantidad, dividilo.' },
+      factura:    { type: 'string', description: 'Número de factura (opcional)' },
+      notas:      { type: 'string', description: 'Notas internas (opcional)' },
+    }, required: ['proveedor','producto','cantidad','precioUnit'] }},
+  { name: 'registrar_pago_proveedor',
+    description: 'Registra un pago hecho a un proveedor.',
+    input_schema: { type: 'object', properties: {
+      ...dateTimeProps,
+      proveedor:  { type: 'string', description: 'Nombre del proveedor (parcial OK)' },
+      monto:      { type: 'number', description: 'Monto pagado en Q' },
+      metodoPago: { type: 'string', enum: ['transferencia','cheque','efectivo','débito'] },
+      referencia: { type: 'string', description: 'Número de transferencia/cheque (opcional)' },
+      notas:      { type: 'string' },
+    }, required: ['proveedor','monto'] }},
 ];
+
+// Buscar proveedor por nombre (parcial, case-insensitive)
+async function findProveedor(nombre) {
+  const r = await fetch(`${FIRESTORE_BASE}/proveedores?pageSize=200`);
+  if (!r.ok) return null;
+  const d = await r.json();
+  const docs = d.documents || [];
+  const term = nombre.toLowerCase().trim();
+  const matches = docs.filter(doc => {
+    const n = doc.fields?.nombre?.stringValue?.toLowerCase() || '';
+    return n.includes(term) || term.includes(n);
+  }).map(doc => ({
+    id: doc.name.split('/').pop(),
+    nombre: doc.fields?.nombre?.stringValue || '',
+  }));
+  return matches;
+}
 
 async function execTool(name, input, userName) {
   const fecha = input.fecha || today();
@@ -327,6 +368,48 @@ async function execTool(name, input, userName) {
         obs: input.obs || '', estado: rango,
       });
       return `OK guardado en lavadoProd/${id}. ${input.producto} en ${input.tanque || 'tanque'} a ${input.ppm} ppm — ${rango}.`;
+    }
+    case 'registrar_recepcion_proveedor': {
+      const matches = await findProveedor(input.proveedor);
+      if (!matches || matches.length === 0) {
+        return `ERROR: no encontré proveedor que coincida con "${input.proveedor}". Pediselo al usuario que confirme el nombre exacto.`;
+      }
+      if (matches.length > 1) {
+        return `AMBIGUO: hay ${matches.length} proveedores que coinciden con "${input.proveedor}": ${matches.map(m => m.nombre).join(', ')}. Preguntale al usuario cuál es.`;
+      }
+      const prov = matches[0];
+      const totalBruto = Number((input.cantidad * input.precioUnit).toFixed(2));
+      const id = await fsAdd('cuentasProveedores', {
+        fecha, creadoEn: new Date().toISOString(),
+        proveedorId: prov.id, proveedorNombre: prov.nombre,
+        tipo: 'recepcion',
+        producto: input.producto, cantidad: input.cantidad,
+        unidad: input.unidad || 'lb', precioUnit: input.precioUnit, totalBruto,
+        factura: input.factura || '', descripcion: '', notas: input.notas || '',
+        creadoPor: userName,
+      });
+      return `OK guardado en cuentasProveedores/${id}. Recepción ${prov.nombre}: ${input.cantidad} ${input.unidad || 'lb'} ${input.producto} × Q${input.precioUnit} = Q${totalBruto.toLocaleString('es-GT', { minimumFractionDigits: 2 })}. Fecha: ${fecha}.`;
+    }
+    case 'registrar_pago_proveedor': {
+      const matches = await findProveedor(input.proveedor);
+      if (!matches || matches.length === 0) {
+        return `ERROR: no encontré proveedor "${input.proveedor}".`;
+      }
+      if (matches.length > 1) {
+        return `AMBIGUO: ${matches.map(m => m.nombre).join(', ')}. Preguntá cuál.`;
+      }
+      const prov = matches[0];
+      const id = await fsAdd('cuentasProveedores', {
+        fecha, creadoEn: new Date().toISOString(),
+        proveedorId: prov.id, proveedorNombre: prov.nombre,
+        tipo: 'pago',
+        monto: input.monto,
+        metodoPago: input.metodoPago || 'transferencia',
+        referencia: input.referencia || '',
+        descripcion: '', notas: input.notas || '',
+        creadoPor: userName,
+      });
+      return `OK guardado en cuentasProveedores/${id}. Pago a ${prov.nombre}: Q${input.monto.toLocaleString('es-GT', { minimumFractionDigits: 2 })} vía ${input.metodoPago || 'transferencia'}. Fecha: ${fecha}.`;
     }
     default:
       return `Tool ${name} no implementada.`;
