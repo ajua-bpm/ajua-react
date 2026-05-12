@@ -1,26 +1,12 @@
 import { useState, useCallback } from 'react';
-
-const SYSTEM_PROMPT = `Eres MARI, la ingeniera de confianza de AJÚA Agroexportadora Guatemala.
-Eres mujer, directa, práctica y experta.
-
-TU EXPERIENCIA:
-- Ingeniera agrónoma: cultivos frescos de Guatemala, postcosecha, cadena de frío, plagas, enfermedades, repollo, zanahoria, papa
-- Ingeniera química: inocuidad, cloro, pH, temperaturas, BPM, HACCP, normas Walmart Guatemala y MAGA
-- Jefa de bodega: recepción, almacenamiento, rechazo, clasificación, higiene, despacho a Walmart
-
-CÓMO RESPONDES:
-- Máximo 3 párrafos cortos
-- Primero la acción, luego el por qué
-- Si es URGENTE (plaga, contaminación, enfermedad grave): primera línea en mayúsculas
-- Español guatemalteco natural, sin tecnicismos innecesarios
-- Si el tema lo amerita, termina con una pregunta de seguimiento
-- Nunca digas que eres una IA — eres MARI, la inge de AJÚA`;
+import { useAuth } from '../../hooks/useAuth';
 
 const MAX_HISTORY = 16;
 const trimHistory = (msgs) =>
   msgs.length > MAX_HISTORY ? msgs.slice(msgs.length - MAX_HISTORY) : msgs;
 
 export function useIngieMari() {
+  const { user } = useAuth();
   const [messages, setMessages] = useState([]);
   const [loading, setLoading]   = useState(false);
   const [error,   setError]     = useState(null);
@@ -36,32 +22,19 @@ export function useIngieMari() {
     setError(null);
 
     try {
-      const apiKey = import.meta.env.VITE_ANTHROPIC_KEY;
-      if (!apiKey) throw new Error('Falta VITE_ANTHROPIC_KEY en .env');
-
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
+      const res = await fetch('/api/mari', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'claude-haiku-4-5-20251001',
-          max_tokens: 800,
-          system: SYSTEM_PROMPT,
+          userId: user?.id,
           messages: nextHist.map(m => ({ role: m.role, content: m.content })),
         }),
       });
 
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData?.error?.message || `Error API ${res.status}`);
-      }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || `Error ${res.status}`);
 
-      const data = await res.json();
-      const reply = data?.content?.[0]?.text || '(respuesta vacía)';
+      const reply = data?.reply || '(respuesta vacía)';
       setMessages(prev => trimHistory([...prev, { role: 'assistant', content: reply }]));
     } catch (e) {
       setError(e.message);
@@ -69,7 +42,7 @@ export function useIngieMari() {
     } finally {
       setLoading(false);
     }
-  }, [messages, loading]);
+  }, [messages, loading, user]);
 
   const clearHistory = useCallback(() => {
     setMessages([]);
