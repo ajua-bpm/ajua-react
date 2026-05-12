@@ -124,8 +124,9 @@ function canUseMari(user) {
   return Array.isArray(user.modulos) && user.modulos.includes('mari');
 }
 
-const today = () => new Date().toISOString().slice(0, 10);
-const nowHM = () => new Date().toTimeString().slice(0, 5);
+const GT_TZ  = 'America/Guatemala';
+const today = () => new Date().toLocaleDateString('sv-SE', { timeZone: GT_TZ });            // YYYY-MM-DD
+const nowHM = () => new Date().toLocaleTimeString('en-GB', { timeZone: GT_TZ, hour: '2-digit', minute: '2-digit', hour12: false }); // HH:MM
 
 // ─── TOOLS ───────────────────────────────────────────────────────────
 const TOOLS = [
@@ -342,7 +343,8 @@ export default async function handler(req) {
         for (const block of data.content) {
           if (block.type === 'tool_use') {
             try {
-              const result = await execTool(block.name, block.input, user.nombre || user.usuario || 'Sistema');
+              const respName = user.nombre || user.usuario || (typeof user.id === 'string' ? user.id : 'Sistema');
+              const result = await execTool(block.name, block.input, respName);
               toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: result });
             } catch (e) {
               toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: `Error: ${e.message}`, is_error: true });
