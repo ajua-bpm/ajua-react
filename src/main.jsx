@@ -8,9 +8,22 @@ import App from './App.jsx';
 import './index.css';
 
 // Registrar Service Worker para PWA (cacheo offline + notificaciones background)
+// Si llega un nuevo SW activo (tras deploy), recarga la página automáticamente
+// para evitar pantalla en blanco por chunks JS desactualizados.
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
+    navigator.serviceWorker.register('/sw.js').then(reg => {
+      reg.addEventListener('updatefound', () => {
+        const nw = reg.installing;
+        if (!nw) return;
+        nw.addEventListener('statechange', () => {
+          if (nw.state === 'activated' && navigator.serviceWorker.controller) {
+            // Un nuevo SW reemplazó al anterior — recargar para tomar el HTML/JS nuevo
+            window.location.reload();
+          }
+        });
+      });
+    }).catch(() => {});
   });
 }
 
