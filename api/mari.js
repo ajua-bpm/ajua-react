@@ -60,8 +60,20 @@ Tenés tools para REGISTRAR formularios BPM. Cuando el usuario te diga "anotá",
 REGLAS DE TOOLS:
 - Si te falta un dato OBLIGATORIO, NO llamés la tool — pediselo al usuario primero
 - Si te falta un dato OPCIONAL, no preguntés — guardá sin ese campo
-- Después de ejecutar la tool, confirmá lo guardado en UNA frase: "Listo, anoté X."
-- Si el dato técnico está fuera de rango (ej: cloro 50 ppm), AVISÁ al usuario y preguntá si está seguro antes de guardar`;
+- Si el dato técnico está fuera de rango (ej: cloro 50 ppm), AVISÁ al usuario y preguntá si está seguro antes de guardar
+
+REGLAS DE FECHA Y HORA — MUY IMPORTANTE:
+- Cada tool acepta opcionalmente "fecha" (YYYY-MM-DD) y "hora" (HH:MM 24h)
+- Si el usuario menciona una FECHA explícita ("ayer", "el 8", "el lunes pasado", "hace 3 días"), CALCULALA y pasala en el campo fecha. Hoy es referencia.
+- Si el usuario menciona una HORA explícita ("a las 11am", "a las 7pm", "a las 3 de la tarde"), pasala en formato 24h: 11:00, 19:00, 15:00
+- Si el usuario NO menciona fecha, NO pases fecha (la tool usa hoy automáticamente)
+- Si el usuario NO menciona hora, NO pases hora (la tool usa la hora actual)
+- Si el usuario menciona varias fechas ("días 8, 9 y 10"), llamá la tool UNA VEZ POR CADA FECHA — no la juntés
+
+PROHIBIDO — NO MENTIR:
+- NUNCA confirmés que guardaste algo en una fecha si NO pasaste esa fecha al tool
+- Después de la tool, leé lo que devolvió y confirmá lo que el sistema EFECTIVAMENTE guardó
+- Si pasaste fecha=2026-05-08, podés decir "guardé para 8 de mayo". Si no pasaste fecha, decí "guardé para hoy".`;
 
 // ─── Firestore REST helpers ──────────────────────────────────────────
 function jsToFS(v) {
@@ -129,10 +141,17 @@ const today = () => new Date().toLocaleDateString('sv-SE', { timeZone: GT_TZ });
 const nowHM = () => new Date().toLocaleTimeString('en-GB', { timeZone: GT_TZ, hour: '2-digit', minute: '2-digit', hour12: false }); // HH:MM
 
 // ─── TOOLS ───────────────────────────────────────────────────────────
+// Todas las tools aceptan fecha (YYYY-MM-DD) y hora (HH:MM) opcionales para backfill histórico.
+const dateTimeProps = {
+  fecha: { type: 'string', description: 'Fecha YYYY-MM-DD. Solo si el usuario menciona fecha pasada explícita.' },
+  hora:  { type: 'string', description: 'Hora HH:MM (24h). Solo si el usuario menciona hora explícita.' },
+};
+
 const TOOLS = [
   { name: 'registrar_temperatura',
     description: 'Registra una toma de temperatura de los coolers de bodega. Usalo cuando el usuario dice "anotá temperatura cooler X" o similar.',
     input_schema: { type: 'object', properties: {
+      ...dateTimeProps,
       c1Temp: { type: 'number', description: 'Temperatura Cooler 1 en °C. Omitir si no se midió.' },
       c1Enc:  { type: 'boolean', description: 'Cooler 1 encendido. Default true.' },
       c2Temp: { type: 'number', description: 'Temperatura Cooler 2 en °C. Omitir si no se midió.' },
@@ -142,12 +161,14 @@ const TOOLS = [
   { name: 'registrar_cloro',
     description: 'Registra control de cloro de cisterna. Rango aceptable: 0.5-1.5 ppm.',
     input_schema: { type: 'object', properties: {
+      ...dateTimeProps,
       ppm: { type: 'number', description: 'Concentración cloro libre en ppm' },
       obs: { type: 'string', description: 'Observación opcional' },
     }, required: ['ppm'] }},
   { name: 'registrar_fumigacion',
     description: 'Registra fumigación o sanitización de una instalación.',
     input_schema: { type: 'object', properties: {
+      ...dateTimeProps,
       instalacion: { type: 'string', enum: ['Instalación Completa','Cooler 1 (0–4°C)','Cooler 2 (-18°C)','Pre-carga','Bodega General','Parqueo Interior'] },
       tipo:        { type: 'string', enum: ['Fumigación General','Desinfección con Cloro','Sanitización Agua-Cloro','Control de Insectos'] },
       resultado:   { type: 'string', enum: ['realizado','pendiente','reprogramado'], description: 'Default: realizado' },
@@ -157,6 +178,7 @@ const TOOLS = [
   { name: 'registrar_bascula',
     description: 'Registra revisión diaria de báscula(s).',
     input_schema: { type: 'object', properties: {
+      ...dateTimeProps,
       basculaId: { type: 'string', description: 'ID o nombre de la báscula. Ej: "Báscula 1", "Báscula principal"' },
       ok:        { type: 'boolean', description: 'true=OK, false=con variación' },
       variacion: { type: 'number', description: 'Variación en lbs (solo si ok=false)' },
@@ -165,6 +187,7 @@ const TOOLS = [
   { name: 'registrar_despacho_dt',
     description: 'Registra inspección de despacho de transporte (DT) — cuando sale un camión a entregar.',
     input_schema: { type: 'object', properties: {
+      ...dateTimeProps,
       placa:     { type: 'string' },
       conductor: { type: 'string' },
       cliente:   { type: 'string', description: 'Cliente destino. Ej: Walmart' },
@@ -174,6 +197,7 @@ const TOOLS = [
   { name: 'registrar_limpieza_transporte',
     description: 'Registra inspección de limpieza de camión (TL) — antes de cargar producto.',
     input_schema: { type: 'object', properties: {
+      ...dateTimeProps,
       placa:     { type: 'string' },
       conductor: { type: 'string' },
       tipo:      { type: 'string', enum: ['interno','externo'], description: 'Camión interno AJÚA o transportista externo' },
@@ -183,6 +207,7 @@ const TOOLS = [
   { name: 'registrar_visita',
     description: 'Registra visita externa a planta (auditor, proveedor, contratista).',
     input_schema: { type: 'object', properties: {
+      ...dateTimeProps,
       nombre:  { type: 'string' },
       empresa: { type: 'string' },
       dpi:     { type: 'string', description: 'Número DPI/identificación' },
@@ -193,6 +218,7 @@ const TOOLS = [
   { name: 'registrar_empleado_enfermo',
     description: 'Registra empleado con síntomas que NO puede ingresar a planta.',
     input_schema: { type: 'object', properties: {
+      ...dateTimeProps,
       nombre:    { type: 'string' },
       sintoma:   { type: 'string', description: 'Síntoma: gripe, gastrointestinal, herida abierta, etc' },
       diasFalta: { type: 'integer', description: 'Días estimados de ausencia' },
@@ -201,6 +227,7 @@ const TOOLS = [
   { name: 'registrar_capacitacion',
     description: 'Registra capacitación BPM dada al personal.',
     input_schema: { type: 'object', properties: {
+      ...dateTimeProps,
       tema:       { type: 'string', description: 'Tema de la capacitación' },
       asistentes: { type: 'array', items: { type: 'string' }, description: 'Nombres de empleados asistentes' },
       duracion:   { type: 'string', description: 'Ej: "1 hora", "30 min"' },
@@ -209,6 +236,7 @@ const TOOLS = [
   { name: 'registrar_lavado_producto',
     description: 'Registra lavado de producto en tanque con cloro.',
     input_schema: { type: 'object', properties: {
+      ...dateTimeProps,
       producto: { type: 'string', description: 'Producto lavado. Ej: repollo, brócoli' },
       tanque:   { type: 'string', description: 'Tanque usado. Ej: T1, T2, T3' },
       ppm:      { type: 'number', description: 'Cloro libre en ppm. Rango BPM: 0.5-2 ppm' },
@@ -217,19 +245,21 @@ const TOOLS = [
 ];
 
 async function execTool(name, input, userName) {
-  const base = { fecha: today(), hora: nowHM(), responsable: userName, resp: userName, creadoEn: new Date().toISOString() };
+  const fecha = input.fecha || today();
+  const hora  = input.hora  || nowHM();
+  const base = { fecha, hora, responsable: userName, resp: userName, creadoEn: new Date().toISOString() };
   switch (name) {
     case 'registrar_temperatura': {
       const id = await fsAdd('controlTemp', { ...base,
         c1Temp: input.c1Temp ?? null, c1Enc: input.c1Enc ?? true, c1Obs: '',
         c2Temp: input.c2Temp ?? null, c2Enc: input.c2Enc ?? true, c2Obs: input.obs || '',
       });
-      return `OK guardado en controlTemp/${id}. Cooler1: ${input.c1Temp ?? '—'}°C, Cooler2: ${input.c2Temp ?? '—'}°C, responsable: ${userName}.`;
+      return `OK guardado en controlTemp/${id}. fecha=${fecha}, hora=${hora}, Cooler1=${input.c1Temp ?? '—'}°C, Cooler2=${input.c2Temp ?? '—'}°C, responsable=${userName}.`;
     }
     case 'registrar_cloro': {
       const estado = input.ppm >= 0.5 && input.ppm <= 1.5 ? '✓ En rango' : input.ppm < 0.5 ? '⚠ Bajo' : '⚠ Alto';
       const id = await fsAdd('controlCloro', { ...base, ppm: input.ppm, obs: input.obs || '', estado });
-      return `OK guardado en controlCloro/${id}. ${input.ppm} ppm — ${estado}. Responsable: ${userName}.`;
+      return `OK guardado en controlCloro/${id}. fecha=${fecha}, hora=${hora}, ${input.ppm} ppm — ${estado}, responsable=${userName}.`;
     }
     case 'registrar_fumigacion': {
       const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
@@ -269,19 +299,19 @@ async function execTool(name, input, userName) {
       return `OK guardado en tl/${id}. Placa ${input.placa}, ${resultado}.`;
     }
     case 'registrar_visita': {
-      const id = await fsAdd('vis', { fecha: today(),
+      const id = await fsAdd('vis', { fecha,
         nombre: input.nombre, empresa: input.empresa || '', dpi: input.dpi || '',
         motivo: input.motivo, area: input.area || '', aut: input.aut || userName,
-        he: nowHM(), hs: '', obs: '', estado: 'adentro',
+        he: hora, hs: '', obs: '', estado: 'adentro',
       });
-      return `OK guardado en vis/${id}. Visita ${input.nombre} (${input.empresa || 's/empresa'}) — ${input.motivo}.`;
+      return `OK guardado en vis/${id}. Visita ${input.nombre} (${input.empresa || 's/empresa'}) — fecha real escrita en DB: ${fecha} ${hora}.`;
     }
     case 'registrar_empleado_enfermo': {
-      const id = await fsAdd('ee', { fecha: today(), creadoEn: new Date().toISOString(),
+      const id = await fsAdd('ee', { fecha, creadoEn: new Date().toISOString(),
         nombre: input.nombre, sintoma: input.sintoma, diasFalta: input.diasFalta || 0,
         obs: input.obs || '', estado: 'ausente', responsable: userName,
       });
-      return `OK guardado en ee/${id}. ${input.nombre} con ${input.sintoma}, ausencia estimada ${input.diasFalta || '?'} día(s).`;
+      return `OK guardado en ee/${id}. ${input.nombre} con ${input.sintoma}, fecha real escrita: ${fecha}.`;
     }
     case 'registrar_capacitacion': {
       const id = await fsAdd('cap', { ...base,
@@ -306,11 +336,23 @@ async function execTool(name, input, userName) {
 const json = (obj, status = 200) =>
   new Response(JSON.stringify(obj), { status, headers: { 'Content-Type': 'application/json' } });
 
+function buildSystemPrompt() {
+  const hoy = today();
+  const ahora = nowHM();
+  const fechaLarga = new Date().toLocaleDateString('es-GT', { timeZone: GT_TZ, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  return `${SYSTEM_PROMPT}\n\nCONTEXTO DE TIEMPO:\nHoy es ${fechaLarga} (${hoy}). Hora actual Guatemala: ${ahora}.\n\nCalcula fechas relativas desde HOY=${hoy}:\n- "ayer" = ${addDays(hoy,-1)}\n- "anteayer" = ${addDays(hoy,-2)}\n- "hace 3 días" = ${addDays(hoy,-3)}\n- "el 8" del mes en curso = ${hoy.slice(0,8)}08\n- Si solo dicen un día (ej "el lunes"), elegí la fecha más reciente que NO sea futura.`;
+}
+function addDays(yyyymmdd, n) {
+  const d = new Date(yyyymmdd + 'T12:00:00Z');
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
 async function callAnthropic(apiKey, messages) {
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({ model: MODEL, max_tokens: 1024, system: SYSTEM_PROMPT, tools: TOOLS, messages }),
+    body: JSON.stringify({ model: MODEL, max_tokens: 1024, system: buildSystemPrompt(), tools: TOOLS, messages }),
   });
   return r.json();
 }
