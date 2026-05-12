@@ -3,6 +3,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useNotifications } from '../hooks/useNotifications';
 import { useCollection } from '../hooks/useFirestore';
+import IngieMari from './asistente/IngieMari';
 
 const NAV = [
   { section: 'General' },
@@ -299,6 +300,7 @@ export default function Layout() {
           <Outlet />
         </main>
       </div>
+      <IngieMari />
     </div>
   );
 }
