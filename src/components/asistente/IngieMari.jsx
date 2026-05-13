@@ -87,7 +87,7 @@ export default function IngieMari() {
 
       {!isOpen && (
         <button onClick={() => setIsOpen(true)} title="Inge MARI" style={{
-          position: 'fixed', bottom: 24, right: 24, zIndex: 9999,
+          position: 'fixed', bottom: 24, left: 24, zIndex: 9999,
           width: 64, height: 64, borderRadius: '50%',
           background: 'linear-gradient(135deg, #166534, #15803d)',
           boxShadow: '0 4px 20px rgba(22,101,52,0.5)',
@@ -103,7 +103,7 @@ export default function IngieMari() {
 
       {isOpen && (
         <div style={{
-          position: 'fixed', bottom: 100, right: isMobile ? 12 : 24,
+          position: 'fixed', bottom: 100, left: isMobile ? 12 : 24,
           width: isMobile ? '92vw' : 340, height: isMobile ? '65vh' : 500,
           borderRadius: 16, boxShadow: '0 8px 40px rgba(0,0,0,0.18)',
           background: '#fff', display: 'flex', flexDirection: 'column',
