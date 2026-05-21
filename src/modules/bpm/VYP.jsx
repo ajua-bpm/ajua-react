@@ -276,12 +276,32 @@ export default function VYP() {
   const { data: invData, loading: invLoading } = useCollection('vypInventario', {
     orderField: 'fecha', orderDir: 'desc', limit: 100,
   });
-  const { add: addInv, remove: removeInv, saving: savingInv } = useWrite('vypInventario');
+  const { add: addInv, update: updateInv, remove: removeInv, saving: savingInv } = useWrite('vypInventario');
 
   const [invFecha, setInvFecha] = useState(today());
   const [invResp, setInvResp]   = useState('');
   const [invAreas, setInvAreas] = useState(initInvAreas);
+  const [editingInvId, setEditingInvId] = useState(null);
+  const [expandedInvId, setExpandedInvId] = useState(null);
   const setInvArea = (nombre, data) => setInvAreas(prev => ({ ...prev, [nombre]: data }));
+
+  const resetInvForm = () => {
+    setEditingInvId(null);
+    setInvFecha(today());
+    setInvResp('');
+    setInvAreas(initInvAreas());
+  };
+
+  const handleEditInv = (r) => {
+    setEditingInvId(r.id);
+    setInvFecha(r.fecha || today());
+    setInvResp(r.resp || '');
+    // Hidratar áreas faltantes con blank si el registro no las tiene
+    const filled = Object.fromEntries(INV_AREAS.map(a => [a, r.areas?.[a] || blankInvArea()]));
+    setInvAreas(filled);
+    setExpandedInvId(null);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   const handleSaveInv = async () => {
     if (!invFecha || !invResp) { toast('Complete fecha y responsable', 'error'); return; }
@@ -290,9 +310,15 @@ export default function VYP() {
         const d = invAreas[a];
         return s + (parseInt(d.vidrio) || 0) + (parseInt(d.plastico) || 0);
       }, 0);
-      await addInv({ fecha: invFecha, resp: invResp, areas: invAreas, totalArticulos: totalGlobal });
-      toast('✓ Inventario guardado');
-      setInvAreas(initInvAreas());
+      const payload = { fecha: invFecha, resp: invResp, areas: invAreas, totalArticulos: totalGlobal };
+      if (editingInvId) {
+        await updateInv(editingInvId, payload);
+        toast('✓ Inventario actualizado');
+      } else {
+        await addInv(payload);
+        toast('✓ Inventario guardado');
+      }
+      resetInvForm();
     } catch (e) { toast('Error: ' + e.message, 'error'); }
   };
 
@@ -559,13 +585,28 @@ export default function VYP() {
               <InvAreaRow key={a} nombre={a} data={invAreas[a]} onChange={d => setInvArea(a, d)} />
             ))}
 
-            <button onClick={handleSaveInv} disabled={savingInv}
-              style={{ marginTop: 8, padding: '10px 24px',
-                background: savingInv ? '#BDBDBD' : T.primary,
-                color: T.white, border: 'none', borderRadius: 6, fontWeight: 700,
-                fontSize: '.88rem', cursor: savingInv ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
-              {savingInv ? 'Guardando...' : '💾 Guardar Inventario'}
-            </button>
+            <div style={{ display: 'flex', gap: 10, marginTop: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <button onClick={handleSaveInv} disabled={savingInv}
+                style={{ padding: '10px 24px',
+                  background: savingInv ? '#BDBDBD' : (editingInvId ? T.warn : T.primary),
+                  color: T.white, border: 'none', borderRadius: 6, fontWeight: 700,
+                  fontSize: '.88rem', cursor: savingInv ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+                {savingInv ? 'Guardando...' : editingInvId ? '✏️ Actualizar Inventario' : '💾 Guardar Inventario'}
+              </button>
+              {editingInvId && (
+                <button onClick={resetInvForm}
+                  style={{ padding: '10px 18px', background: '#fff',
+                    color: T.textMid, border: `1px solid ${T.border}`, borderRadius: 6, fontWeight: 600,
+                    fontSize: '.85rem', cursor: 'pointer', fontFamily: 'inherit' }}>
+                  Cancelar edición
+                </button>
+              )}
+              {editingInvId && (
+                <span style={{ fontSize: '.78rem', color: T.warn, fontWeight: 600, fontStyle: 'italic' }}>
+                  Editando registro · los cambios reemplazarán el guardado actual
+                </span>
+              )}
+            </div>
           </div>
 
           {/* Historial inventario */}
@@ -583,7 +624,7 @@ export default function VYP() {
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr style={{ background: T.primary }}>
-                      {['Fecha', 'Responsable', 'Cooler 1 (grande)', 'Cooler 2 (pequeño)', 'Pre-Carga/Seco', 'Total', ''].map(h => (
+                      {['Fecha', 'Responsable', 'Cooler 1 (grande)', 'Cooler 2 (pequeño)', 'Pre-Carga/Seco', 'Total', '', 'Acciones'].map(h => (
                         <th key={h} style={{ padding: '9px 12px', color: T.white, fontSize: '.7rem',
                           fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em',
                           textAlign: 'left', whiteSpace: 'nowrap' }}>{h}</th>
@@ -592,6 +633,8 @@ export default function VYP() {
                   </thead>
                   <tbody>
                     {(invData || []).slice(0, 100).map((r, i) => {
+                      const isExp = expandedInvId === r.id;
+                      const isEditing = editingInvId === r.id;
                       const areaCell = (nombre) => {
                         const d = r.areas?.[nombre];
                         if (!d) return <span style={{ color: T.border }}>—</span>;
@@ -619,23 +662,100 @@ export default function VYP() {
                       }, 0);
 
                       return (
-                        <tr key={r.id} style={{ background: i % 2 === 0 ? '#fff' : '#F9FBF9' }}>
-                          <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0',
-                            fontWeight: 600, color: T.textMid, whiteSpace: 'nowrap' }}>{r.fecha}</td>
-                          <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0' }}>{r.resp || '—'}</td>
-                          <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }}>{areaCell('Cooler 1 (grande)')}</td>
-                          <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }}>{areaCell('Cooler 2 (pequeño)')}</td>
-                          <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }}>{areaCell('Pre-Carga/Seco')}</td>
-                          <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0', fontWeight: 700,
-                            color: total > 0 ? T.warn : T.textMid }}>
-                            {total > 0 ? total : '—'}
-                          </td>
-                          <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }}>
-                            <button onClick={() => { if (window.confirm('¿Eliminar este registro?')) removeInv(r.id); }}
-                              style={{ background: 'none', border: `1px solid ${T.border}`, borderRadius: 4,
-                                padding: '3px 8px', cursor: 'pointer', fontSize: '.72rem', color: T.textMid }}>✕</button>
-                          </td>
-                        </tr>
+                        <Fragment key={r.id}>
+                          <tr style={{
+                            background: isEditing ? '#FFF8E1' : isExp ? '#F1F8E9' : i % 2 === 0 ? '#fff' : '#F9FBF9',
+                            cursor: 'pointer',
+                          }}
+                          onClick={() => setExpandedInvId(prev => prev === r.id ? null : r.id)}>
+                            <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0',
+                              fontWeight: 600, color: T.textMid, whiteSpace: 'nowrap' }}>{r.fecha}</td>
+                            <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0' }}>{r.resp || '—'}</td>
+                            <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }}>{areaCell('Cooler 1 (grande)')}</td>
+                            <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }}>{areaCell('Cooler 2 (pequeño)')}</td>
+                            <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }}>{areaCell('Pre-Carga/Seco')}</td>
+                            <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0', fontWeight: 700,
+                              color: total > 0 ? T.warn : T.textMid }}>
+                              {total > 0 ? total : '—'}
+                            </td>
+                            <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0',
+                              textAlign: 'center', color: T.secondary, fontWeight: 700, fontSize: '.85rem' }}>
+                              {isExp ? '▲' : '▼'}
+                            </td>
+                            <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }}
+                              onClick={e => e.stopPropagation()}>
+                              <div style={{ display: 'flex', gap: 4 }}>
+                                <button onClick={() => handleEditInv(r)}
+                                  style={{ background: 'none', border: `1px solid ${T.secondary}`, borderRadius: 4,
+                                    padding: '3px 8px', cursor: 'pointer', fontSize: '.72rem', color: T.secondary, fontWeight: 600 }}>
+                                  ✏️ Editar
+                                </button>
+                                <button onClick={() => { if (window.confirm('¿Eliminar este registro?')) removeInv(r.id); }}
+                                  style={{ background: 'none', border: `1px solid ${T.border}`, borderRadius: 4,
+                                    padding: '3px 8px', cursor: 'pointer', fontSize: '.72rem', color: T.textMid }}>✕</button>
+                              </div>
+                            </td>
+                          </tr>
+                          {isExp && (
+                            <tr>
+                              <td colSpan={8} style={{ padding: 0, borderBottom: '2px solid #A5D6A7' }}>
+                                <div style={{ padding: '16px 22px', background: '#F9FEF9', borderLeft: `4px solid ${T.secondary}` }}>
+                                  <div style={{ fontWeight: 700, fontSize: '.72rem', color: T.secondary,
+                                    textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 12 }}>
+                                    Detalle del inventario — {r.fecha} · {r.resp || 's/responsable'}
+                                  </div>
+                                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
+                                    {INV_AREAS.map(area => {
+                                      const d = r.areas?.[area] || { vidrio: '', plastico: '', obs: '' };
+                                      const v = parseInt(d.vidrio)   || 0;
+                                      const p = parseInt(d.plastico) || 0;
+                                      const tot = v + p;
+                                      return (
+                                        <div key={area} style={{
+                                          padding: 14, borderRadius: 8,
+                                          background: tot > 0 ? '#FFF3E0' : '#fff',
+                                          border: `1.5px solid ${tot > 0 ? '#FFCC80' : T.border}`,
+                                        }}>
+                                          <div style={{ fontWeight: 700, fontSize: '.84rem', color: T.textDark, marginBottom: 8 }}>
+                                            {area}
+                                          </div>
+                                          <div style={{ display: 'flex', gap: 14, fontSize: '.82rem', marginBottom: 6 }}>
+                                            <span><b style={{ color: tot > 0 ? T.warn : T.textMid }}>{v}</b> <span style={{ color: T.textMid }}>vidrio</span></span>
+                                            <span><b style={{ color: tot > 0 ? T.warn : T.textMid }}>{p}</b> <span style={{ color: T.textMid }}>plástico</span></span>
+                                            <span style={{ marginLeft: 'auto', fontWeight: 700, color: tot > 0 ? T.warn : T.textMid }}>
+                                              Total: {tot}
+                                            </span>
+                                          </div>
+                                          {d.obs ? (
+                                            <div style={{ fontSize: '.78rem', color: T.textMid, fontStyle: 'italic',
+                                              borderTop: `1px dashed ${T.border}`, paddingTop: 6, marginTop: 6 }}>
+                                              📝 {d.obs}
+                                            </div>
+                                          ) : (
+                                            <div style={{ fontSize: '.72rem', color: T.border, fontStyle: 'italic', marginTop: 6 }}>
+                                              Sin observaciones
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                  <div style={{ marginTop: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                                    <span style={{ fontSize: '.82rem', color: T.textMid }}>
+                                      <b style={{ color: total > 0 ? T.warn : T.secondary, fontSize: '1rem' }}>{total}</b> artículos en total
+                                    </span>
+                                    <button onClick={() => handleEditInv(r)}
+                                      style={{ padding: '6px 14px', background: T.secondary, color: '#fff',
+                                        border: 'none', borderRadius: 4, fontWeight: 700, fontSize: '.78rem',
+                                        cursor: 'pointer', fontFamily: 'inherit' }}>
+                                      ✏️ Editar este registro
+                                    </button>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
                       );
                     })}
                   </tbody>
