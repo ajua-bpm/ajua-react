@@ -56,6 +56,8 @@ const LS = { display: 'flex', flexDirection: 'column', gap: 4, fontSize: '.72rem
 const IS = { padding: '8px 10px', border: '1.5px solid #E0E0E0', borderRadius: 6, fontSize: '.86rem', outline: 'none', fontFamily: 'inherit', width: '100%', boxSizing: 'border-box', marginTop: 2 };
 
 const blankMed = (hora) => ({ hora: hora || nowHM(), ppm: '', cloroAgregado: '', obs: '' });
+const blankProd = (hora) => ({ hora: hora || nowHM(), nombre: '', cantidad: '', unidad: 'lb', obs: '' });
+const UNIDADES_PROD = ['lb', 'kg', 'caja', 'red', 'unidad'];
 
 export default function CloroProducto() {
   const toast = useToast();
@@ -69,9 +71,9 @@ export default function CloroProducto() {
   // Form state
   const [editId, setEditId] = useState(null);
   const [fecha, setFecha]   = useState(today());
-  const [producto, setProducto] = useState('Repollo');
-  const [productoOtro, setProductoOtro] = useState('');
   const [responsable, setResponsable] = useState('');
+  // Productos lavados en esta sesión
+  const [productos, setProductos] = useState([blankProd()]);
   // Tanques de agua (lavado triple)
   const [t1Usado, setT1Usado] = useState(true);
   const [t1Obs, setT1Obs]     = useState('');
@@ -118,23 +120,25 @@ export default function CloroProducto() {
     setMediciones(prev => prev.filter((_, i) => i !== idx));
   };
 
+  const setProd = (idx, patch) => setProductos(prev => prev.map((p, i) => i === idx ? { ...p, ...patch } : p));
+  const addProd = () => setProductos(prev => [...prev, blankProd()]);
+  const removeProd = (idx) => setProductos(prev => prev.length === 1 ? prev : prev.filter((_, i) => i !== idx));
+
   const resetForm = () => {
     setEditId(null);
     setFecha(today());
-    setProducto('Repollo'); setProductoOtro('');
     setVolumenL(10); setPpmObjetivo(200);
     setUnidadCloro('g');
     setT1Usado(true); setT1Obs('');
     setT3Usado(true); setT3Obs('');
     setResponsable('');
     setMediciones([blankMed()]);
+    setProductos([blankProd()]);
   };
 
   const handleEdit = (r) => {
     setEditId(r.id);
     setFecha(r.fecha || today());
-    if (PRODUCTOS_SUG.includes(r.producto)) { setProducto(r.producto); setProductoOtro(''); }
-    else { setProducto('Otro'); setProductoOtro(r.producto || ''); }
     setVolumenL(r.volumenL || 10);
     setPpmObjetivo(r.ppmObjetivo || 200);
     setUnidadCloro(r.unidadCloro || 'g');
@@ -142,16 +146,24 @@ export default function CloroProducto() {
     setT3Usado(r.t3Usado !== false); setT3Obs(r.t3Obs || '');
     setResponsable(r.responsable || '');
     setMediciones(r.mediciones?.length ? r.mediciones : [blankMed()]);
+    // Hidratar productos — soporta legacy (campo string `producto`) y nuevo (array `productos`)
+    if (Array.isArray(r.productos) && r.productos.length > 0) {
+      setProductos(r.productos);
+    } else if (r.producto) {
+      setProductos([{ hora: nowHM(), nombre: r.producto, cantidad: '', unidad: 'lb', obs: '' }]);
+    } else {
+      setProductos([blankProd()]);
+    }
     setExpandedId(null);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleSave = async () => {
-    const productoFinal = producto === 'Otro' ? productoOtro.trim() : producto;
-    if (!productoFinal) { toast('Especificá el producto', 'error'); return; }
-    if (!responsable)    { toast('Seleccioná responsable', 'error'); return; }
+    if (!responsable) { toast('Seleccioná responsable', 'error'); return; }
+    const productosValidos = productos.filter(p => p.nombre && p.nombre.trim());
+    if (productosValidos.length === 0) { toast('Agregá al menos un producto a la sesión', 'error'); return; }
     if (mediciones.length === 0 || !mediciones[0].ppm || !mediciones[0].cloroAgregado) {
-      toast('La primera medición necesita ppm y gramos de cloro agregados', 'error'); return;
+      toast('La primera medición necesita ppm y cloro agregado', 'error'); return;
     }
 
     const medicionesNorm = mediciones.map(m => ({
@@ -160,10 +172,20 @@ export default function CloroProducto() {
       cloroAgregado: parseFloat(m.cloroAgregado) || 0,
       obs: m.obs || '',
     }));
+    const productosNorm = productosValidos.map(p => ({
+      hora: p.hora,
+      nombre: p.nombre.trim(),
+      cantidad: parseFloat(p.cantidad) || 0,
+      unidad: p.unidad || 'lb',
+      obs: p.obs || '',
+    }));
 
     const payload = {
-      fecha, producto: productoFinal, responsable,
-      // Lavado triple: tanques de agua
+      fecha, responsable,
+      productos: productosNorm,
+      productosResumen: productosNorm.map(p => p.nombre).join(', '),
+      cantProductos: productosNorm.length,
+      // Lavado triple
       t1Usado, t1Obs,
       t3Usado, t3Obs,
       // Tanque cloro
@@ -218,20 +240,10 @@ export default function CloroProducto() {
 
       {/* Form encabezado */}
       <div style={card}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 12, marginBottom: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: 12, marginBottom: 14 }}>
           <label style={LS}>Fecha
             <input type="date" value={fecha} onChange={e => setFecha(e.target.value)} style={IS} />
           </label>
-          <label style={LS}>Producto
-            <select value={producto} onChange={e => setProducto(e.target.value)} style={{ ...IS, cursor: 'pointer' }}>
-              {PRODUCTOS_SUG.map(p => <option key={p}>{p}</option>)}
-            </select>
-          </label>
-          {producto === 'Otro' && (
-            <label style={LS}>Especificar
-              <input value={productoOtro} onChange={e => setProductoOtro(e.target.value)} placeholder="Nombre producto" style={IS} />
-            </label>
-          )}
           <label style={LS}>Responsable
             {empLoad ? <Skeleton height={36} /> : (
               <select value={responsable} onChange={e => setResponsable(e.target.value)} style={{ ...IS, cursor: 'pointer' }}>
@@ -385,6 +397,76 @@ export default function CloroProducto() {
           )}
         </div>
 
+        {/* Productos lavados en esta sesión */}
+        <div style={{ padding: 14, border: `1.5px solid ${T.accent}`, borderRadius: 8, marginBottom: 14, background: '#F9FEF9' }}>
+          <div style={{ fontWeight: 700, fontSize: '.92rem', color: T.primary, marginBottom: 4 }}>
+            Productos lavados en esta sesión
+          </div>
+          <div style={{ fontSize: '.76rem', color: T.textMid, marginBottom: 10 }}>
+            Agregá cada producto que pasó por los tanques. Pueden ser varios (lavados simultáneos / consecutivos).
+          </div>
+          <div style={{ border: `1px solid ${T.border}`, borderRadius: 8, overflow: 'hidden', overflowX: 'auto', background: '#fff' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 620 }}>
+              <thead>
+                <tr style={{ background: T.bgLight }}>
+                  {['#', 'Hora', 'Producto', 'Cantidad', 'Unidad', 'Observación', ''].map(h => (
+                    <th key={h} style={{ padding: '8px 10px', textAlign: 'left', fontSize: '.7rem',
+                      fontWeight: 700, color: T.textMid, textTransform: 'uppercase', letterSpacing: '.04em' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {productos.map((p, idx) => (
+                  <tr key={idx} style={{ borderTop: `1px solid ${T.border}` }}>
+                    <td style={{ padding: '6px 10px', fontSize: '.82rem', fontWeight: 700, color: T.textMid }}>{idx + 1}</td>
+                    <td style={{ padding: '4px 8px' }}>
+                      <input type="time" value={p.hora} onChange={e => setProd(idx, { hora: e.target.value })}
+                        style={{ ...IS, width: 110, marginTop: 0 }} />
+                    </td>
+                    <td style={{ padding: '4px 8px' }}>
+                      <input list={`prod-sug-${idx}`} value={p.nombre}
+                        onChange={e => setProd(idx, { nombre: e.target.value })}
+                        placeholder="ej: Repollo"
+                        style={{ ...IS, marginTop: 0, minWidth: 140 }} />
+                      <datalist id={`prod-sug-${idx}`}>
+                        {PRODUCTOS_SUG.filter(s => s !== 'Otro').map(s => <option key={s} value={s} />)}
+                      </datalist>
+                    </td>
+                    <td style={{ padding: '4px 8px' }}>
+                      <input type="number" step="any" value={p.cantidad}
+                        onChange={e => setProd(idx, { cantidad: e.target.value })}
+                        placeholder="0" style={{ ...IS, width: 90, marginTop: 0 }} />
+                    </td>
+                    <td style={{ padding: '4px 8px' }}>
+                      <select value={p.unidad} onChange={e => setProd(idx, { unidad: e.target.value })}
+                        style={{ ...IS, marginTop: 0, cursor: 'pointer', width: 80 }}>
+                        {UNIDADES_PROD.map(u => <option key={u}>{u}</option>)}
+                      </select>
+                    </td>
+                    <td style={{ padding: '4px 8px' }}>
+                      <input value={p.obs} onChange={e => setProd(idx, { obs: e.target.value })}
+                        placeholder="opcional" style={{ ...IS, marginTop: 0 }} />
+                    </td>
+                    <td style={{ padding: '4px 8px', textAlign: 'center' }}>
+                      {productos.length > 1 && (
+                        <button onClick={() => removeProd(idx)}
+                          style={{ background: 'none', border: `1px solid ${T.border}`, borderRadius: 4,
+                            padding: '3px 8px', cursor: 'pointer', fontSize: '.72rem', color: T.textMid }}>✕</button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <button onClick={addProd} style={{
+              marginTop: 10, padding: '8px 16px', background: '#fff',
+              color: T.secondary, border: `1.5px solid ${T.secondary}`, borderRadius: 6,
+              fontWeight: 700, fontSize: '.82rem', cursor: 'pointer', fontFamily: 'inherit' }}>
+            + Agregar producto
+          </button>
+        </div>
+
         <div style={{ display: 'flex', gap: 10, marginTop: 4, flexWrap: 'wrap' }}>
           <button onClick={handleSave} disabled={saving}
             style={{ padding: '10px 22px', background: saving ? '#BDBDBD' : editId ? T.warn : T.primary,
@@ -420,7 +502,7 @@ export default function CloroProducto() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: T.primary }}>
-                  {['Fecha', 'Producto', 'Volumen', 'Objetivo', 'Mediciones', 'Total cloro', 'Responsable', '', 'Acciones'].map(h => (
+                  {['Fecha', 'Productos', 'Volumen', 'Objetivo', 'Mediciones', 'Total cloro', 'Responsable', '', 'Acciones'].map(h => (
                     <th key={h} style={{ padding: '9px 12px', color: '#fff', fontSize: '.7rem', fontWeight: 700,
                       textTransform: 'uppercase', letterSpacing: '.05em', textAlign: 'left', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
@@ -434,7 +516,10 @@ export default function CloroProducto() {
                       <tr style={{ background: isExp ? '#F1F8E9' : i % 2 === 0 ? '#fff' : '#F9FBF9', cursor: 'pointer' }}
                         onClick={() => setExpandedId(prev => prev === r.id ? null : r.id)}>
                         <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0', fontWeight: 600, color: T.textMid, whiteSpace: 'nowrap' }}>{r.fecha}</td>
-                        <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0', fontWeight: 700, color: T.textDark }}>{r.producto || '—'}</td>
+                        <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0', fontWeight: 700, color: T.textDark }}>
+                          {r.productosResumen || r.producto || (r.productos?.map(p => p.nombre).join(', ')) || '—'}
+                          {r.cantProductos > 1 && <div style={{ fontSize: '.7rem', color: T.textMid, fontWeight: 400 }}>{r.cantProductos} productos</div>}
+                        </td>
                         <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0' }}>{r.volumenL ? `${r.volumenL} L` : '—'}</td>
                         <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0', fontWeight: 700, color: T.secondary }}>{r.ppmObjetivo ? `${r.ppmObjetivo} ppm` : '—'}</td>
                         <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0', fontWeight: 700, color: T.textDark }}>{r.cantMediciones ?? (r.mediciones?.length ?? 0)}</td>
@@ -461,9 +546,46 @@ export default function CloroProducto() {
                           <td colSpan={9} style={{ padding: 0, borderBottom: '2px solid #A5D6A7' }}>
                             <div style={{ padding: '14px 18px', background: '#F9FEF9', borderLeft: `4px solid ${T.secondary}` }}>
                               <div style={{ fontWeight: 700, fontSize: '.72rem', color: T.secondary, textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 10 }}>
-                                Detalle — {r.producto} · {r.volumenL}L · objetivo {r.ppmObjetivo} ppm
+                                Detalle de sesión — {r.volumenL}L · objetivo {r.ppmObjetivo} ppm
                                 {r.ratioG_ppm > 0 && <span style={{ marginLeft: 8, color: T.textMid }}>ratio {fmtNum(r.ratioG_ppm, 4)} {r.unidadCloro || 'g'}/ppm</span>}
                               </div>
+
+                              {/* Productos */}
+                              {Array.isArray(r.productos) && r.productos.length > 0 && (
+                                <div style={{ marginBottom: 14 }}>
+                                  <div style={{ fontWeight: 700, fontSize: '.72rem', color: T.primary, marginBottom: 6 }}>
+                                    🥬 Productos lavados ({r.productos.length})
+                                  </div>
+                                  <div style={{ overflowX: 'auto' }}>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff', borderRadius: 6 }}>
+                                      <thead>
+                                        <tr style={{ background: T.bgLight }}>
+                                          {['Hora', 'Producto', 'Cantidad', 'Obs'].map(h => (
+                                            <th key={h} style={{ padding: '6px 10px', textAlign: 'left', fontSize: '.7rem',
+                                              fontWeight: 700, color: T.textMid, textTransform: 'uppercase' }}>{h}</th>
+                                          ))}
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {r.productos.map((p, pi) => (
+                                          <tr key={pi} style={{ borderTop: `1px solid ${T.border}` }}>
+                                            <td style={{ padding: '6px 10px', fontSize: '.82rem', color: T.textMid }}>{p.hora}</td>
+                                            <td style={{ padding: '6px 10px', fontSize: '.82rem', fontWeight: 700, color: T.textDark }}>{p.nombre}</td>
+                                            <td style={{ padding: '6px 10px', fontSize: '.82rem' }}>{p.cantidad ? `${fmtNum(p.cantidad, 2)} ${p.unidad || ''}` : '—'}</td>
+                                            <td style={{ padding: '6px 10px', fontSize: '.78rem', color: T.textMid, fontStyle: p.obs ? 'normal' : 'italic' }}>{p.obs || '—'}</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+                              )}
+                              {/* Compatibilidad con registros viejos */}
+                              {!Array.isArray(r.productos) && r.producto && (
+                                <div style={{ marginBottom: 10, fontSize: '.84rem', color: T.textDark, fontStyle: 'italic' }}>
+                                  Producto (registro antiguo): <b>{r.producto}</b>
+                                </div>
+                              )}
                               <div style={{ display: 'flex', gap: 14, marginBottom: 12, flexWrap: 'wrap', fontSize: '.78rem' }}>
                                 <span style={{ padding: '4px 10px', borderRadius: 4, background: r.t1Usado === false ? T.bgLight : '#E3F2FD', color: r.t1Usado === false ? T.textMid : '#1565C0', fontWeight: 600 }}>
                                   T1 Agua: {r.t1Usado === false ? 'no usado' : 'usado'}{r.t1Obs ? ` · ${r.t1Obs}` : ''}
