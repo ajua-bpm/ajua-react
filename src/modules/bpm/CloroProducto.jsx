@@ -12,8 +12,11 @@ const T = {
   greenBg: '#E8F5E9', redBg: '#FFEBEE',
 };
 
-const TANQUES = ['Tanque 1', 'Tanque 2', 'Tanque 3', 'Tanque 4'];
 const PRODUCTOS_SUG = ['Repollo','Brócoli','Coliflor','Lechuga','Espinaca','Zanahoria','Apio','Otro'];
+const UNIDADES_CLORO = [
+  { v: 'g',  label: 'gramos (granulado)' },
+  { v: 'mL', label: 'mL (líquido)' },
+];
 
 const today = () => new Date().toISOString().slice(0, 10);
 const nowHM = () => new Date().toTimeString().slice(0, 5);
@@ -43,10 +46,16 @@ export default function CloroProducto() {
   const [fecha, setFecha]   = useState(today());
   const [producto, setProducto] = useState('Repollo');
   const [productoOtro, setProductoOtro] = useState('');
-  const [tanque, setTanque] = useState('Tanque 1');
+  const [responsable, setResponsable] = useState('');
+  // Tanques de agua (lavado triple)
+  const [t1Usado, setT1Usado] = useState(true);
+  const [t1Obs, setT1Obs]     = useState('');
+  const [t3Usado, setT3Usado] = useState(true);
+  const [t3Obs, setT3Obs]     = useState('');
+  // Tanque cloro
   const [volumenL, setVolumenL] = useState(10);
   const [ppmObjetivo, setPpmObjetivo] = useState(200);
-  const [responsable, setResponsable] = useState('');
+  const [unidadCloro, setUnidadCloro] = useState('g');
   const [mediciones, setMediciones] = useState([blankMed()]);
   const [expandedId, setExpandedId] = useState(null);
 
@@ -88,8 +97,10 @@ export default function CloroProducto() {
     setEditId(null);
     setFecha(today());
     setProducto('Repollo'); setProductoOtro('');
-    setTanque('Tanque 1');
     setVolumenL(10); setPpmObjetivo(200);
+    setUnidadCloro('g');
+    setT1Usado(true); setT1Obs('');
+    setT3Usado(true); setT3Obs('');
     setResponsable('');
     setMediciones([blankMed()]);
   };
@@ -99,9 +110,11 @@ export default function CloroProducto() {
     setFecha(r.fecha || today());
     if (PRODUCTOS_SUG.includes(r.producto)) { setProducto(r.producto); setProductoOtro(''); }
     else { setProducto('Otro'); setProductoOtro(r.producto || ''); }
-    setTanque(r.tanque || 'Tanque 1');
     setVolumenL(r.volumenL || 10);
     setPpmObjetivo(r.ppmObjetivo || 200);
+    setUnidadCloro(r.unidadCloro || 'g');
+    setT1Usado(r.t1Usado !== false); setT1Obs(r.t1Obs || '');
+    setT3Usado(r.t3Usado !== false); setT3Obs(r.t3Obs || '');
     setResponsable(r.responsable || '');
     setMediciones(r.mediciones?.length ? r.mediciones : [blankMed()]);
     setExpandedId(null);
@@ -124,10 +137,15 @@ export default function CloroProducto() {
     }));
 
     const payload = {
-      fecha, producto: productoFinal, tanque,
+      fecha, producto: productoFinal, responsable,
+      // Lavado triple: tanques de agua
+      t1Usado, t1Obs,
+      t3Usado, t3Obs,
+      // Tanque cloro
       volumenL: parseFloat(volumenL) || 0,
       ppmObjetivo: parseFloat(ppmObjetivo) || 0,
-      responsable, mediciones: medicionesNorm,
+      unidadCloro,
+      mediciones: medicionesNorm,
       ratioG_ppm: ratio || 0,
       totalCloro: medicionesNorm.reduce((s, m) => s + (m.cloroAgregado || 0), 0),
       cantMediciones: medicionesNorm.length,
@@ -144,10 +162,10 @@ export default function CloroProducto() {
     <div style={{ fontFamily: 'inherit', maxWidth: 1080 }}>
       <div style={{ marginBottom: 18 }}>
         <h1 style={{ fontSize: '1.4rem', fontWeight: 800, color: T.primary, margin: 0 }}>
-          Control Cloro por Producto
+          Control de Lavado por Producto
         </h1>
         <p style={{ fontSize: '.83rem', color: T.textMid, marginTop: 4 }}>
-          Mediciones por hora con cálculo automático de gramos a agregar para mantener el ppm objetivo.
+          Lavado triple — agua, cloro (con mediciones por hora), agua. Cálculo automático del cloro a agregar.
         </p>
       </div>
 
@@ -167,17 +185,6 @@ export default function CloroProducto() {
               <input value={productoOtro} onChange={e => setProductoOtro(e.target.value)} placeholder="Nombre producto" style={IS} />
             </label>
           )}
-          <label style={LS}>Tanque
-            <select value={tanque} onChange={e => setTanque(e.target.value)} style={{ ...IS, cursor: 'pointer' }}>
-              {TANQUES.map(t => <option key={t}>{t}</option>)}
-            </select>
-          </label>
-          <label style={LS}>Volumen (L)
-            <input type="number" step="0.1" value={volumenL} onChange={e => setVolumenL(e.target.value)} style={IS} />
-          </label>
-          <label style={LS}>PPM Objetivo
-            <input type="number" value={ppmObjetivo} onChange={e => setPpmObjetivo(e.target.value)} style={IS} />
-          </label>
           <label style={LS}>Responsable
             {empLoad ? <Skeleton height={36} /> : (
               <select value={responsable} onChange={e => setResponsable(e.target.value)} style={{ ...IS, cursor: 'pointer' }}>
@@ -188,101 +195,150 @@ export default function CloroProducto() {
           </label>
         </div>
 
-        {/* Ratio info */}
-        {ratio && (
-          <div style={{ padding: '8px 14px', background: T.greenBg, borderRadius: 6, fontSize: '.8rem', color: T.secondary, marginBottom: 14, border: `1px solid ${T.accent}` }}>
-            <b>Ratio aprendido:</b> {fmtNum(ratio, 4)} gramos por cada 1 ppm en este tanque ({volumenL}L).
-            <span style={{ color: T.textMid, marginLeft: 8 }}>
-              Para subir 50 ppm necesitás ≈ {fmtNum(ratio * 50, 2)} g.
-            </span>
+        {/* Tanque 1 — agua */}
+        <div style={{ padding: 12, border: `1.5px solid ${T.border}`, borderRadius: 8, marginBottom: 12, background: t1Usado ? '#F0F8FF' : T.bgLight }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: t1Usado ? 8 : 0 }}>
+            <input type="checkbox" checked={t1Usado} onChange={e => setT1Usado(e.target.checked)}
+              style={{ width: 17, height: 17, cursor: 'pointer', accentColor: T.secondary }} />
+            <span style={{ fontWeight: 700, fontSize: '.92rem', color: T.textDark }}>Tanque 1 — Agua (pre-lavado)</span>
+            {!t1Usado && <span style={{ fontSize: '.74rem', color: T.textMid, fontStyle: 'italic' }}>no usado</span>}
           </div>
-        )}
-
-        {/* Tabla de mediciones */}
-        <div style={{ fontSize: '.74rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: T.secondary, marginBottom: 8 }}>
-          Mediciones · {mediciones.length}
+          {t1Usado && (
+            <input value={t1Obs} onChange={e => setT1Obs(e.target.value)}
+              placeholder="Observación (opcional)" style={{ ...IS, marginTop: 0 }} />
+          )}
         </div>
-        <div style={{ border: `1px solid ${T.border}`, borderRadius: 8, overflow: 'hidden', overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
-            <thead>
-              <tr style={{ background: T.bgLight }}>
-                {['#', 'Hora', 'PPM medido', 'Cloro sugerido', 'Cloro real agregado (g)', 'Observación', ''].map(h => (
-                  <th key={h} style={{ padding: '8px 10px', textAlign: 'left', fontSize: '.7rem',
-                    fontWeight: 700, color: T.textMid, textTransform: 'uppercase', letterSpacing: '.04em' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {mediciones.map((m, idx) => {
-                const isFirst = idx === 0;
-                const sug = !isFirst ? sugerencia(m.ppm) : null;
-                const ppmNum = parseFloat(m.ppm);
-                const ppmStatus = !ppmNum ? '' :
-                  ppmNum >= ppmObjetivo * 0.9 ? 'ok' :
-                  ppmNum >= ppmObjetivo * 0.6 ? 'bajo' : 'critico';
 
-                return (
-                  <tr key={idx} style={{ borderTop: `1px solid ${T.border}` }}>
-                    <td style={{ padding: '6px 10px', fontSize: '.82rem', fontWeight: 700, color: isFirst ? T.primary : T.textMid }}>
-                      {isFirst ? '1ª' : idx + 1}
-                    </td>
-                    <td style={{ padding: '4px 8px' }}>
-                      <input type="time" value={m.hora} onChange={e => setMed(idx, { hora: e.target.value })}
-                        style={{ ...IS, width: 110, marginTop: 0 }} />
-                    </td>
-                    <td style={{ padding: '4px 8px' }}>
-                      <input type="number" step="any" value={m.ppm}
-                        onChange={e => {
-                          const patch = { ppm: e.target.value };
-                          // Auto-rellenar cloro sugerido si no es la primera
-                          if (!isFirst && ratio) {
-                            const v = parseFloat(e.target.value);
-                            if (Number.isFinite(v)) {
-                              const def = ppmObjetivo - v;
-                              patch.cloroAgregado = def > 0 ? fmtNum(def * ratio, 2) : '0';
+        {/* Tanque 2 — Cloro */}
+        <div style={{ padding: 14, border: `1.5px solid ${T.accent}`, borderRadius: 8, marginBottom: 12, background: '#F1F8E9' }}>
+          <div style={{ fontWeight: 700, fontSize: '.92rem', color: T.primary, marginBottom: 10 }}>
+            Tanque 2 — Cloro (con re-medición horaria)
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(130px,1fr))', gap: 10, marginBottom: 10 }}>
+            <label style={LS}>Volumen agua (L)
+              <input type="number" step="0.1" value={volumenL} onChange={e => setVolumenL(e.target.value)} style={IS} />
+            </label>
+            <label style={LS}>Unidad cloro
+              <select value={unidadCloro} onChange={e => setUnidadCloro(e.target.value)} style={{ ...IS, cursor: 'pointer' }}>
+                {UNIDADES_CLORO.map(u => <option key={u.v} value={u.v}>{u.label}</option>)}
+              </select>
+            </label>
+            <label style={LS}>PPM Objetivo
+              <input type="number" value={ppmObjetivo} onChange={e => setPpmObjetivo(e.target.value)} style={IS} />
+            </label>
+          </div>
+
+          {/* Ratio info */}
+          {ratio && (
+            <div style={{ padding: '8px 14px', background: '#fff', borderRadius: 6, fontSize: '.8rem', color: T.secondary, marginBottom: 12, border: `1px solid ${T.accent}` }}>
+              <b>Ratio aprendido:</b> {fmtNum(ratio, 4)} {unidadCloro} por cada 1 ppm ({volumenL}L).
+              <span style={{ color: T.textMid, marginLeft: 8 }}>
+                Para subir 50 ppm: ≈ {fmtNum(ratio * 50, 2)} {unidadCloro}.
+              </span>
+            </div>
+          )}
+
+          {/* Tabla de mediciones */}
+          <div style={{ fontSize: '.74rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: T.secondary, marginBottom: 8 }}>
+            Mediciones · {mediciones.length}
+          </div>
+          <div style={{ border: `1px solid ${T.border}`, borderRadius: 8, overflow: 'hidden', overflowX: 'auto', background: '#fff' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
+              <thead>
+                <tr style={{ background: T.bgLight }}>
+                  {['#', 'Hora', 'PPM medido', `Cloro sugerido (${unidadCloro})`, `Cloro real agregado (${unidadCloro})`, 'Observación', ''].map(h => (
+                    <th key={h} style={{ padding: '8px 10px', textAlign: 'left', fontSize: '.7rem',
+                      fontWeight: 700, color: T.textMid, textTransform: 'uppercase', letterSpacing: '.04em' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {mediciones.map((m, idx) => {
+                  const isFirst = idx === 0;
+                  const sug = !isFirst ? sugerencia(m.ppm) : null;
+                  const ppmNum = parseFloat(m.ppm);
+                  const ppmStatus = !ppmNum ? '' :
+                    ppmNum >= ppmObjetivo * 0.9 ? 'ok' :
+                    ppmNum >= ppmObjetivo * 0.6 ? 'bajo' : 'critico';
+
+                  return (
+                    <tr key={idx} style={{ borderTop: `1px solid ${T.border}` }}>
+                      <td style={{ padding: '6px 10px', fontSize: '.82rem', fontWeight: 700, color: isFirst ? T.primary : T.textMid }}>
+                        {isFirst ? '1ª' : idx + 1}
+                      </td>
+                      <td style={{ padding: '4px 8px' }}>
+                        <input type="time" value={m.hora} onChange={e => setMed(idx, { hora: e.target.value })}
+                          style={{ ...IS, width: 110, marginTop: 0 }} />
+                      </td>
+                      <td style={{ padding: '4px 8px' }}>
+                        <input type="number" step="any" value={m.ppm}
+                          onChange={e => {
+                            const patch = { ppm: e.target.value };
+                            if (!isFirst && ratio) {
+                              const v = parseFloat(e.target.value);
+                              if (Number.isFinite(v)) {
+                                const def = ppmObjetivo - v;
+                                patch.cloroAgregado = def > 0 ? fmtNum(def * ratio, 2) : '0';
+                              }
                             }
-                          }
-                          setMed(idx, patch);
-                        }}
-                        placeholder={isFirst ? 'ej: 200' : '0'}
-                        style={{ ...IS, width: 100, marginTop: 0,
-                          background: ppmStatus === 'ok' ? T.greenBg : ppmStatus === 'bajo' ? T.warnBg : ppmStatus === 'critico' ? T.redBg : '#fff',
-                          borderColor: ppmStatus === 'ok' ? T.secondary : ppmStatus === 'bajo' ? T.warn : ppmStatus === 'critico' ? T.danger : T.border }} />
-                    </td>
-                    <td style={{ padding: '4px 8px', fontSize: '.84rem', fontWeight: 700,
-                      color: isFirst ? T.textMid : sug == null ? T.border : sug === 0 ? T.secondary : T.warn }}>
-                      {isFirst ? '— inicial —' : sug == null ? '...' : sug === 0 ? 'OK, no agregar' : `${fmtNum(sug, 2)} g`}
-                    </td>
-                    <td style={{ padding: '4px 8px' }}>
-                      <input type="number" step="any" value={m.cloroAgregado}
-                        onChange={e => setMed(idx, { cloroAgregado: e.target.value })}
-                        placeholder={isFirst ? 'ej: 3' : '0'}
-                        style={{ ...IS, width: 110, marginTop: 0, fontWeight: 700 }} />
-                    </td>
-                    <td style={{ padding: '4px 8px' }}>
-                      <input value={m.obs} onChange={e => setMed(idx, { obs: e.target.value })}
-                        placeholder="opcional" style={{ ...IS, marginTop: 0 }} />
-                    </td>
-                    <td style={{ padding: '4px 8px', textAlign: 'center' }}>
-                      {mediciones.length > 1 && (
-                        <button onClick={() => quitarMedicion(idx)}
-                          style={{ background: 'none', border: `1px solid ${T.border}`, borderRadius: 4,
-                            padding: '3px 8px', cursor: 'pointer', fontSize: '.72rem', color: T.textMid }}>✕</button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                            setMed(idx, patch);
+                          }}
+                          placeholder={isFirst ? 'ej: 200' : '0'}
+                          style={{ ...IS, width: 100, marginTop: 0,
+                            background: ppmStatus === 'ok' ? T.greenBg : ppmStatus === 'bajo' ? T.warnBg : ppmStatus === 'critico' ? T.redBg : '#fff',
+                            borderColor: ppmStatus === 'ok' ? T.secondary : ppmStatus === 'bajo' ? T.warn : ppmStatus === 'critico' ? T.danger : T.border }} />
+                      </td>
+                      <td style={{ padding: '4px 8px', fontSize: '.84rem', fontWeight: 700,
+                        color: isFirst ? T.textMid : sug == null ? T.border : sug === 0 ? T.secondary : T.warn }}>
+                        {isFirst ? '— inicial —' : sug == null ? '...' : sug === 0 ? 'OK, no agregar' : `${fmtNum(sug, 2)} ${unidadCloro}`}
+                      </td>
+                      <td style={{ padding: '4px 8px' }}>
+                        <input type="number" step="any" value={m.cloroAgregado}
+                          onChange={e => setMed(idx, { cloroAgregado: e.target.value })}
+                          placeholder={isFirst ? 'ej: 3' : '0'}
+                          style={{ ...IS, width: 110, marginTop: 0, fontWeight: 700 }} />
+                      </td>
+                      <td style={{ padding: '4px 8px' }}>
+                        <input value={m.obs} onChange={e => setMed(idx, { obs: e.target.value })}
+                          placeholder="opcional" style={{ ...IS, marginTop: 0 }} />
+                      </td>
+                      <td style={{ padding: '4px 8px', textAlign: 'center' }}>
+                        {mediciones.length > 1 && (
+                          <button onClick={() => quitarMedicion(idx)}
+                            style={{ background: 'none', border: `1px solid ${T.border}`, borderRadius: 4,
+                              padding: '3px 8px', cursor: 'pointer', fontSize: '.72rem', color: T.textMid }}>✕</button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
 
-        <div style={{ display: 'flex', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
-          <button onClick={agregarMedicion}
-            style={{ padding: '8px 16px', background: '#fff', color: T.secondary, border: `1.5px solid ${T.secondary}`,
-              borderRadius: 6, fontWeight: 700, fontSize: '.82rem', cursor: 'pointer', fontFamily: 'inherit' }}>
+          <button onClick={agregarMedicion} style={{
+              marginTop: 12, padding: '8px 16px', background: '#fff',
+              color: T.secondary, border: `1.5px solid ${T.secondary}`, borderRadius: 6,
+              fontWeight: 700, fontSize: '.82rem', cursor: 'pointer', fontFamily: 'inherit' }}>
             + Medición de próxima hora
           </button>
+        </div>{/* fin Tanque 2 */}
+
+        {/* Tanque 3 — agua final */}
+        <div style={{ padding: 12, border: `1.5px solid ${T.border}`, borderRadius: 8, marginBottom: 14, background: t3Usado ? '#F0F8FF' : T.bgLight }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: t3Usado ? 8 : 0 }}>
+            <input type="checkbox" checked={t3Usado} onChange={e => setT3Usado(e.target.checked)}
+              style={{ width: 17, height: 17, cursor: 'pointer', accentColor: T.secondary }} />
+            <span style={{ fontWeight: 700, fontSize: '.92rem', color: T.textDark }}>Tanque 3 — Agua (enjuague)</span>
+            {!t3Usado && <span style={{ fontSize: '.74rem', color: T.textMid, fontStyle: 'italic' }}>no usado</span>}
+          </div>
+          {t3Usado && (
+            <input value={t3Obs} onChange={e => setT3Obs(e.target.value)}
+              placeholder="Observación (opcional)" style={{ ...IS, marginTop: 0 }} />
+          )}
+        </div>
+
+        <div style={{ display: 'flex', gap: 10, marginTop: 4, flexWrap: 'wrap' }}>
           <button onClick={handleSave} disabled={saving}
             style={{ padding: '10px 22px', background: saving ? '#BDBDBD' : editId ? T.warn : T.primary,
               color: '#fff', border: 'none', borderRadius: 6, fontWeight: 700,
@@ -317,7 +373,7 @@ export default function CloroProducto() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: T.primary }}>
-                  {['Fecha', 'Producto', 'Tanque', 'Volumen', 'Objetivo', 'Mediciones', 'Total cloro', 'Responsable', '', 'Acciones'].map(h => (
+                  {['Fecha', 'Producto', 'Volumen', 'Objetivo', 'Mediciones', 'Total cloro', 'Responsable', '', 'Acciones'].map(h => (
                     <th key={h} style={{ padding: '9px 12px', color: '#fff', fontSize: '.7rem', fontWeight: 700,
                       textTransform: 'uppercase', letterSpacing: '.05em', textAlign: 'left', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
@@ -332,11 +388,10 @@ export default function CloroProducto() {
                         onClick={() => setExpandedId(prev => prev === r.id ? null : r.id)}>
                         <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0', fontWeight: 600, color: T.textMid, whiteSpace: 'nowrap' }}>{r.fecha}</td>
                         <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0', fontWeight: 700, color: T.textDark }}>{r.producto || '—'}</td>
-                        <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0' }}>{r.tanque || '—'}</td>
                         <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0' }}>{r.volumenL ? `${r.volumenL} L` : '—'}</td>
                         <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0', fontWeight: 700, color: T.secondary }}>{r.ppmObjetivo ? `${r.ppmObjetivo} ppm` : '—'}</td>
                         <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0', fontWeight: 700, color: T.textDark }}>{r.cantMediciones ?? (r.mediciones?.length ?? 0)}</td>
-                        <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0', fontWeight: 700, color: T.warn }}>{r.totalCloro ? `${fmtNum(r.totalCloro, 2)} g` : '—'}</td>
+                        <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0', fontWeight: 700, color: T.warn }}>{r.totalCloro ? `${fmtNum(r.totalCloro, 2)} ${r.unidadCloro || 'g'}` : '—'}</td>
                         <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0' }}>{r.responsable || '—'}</td>
                         <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0', textAlign: 'center', color: T.secondary, fontWeight: 700 }}>
                           {isExp ? '▲' : '▼'}
@@ -356,17 +411,28 @@ export default function CloroProducto() {
                       </tr>
                       {isExp && (
                         <tr>
-                          <td colSpan={10} style={{ padding: 0, borderBottom: '2px solid #A5D6A7' }}>
+                          <td colSpan={9} style={{ padding: 0, borderBottom: '2px solid #A5D6A7' }}>
                             <div style={{ padding: '14px 18px', background: '#F9FEF9', borderLeft: `4px solid ${T.secondary}` }}>
                               <div style={{ fontWeight: 700, fontSize: '.72rem', color: T.secondary, textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 10 }}>
-                                Detalle — {r.producto} · {r.tanque} · {r.volumenL}L · objetivo {r.ppmObjetivo} ppm
-                                {r.ratioG_ppm > 0 && <span style={{ marginLeft: 8, color: T.textMid }}>ratio {fmtNum(r.ratioG_ppm, 4)} g/ppm</span>}
+                                Detalle — {r.producto} · {r.volumenL}L · objetivo {r.ppmObjetivo} ppm
+                                {r.ratioG_ppm > 0 && <span style={{ marginLeft: 8, color: T.textMid }}>ratio {fmtNum(r.ratioG_ppm, 4)} {r.unidadCloro || 'g'}/ppm</span>}
+                              </div>
+                              <div style={{ display: 'flex', gap: 14, marginBottom: 12, flexWrap: 'wrap', fontSize: '.78rem' }}>
+                                <span style={{ padding: '4px 10px', borderRadius: 4, background: r.t1Usado === false ? T.bgLight : '#E3F2FD', color: r.t1Usado === false ? T.textMid : '#1565C0', fontWeight: 600 }}>
+                                  T1 Agua: {r.t1Usado === false ? 'no usado' : 'usado'}{r.t1Obs ? ` · ${r.t1Obs}` : ''}
+                                </span>
+                                <span style={{ padding: '4px 10px', borderRadius: 4, background: T.greenBg, color: T.secondary, fontWeight: 600 }}>
+                                  T2 Cloro: {r.cantMediciones || (r.mediciones?.length ?? 0)} mediciones
+                                </span>
+                                <span style={{ padding: '4px 10px', borderRadius: 4, background: r.t3Usado === false ? T.bgLight : '#E3F2FD', color: r.t3Usado === false ? T.textMid : '#1565C0', fontWeight: 600 }}>
+                                  T3 Agua: {r.t3Usado === false ? 'no usado' : 'usado'}{r.t3Obs ? ` · ${r.t3Obs}` : ''}
+                                </span>
                               </div>
                               <div style={{ overflowX: 'auto' }}>
                                 <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff', borderRadius: 6 }}>
                                   <thead>
                                     <tr style={{ background: T.bgLight }}>
-                                      {['#', 'Hora', 'PPM medido', 'Cloro agregado', 'Observación'].map(h => (
+                                      {['#', 'Hora', 'PPM medido', `Cloro agregado (${r.unidadCloro || 'g'})`, 'Observación'].map(h => (
                                         <th key={h} style={{ padding: '6px 10px', textAlign: 'left', fontSize: '.7rem',
                                           fontWeight: 700, color: T.textMid, textTransform: 'uppercase' }}>{h}</th>
                                       ))}
@@ -395,7 +461,7 @@ export default function CloroProducto() {
                                 </table>
                               </div>
                               <div style={{ marginTop: 10, fontSize: '.82rem', color: T.textMid }}>
-                                Total cloro usado en el turno: <b style={{ color: T.warn }}>{fmtNum(r.totalCloro, 2)} g</b>
+                                Total cloro usado en el turno: <b style={{ color: T.warn }}>{fmtNum(r.totalCloro, 2)} {r.unidadCloro || 'g'}</b>
                               </div>
                             </div>
                           </td>

@@ -20,7 +20,7 @@ const NAV = [
   { to: '/bpm/fumigacion',         mod: 'fumigacion',        icon: '🧪', label: 'Fumigación' },
   { to: '/bpm/croquis',            mod: 'croquis',           icon: '🗺️', label: 'Croquis Bodega' },
   { section: 'BPM · Higiene' },
-  { to: '/bpm/lavado-prod',        mod: 'lavado-prod',       icon: '💧', label: 'Lavado Producto' },
+  // Lavado Producto (legacy) — reemplazado por Control de Lavado por Producto. Ruta sigue activa para registros históricos.
   { to: '/bpm/capacitacion',       mod: 'capacitacion',      icon: '🎓', label: 'Capacitación' },
   { to: '/bpm/enfermos',           mod: 'enfermos',          icon: '🏥', label: 'Empleados Enfermos' },
   { to: '/bpm/visitas',            mod: 'visitas',           icon: '👤', label: 'Control Visitas' },
@@ -28,7 +28,7 @@ const NAV = [
   { to: '/bpm/cloro',              mod: 'cloro',             icon: '💧', label: 'Control Cloro' },
   { to: '/bpm/temperatura',        mod: 'temperatura',       icon: '🌡️', label: 'Temperatura' },
   { to: '/bpm/inspecciones',       mod: 'inspecciones',      icon: '📝', label: 'Inspecciones + CAPA' },
-  { to: '/bpm/cloro-producto',     mod: 'cloro-producto',    icon: '🧪', label: 'Cloro por Producto' },
+  { to: '/bpm/cloro-producto',     mod: 'cloro-producto',    icon: '💧', label: 'Control de Lavado' },
   { section: 'Inventario' },
   { to: '/stock',                  mod: 'stock',             icon: '📦', label: 'Stock en Vivo' },
   { to: '/inventario/entrada',     mod: 'entrada',           icon: '📥', label: 'Ingresos / Recepción' },
