@@ -18,6 +18,28 @@ const UNIDADES_CLORO = [
   { v: 'mL', label: 'mL (líquido)' },
 ];
 
+// Productos comerciales de cloro/hipoclorito — % de cloro activo
+const PRODUCTOS_CLORO = [
+  { id: 'naclo5',   nombre: 'Hipoclorito de sodio 5%',          conc: 5,    tipo: 'liquido' },
+  { id: 'naclo6',   nombre: 'Hipoclorito de sodio 6% (doméstico)', conc: 6,  tipo: 'liquido' },
+  { id: 'naclo10',  nombre: 'Hipoclorito de sodio 10%',         conc: 10,   tipo: 'liquido' },
+  { id: 'naclo125', nombre: 'Hipoclorito de sodio 12.5%',       conc: 12.5, tipo: 'liquido' },
+  { id: 'caclo65',  nombre: 'Hipoclorito de calcio 65% (granular)', conc: 65, tipo: 'granular' },
+  { id: 'caclo70',  nombre: 'Hipoclorito de calcio 70% (granular)', conc: 70, tipo: 'granular' },
+  { id: 'cloropuro', nombre: 'Cloro puro 100%',                 conc: 100,  tipo: 'granular' },
+  { id: 'custom',   nombre: 'Personalizado',                    conc: 0,    tipo: 'liquido' },
+];
+
+// Recomendaciones por rango de ppm objetivo
+const REC_PPM = [
+  { max: 1.5,    label: 'Agua potable (NOM-127: 0.2–1.5 mg/L)', color: '#1565C0' },
+  { max: 50,     label: 'Agua de proceso / cisterna baja',       color: '#1565C0' },
+  { max: 200,    label: 'Lavado de frutas/verduras (BPM)',       color: '#2E7D32' },
+  { max: 500,    label: 'Desinfección de superficies',           color: '#E65100' },
+  { max: 10000,  label: 'Sanitización fuerte',                   color: '#C62828' },
+];
+const getRecomendacion = (ppm) => REC_PPM.find(r => ppm <= r.max) || REC_PPM[REC_PPM.length - 1];
+
 const today = () => new Date().toISOString().slice(0, 10);
 const nowHM = () => new Date().toTimeString().slice(0, 5);
 const addHora = (hm, h) => {
@@ -40,6 +62,9 @@ export default function CloroProducto() {
   const { empleados, loading: empLoad } = useEmpleados();
   const { data: registros, loading } = useCollection('cloroProducto', { orderField: 'fecha', orderDir: 'desc', limit: 100 });
   const { add, update, remove, saving } = useWrite('cloroProducto');
+
+  // Tab
+  const [tab, setTab] = useState('control');
 
   // Form state
   const [editId, setEditId] = useState(null);
@@ -160,14 +185,36 @@ export default function CloroProducto() {
 
   return (
     <div style={{ fontFamily: 'inherit', maxWidth: 1080 }}>
-      <div style={{ marginBottom: 18 }}>
+      <div style={{ marginBottom: 14 }}>
         <h1 style={{ fontSize: '1.4rem', fontWeight: 800, color: T.primary, margin: 0 }}>
           Control de Lavado por Producto
         </h1>
         <p style={{ fontSize: '.83rem', color: T.textMid, marginTop: 4 }}>
-          Lavado triple — agua, cloro (con mediciones por hora), agua. Cálculo automático del cloro a agregar.
+          Lavado triple con mediciones por hora · Calculadora de dosis de cloro.
         </p>
       </div>
+
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: 4, marginBottom: 18, borderBottom: `2px solid ${T.border}` }}>
+        {[
+          { k: 'control', label: '💧 Control de Lavado' },
+          { k: 'calc',    label: '🧮 Calculadora de Dosis' },
+        ].map(t => (
+          <button key={t.k} onClick={() => setTab(t.k)} style={{
+            padding: '10px 18px', border: 'none', background: 'none',
+            borderBottom: tab === t.k ? `3px solid ${T.primary}` : '3px solid transparent',
+            color: tab === t.k ? T.primary : T.textMid, fontWeight: 700,
+            fontSize: '.86rem', cursor: 'pointer', marginBottom: -2,
+            fontFamily: 'inherit',
+          }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'calc' && <Calculadora />}
+
+      {tab === 'control' && <>
 
       {/* Form encabezado */}
       <div style={card}>
@@ -474,6 +521,135 @@ export default function CloroProducto() {
             </table>
           </div>
         )}
+      </div>
+      </>}
+    </div>
+  );
+}
+
+// ─── Calculadora de Dosis ───────────────────────────────────────────
+function Calculadora() {
+  const [volumen, setVolumen]       = useState(10);
+  const [ppmActual, setPpmActual]   = useState(0);
+  const [ppmObjetivo, setPpmObj]    = useState('');
+  const [productoId, setProductoId] = useState('naclo6');
+  const [customConc, setCustomConc] = useState('');
+  const [customTipo, setCustomTipo] = useState('liquido');
+
+  const producto = PRODUCTOS_CLORO.find(p => p.id === productoId);
+  const conc = productoId === 'custom' ? parseFloat(customConc) : producto?.conc;
+  const tipo = productoId === 'custom' ? customTipo : producto?.tipo;
+
+  const calc = useMemo(() => {
+    const vol = parseFloat(volumen);
+    const actual = parseFloat(ppmActual) || 0;
+    const obj = parseFloat(ppmObjetivo);
+    if (!Number.isFinite(vol) || vol <= 0) return { error: 'Ingresá volumen válido' };
+    if (!Number.isFinite(obj) || obj <= 0) return null;
+    if (!Number.isFinite(conc) || conc <= 0) return { error: 'Especificá concentración del producto' };
+
+    const deficit = obj - actual;
+    if (deficit <= 0) return { ok: true, mensaje: 'La concentración actual ya alcanza el objetivo. No hace falta agregar.' };
+
+    const mgNecesarios = deficit * vol;          // mg de cloro activo total
+    const mgPorUnidad  = conc * 10;              // % × 10 = mg por mL (líquido) o mg por g (granular)
+    const cantidad     = mgNecesarios / mgPorUnidad;
+    const unidad       = tipo === 'liquido' ? 'mL' : 'g';
+    const rec          = getRecomendacion(obj);
+
+    return { deficit, mgNecesarios, cantidad, unidad, rec };
+  }, [volumen, ppmActual, ppmObjetivo, conc, tipo]);
+
+  return (
+    <div style={card}>
+      <div style={{ marginBottom: 10, fontSize: '.85rem', color: T.textMid }}>
+        Calculá cuánto cloro o hipoclorito agregar para llegar a la concentración deseada.
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14, marginBottom: 16 }}>
+        <label style={LS}>Volumen de agua (L)
+          <input type="number" min="0" step="0.1" value={volumen} onChange={e => setVolumen(e.target.value)} style={IS} />
+        </label>
+        <label style={LS}>Concentración actual (mg/L o ppm)
+          <input type="number" min="0" step="0.1" value={ppmActual} onChange={e => setPpmActual(e.target.value)} style={IS} placeholder="0 si es agua sin tratar" />
+        </label>
+        <label style={LS}>Concentración deseada (mg/L o ppm)
+          <input type="number" min="0" step="0.1" value={ppmObjetivo} onChange={e => setPpmObj(e.target.value)} placeholder="ej: 200" style={IS} />
+        </label>
+        <label style={LS}>Producto
+          <select value={productoId} onChange={e => setProductoId(e.target.value)} style={{ ...IS, cursor: 'pointer' }}>
+            {PRODUCTOS_CLORO.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+          </select>
+        </label>
+        {productoId === 'custom' && (
+          <>
+            <label style={LS}>Concentración del producto (% cloro activo)
+              <input type="number" min="0" step="0.01" value={customConc} onChange={e => setCustomConc(e.target.value)} placeholder="ej: 8.5" style={IS} />
+            </label>
+            <label style={LS}>Tipo
+              <select value={customTipo} onChange={e => setCustomTipo(e.target.value)} style={{ ...IS, cursor: 'pointer' }}>
+                <option value="liquido">Líquido (mL)</option>
+                <option value="granular">Granular (g)</option>
+              </select>
+            </label>
+          </>
+        )}
+      </div>
+
+      {/* Recomendación rango */}
+      {parseFloat(ppmObjetivo) > 0 && (() => {
+        const rec = getRecomendacion(parseFloat(ppmObjetivo));
+        return (
+          <div style={{ padding: '8px 14px', borderRadius: 6, background: '#fff',
+            border: `1.5px solid ${rec.color}`, color: rec.color, fontSize: '.82rem', marginBottom: 14 }}>
+            <b>Uso recomendado:</b> {rec.label}
+          </div>
+        );
+      })()}
+
+      {/* Resultado */}
+      {calc?.error && (
+        <div style={{ padding: 14, borderRadius: 8, background: T.warnBg, color: T.warn, fontWeight: 600, fontSize: '.9rem' }}>
+          ⚠ {calc.error}
+        </div>
+      )}
+      {calc?.ok && (
+        <div style={{ padding: 14, borderRadius: 8, background: T.greenBg, color: T.secondary, fontWeight: 600, fontSize: '.92rem' }}>
+          ✓ {calc.mensaje}
+        </div>
+      )}
+      {calc && !calc.error && !calc.ok && (
+        <div style={{ padding: 22, borderRadius: 10, background: T.greenBg, border: `2px solid ${T.secondary}` }}>
+          <div style={{ fontSize: '.74rem', fontWeight: 700, color: T.secondary, textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 8 }}>
+            Dosis a agregar
+          </div>
+          <div style={{ fontSize: '2.4rem', fontWeight: 800, color: T.primary, lineHeight: 1, marginBottom: 10 }}>
+            {fmtNum(calc.cantidad, 2)} <span style={{ fontSize: '1.4rem', fontWeight: 600 }}>{calc.unidad}</span>
+          </div>
+          <div style={{ fontSize: '.85rem', color: T.textMid, lineHeight: 1.6 }}>
+            de <b style={{ color: T.textDark }}>{producto?.id === 'custom' ? `producto al ${customConc}%` : producto?.nombre}</b><br />
+            para subir de <b>{ppmActual || 0} mg/L</b> a <b>{ppmObjetivo} mg/L</b> en <b>{volumen} L</b> de agua.
+          </div>
+          <div style={{ marginTop: 12, fontSize: '.78rem', color: T.textMid, padding: '8px 12px', background: '#fff', borderRadius: 6 }}>
+            <b>Cálculo:</b> déficit {fmtNum(calc.deficit, 2)} mg/L × {volumen} L = {fmtNum(calc.mgNecesarios, 0)} mg de cloro activo.
+            <br />Producto al {conc}% → {conc * 10} mg activo por {tipo === 'liquido' ? 'mL' : 'g'} → {fmtNum(calc.cantidad, 2)} {calc.unidad} necesarios.
+          </div>
+        </div>
+      )}
+
+      {/* Tabla referencia rápida */}
+      <div style={{ marginTop: 22 }}>
+        <div style={{ fontSize: '.74rem', fontWeight: 700, color: T.secondary, textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 8 }}>
+          Referencia rápida — rangos típicos
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 8 }}>
+          {REC_PPM.slice(0, -1).map(r => (
+            <div key={r.label} style={{ padding: '8px 12px', borderRadius: 6, background: '#fff', border: `1px solid ${r.color}`, fontSize: '.78rem', color: r.color }}>
+              <b>{r.label.split(' (')[0]}</b>
+              {r.label.includes('(') && <div style={{ fontSize: '.72rem', color: T.textMid, marginTop: 2 }}>{r.label.match(/\((.+)\)/)?.[1]}</div>}
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
