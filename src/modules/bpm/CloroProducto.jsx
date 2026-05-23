@@ -55,7 +55,9 @@ const card = { background: '#fff', borderRadius: 8, boxShadow: '0 1px 3px rgba(0
 const LS = { display: 'flex', flexDirection: 'column', gap: 4, fontSize: '.72rem', fontWeight: 600, textTransform: 'uppercase', color: T.textMid, letterSpacing: '.06em' };
 const IS = { padding: '8px 10px', border: '1.5px solid #E0E0E0', borderRadius: 6, fontSize: '.86rem', outline: 'none', fontFamily: 'inherit', width: '100%', boxSizing: 'border-box', marginTop: 2 };
 
-const blankMed = (hora) => ({ hora: hora || nowHM(), ppm: '', cloroAgregado: '', obs: '' });
+const blankMed  = (hora) => ({ hora: hora || nowHM(), ppm: '', cloroAgregado: '', obs: '' });
+const blankProd = () => ({ nombre: 'Repollo', nombreOtro: '', cantidad: '', unidad: 'lb', obs: '' });
+const UNIDADES_PROD = ['lb', 'kg', 'caja', 'red', 'unidad'];
 
 export default function CloroProducto() {
   const toast = useToast();
@@ -69,11 +71,9 @@ export default function CloroProducto() {
   // Form state
   const [editId, setEditId] = useState(null);
   const [fecha, setFecha]   = useState(today());
-  const [producto, setProducto] = useState('Repollo');
-  const [productoOtro, setProductoOtro] = useState('');
-  const [cantidad, setCantidad] = useState('');
-  const [unidadProd, setUnidadProd] = useState('lb');
   const [responsable, setResponsable] = useState('');
+  // Productos a registrar — al guardar se crea 1 reporte por producto
+  const [productos, setProductos] = useState([blankProd()]);
   // Tanques de agua (lavado triple)
   const [t1Usado, setT1Usado] = useState(true);
   const [t1Obs, setT1Obs]     = useState('');
@@ -120,28 +120,25 @@ export default function CloroProducto() {
     setMediciones(prev => prev.filter((_, i) => i !== idx));
   };
 
+  const setProd    = (idx, patch) => setProductos(prev => prev.map((p, i) => i === idx ? { ...p, ...patch } : p));
+  const addProd    = () => setProductos(prev => [...prev, blankProd()]);
+  const removeProd = (idx) => setProductos(prev => prev.length === 1 ? prev : prev.filter((_, i) => i !== idx));
+
   const resetForm = () => {
     setEditId(null);
     setFecha(today());
-    setProducto('Repollo'); setProductoOtro('');
-    setCantidad(''); setUnidadProd('lb');
     setVolumenL(10); setPpmObjetivo(200);
     setUnidadCloro('g');
     setT1Usado(true); setT1Obs('');
     setT3Usado(true); setT3Obs('');
     setResponsable('');
     setMediciones([blankMed()]);
+    setProductos([blankProd()]);
   };
 
   const handleEdit = (r) => {
     setEditId(r.id);
     setFecha(r.fecha || today());
-    // Producto puede venir como string (formato actual) o desde array legacy
-    const nombreProd = r.producto || r.productos?.[0]?.nombre || '';
-    if (PRODUCTOS_SUG.includes(nombreProd)) { setProducto(nombreProd); setProductoOtro(''); }
-    else { setProducto('Otro'); setProductoOtro(nombreProd); }
-    setCantidad(r.cantidad != null ? String(r.cantidad) : (r.productos?.[0]?.cantidad ? String(r.productos[0].cantidad) : ''));
-    setUnidadProd(r.unidadProd || r.productos?.[0]?.unidad || 'lb');
     setVolumenL(r.volumenL || 10);
     setPpmObjetivo(r.ppmObjetivo || 200);
     setUnidadCloro(r.unidadCloro || 'g');
@@ -149,17 +146,32 @@ export default function CloroProducto() {
     setT3Usado(r.t3Usado !== false); setT3Obs(r.t3Obs || '');
     setResponsable(r.responsable || '');
     setMediciones(r.mediciones?.length ? r.mediciones : [blankMed()]);
+    // Edit = 1 producto (el del registro)
+    const nombreProd = r.producto || r.productos?.[0]?.nombre || '';
+    const isSug = PRODUCTOS_SUG.includes(nombreProd);
+    setProductos([{
+      nombre:     isSug ? nombreProd : 'Otro',
+      nombreOtro: isSug ? '' : nombreProd,
+      cantidad:   r.cantidad != null ? String(r.cantidad) : '',
+      unidad:     r.unidadProd || 'lb',
+      obs:        r.obsProducto || '',
+    }]);
     setExpandedId(null);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleSave = async () => {
-    const productoFinal = producto === 'Otro' ? productoOtro.trim() : producto;
-    if (!productoFinal) { toast('Especificá el producto', 'error'); return; }
-    if (!responsable)    { toast('Seleccioná responsable', 'error'); return; }
+    if (!responsable) { toast('Seleccioná responsable', 'error'); return; }
     if (mediciones.length === 0 || !mediciones[0].ppm || !mediciones[0].cloroAgregado) {
       toast('La primera medición necesita ppm y cloro agregado', 'error'); return;
     }
+    const productosNorm = productos.map(p => ({
+      nombre:   (p.nombre === 'Otro' ? p.nombreOtro : p.nombre || '').trim(),
+      cantidad: parseFloat(p.cantidad) || 0,
+      unidad:   p.unidad || 'lb',
+      obs:      p.obs || '',
+    })).filter(p => p.nombre);
+    if (productosNorm.length === 0) { toast('Especificá al menos un producto', 'error'); return; }
 
     const medicionesNorm = mediciones.map(m => ({
       hora: m.hora,
@@ -168,15 +180,10 @@ export default function CloroProducto() {
       obs: m.obs || '',
     }));
 
-    const payload = {
+    // Datos compartidos entre todos los reportes (tanques + cloro)
+    const shared = {
       fecha, responsable,
-      producto: productoFinal,
-      cantidad: parseFloat(cantidad) || 0,
-      unidadProd,
-      // Lavado triple
-      t1Usado, t1Obs,
-      t3Usado, t3Obs,
-      // Tanque cloro
+      t1Usado, t1Obs, t3Usado, t3Obs,
       volumenL: parseFloat(volumenL) || 0,
       ppmObjetivo: parseFloat(ppmObjetivo) || 0,
       unidadCloro,
@@ -187,8 +194,18 @@ export default function CloroProducto() {
     };
 
     try {
-      if (editId) { await update(editId, payload); toast('✓ Reporte actualizado'); }
-      else        { await add(payload);            toast('✓ Reporte guardado'); }
+      if (editId) {
+        // Edición: solo el primer producto, sobrescribe el registro
+        const p = productosNorm[0];
+        await update(editId, { ...shared, producto: p.nombre, cantidad: p.cantidad, unidadProd: p.unidad, obsProducto: p.obs });
+        toast('✓ Reporte actualizado');
+      } else {
+        // Creación: 1 registro por producto (mismos tanques y mediciones)
+        for (const p of productosNorm) {
+          await add({ ...shared, producto: p.nombre, cantidad: p.cantidad, unidadProd: p.unidad, obsProducto: p.obs });
+        }
+        toast(productosNorm.length === 1 ? '✓ Reporte guardado' : `✓ ${productosNorm.length} reportes guardados (1 por producto)`);
+      }
       resetForm();
     } catch (e) { toast('Error: ' + e.message, 'error'); }
   };
@@ -228,27 +245,9 @@ export default function CloroProducto() {
 
       {/* Form encabezado */}
       <div style={card}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 12, marginBottom: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: 12, marginBottom: 14 }}>
           <label style={LS}>Fecha
             <input type="date" value={fecha} onChange={e => setFecha(e.target.value)} style={IS} />
-          </label>
-          <label style={LS}>Producto
-            <select value={producto} onChange={e => setProducto(e.target.value)} style={{ ...IS, cursor: 'pointer' }}>
-              {PRODUCTOS_SUG.map(p => <option key={p}>{p}</option>)}
-            </select>
-          </label>
-          {producto === 'Otro' && (
-            <label style={LS}>Especificar
-              <input value={productoOtro} onChange={e => setProductoOtro(e.target.value)} placeholder="Nombre producto" style={IS} />
-            </label>
-          )}
-          <label style={LS}>Cantidad (opcional)
-            <input type="number" step="any" value={cantidad} onChange={e => setCantidad(e.target.value)} placeholder="0" style={IS} />
-          </label>
-          <label style={LS}>Unidad
-            <select value={unidadProd} onChange={e => setUnidadProd(e.target.value)} style={{ ...IS, cursor: 'pointer' }}>
-              {['lb','kg','caja','red','unidad'].map(u => <option key={u}>{u}</option>)}
-            </select>
           </label>
           <label style={LS}>Responsable
             {empLoad ? <Skeleton height={36} /> : (
@@ -403,13 +402,72 @@ export default function CloroProducto() {
           )}
         </div>
 
+        {/* Productos — al guardar se crea 1 reporte por producto */}
+        <div style={{ padding: 14, border: `1.5px solid ${T.accent}`, borderRadius: 8, marginBottom: 14, background: '#F9FEF9' }}>
+          <div style={{ fontWeight: 700, fontSize: '.92rem', color: T.primary, marginBottom: 4 }}>
+            {editId ? 'Producto' : `Productos a registrar${productos.length > 1 ? ` · ${productos.length}` : ''}`}
+          </div>
+          <div style={{ fontSize: '.76rem', color: T.textMid, marginBottom: 12 }}>
+            {editId
+              ? 'Editando un solo registro de producto.'
+              : 'Si lavás varios productos al mismo tiempo, agregalos acá. Cada uno queda como un reporte separado compartiendo los tanques y mediciones de cloro.'}
+          </div>
+
+          {productos.map((p, idx) => (
+            <div key={idx} style={{ padding: 12, background: '#fff', border: `1px solid ${T.border}`, borderRadius: 8, marginBottom: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <span style={{ fontSize: '.72rem', fontWeight: 700, color: T.secondary, textTransform: 'uppercase', letterSpacing: '.06em' }}>
+                  Producto {productos.length > 1 ? `${idx + 1}` : ''}
+                </span>
+                {productos.length > 1 && (
+                  <button onClick={() => removeProd(idx)}
+                    style={{ background: 'none', border: `1px solid ${T.border}`, borderRadius: 4,
+                      padding: '3px 10px', cursor: 'pointer', fontSize: '.72rem', color: T.danger }}>
+                    ✕ Quitar
+                  </button>
+                )}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 10 }}>
+                <label style={LS}>Producto
+                  <select value={p.nombre} onChange={e => setProd(idx, { nombre: e.target.value })} style={{ ...IS, cursor: 'pointer' }}>
+                    {PRODUCTOS_SUG.map(s => <option key={s}>{s}</option>)}
+                  </select>
+                </label>
+                {p.nombre === 'Otro' && (
+                  <label style={LS}>Especificar
+                    <input value={p.nombreOtro} onChange={e => setProd(idx, { nombreOtro: e.target.value })} placeholder="Nombre" style={IS} />
+                  </label>
+                )}
+                <label style={LS}>Cantidad
+                  <input type="number" step="any" value={p.cantidad} onChange={e => setProd(idx, { cantidad: e.target.value })} placeholder="opcional" style={IS} />
+                </label>
+                <label style={LS}>Unidad
+                  <select value={p.unidad} onChange={e => setProd(idx, { unidad: e.target.value })} style={{ ...IS, cursor: 'pointer' }}>
+                    {UNIDADES_PROD.map(u => <option key={u}>{u}</option>)}
+                  </select>
+                </label>
+                <label style={LS}>Observación
+                  <input value={p.obs} onChange={e => setProd(idx, { obs: e.target.value })} placeholder="opcional" style={IS} />
+                </label>
+              </div>
+            </div>
+          ))}
+
+          {!editId && (
+            <button onClick={addProd}
+              style={{ padding: '8px 16px', background: '#fff', color: T.secondary, border: `1.5px solid ${T.secondary}`,
+                borderRadius: 6, fontWeight: 700, fontSize: '.82rem', cursor: 'pointer', fontFamily: 'inherit' }}>
+              + Agregar otro producto
+            </button>
+          )}
+        </div>
 
         <div style={{ display: 'flex', gap: 10, marginTop: 4, flexWrap: 'wrap' }}>
           <button onClick={handleSave} disabled={saving}
             style={{ padding: '10px 22px', background: saving ? '#BDBDBD' : editId ? T.warn : T.primary,
               color: '#fff', border: 'none', borderRadius: 6, fontWeight: 700,
               fontSize: '.88rem', cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
-            {saving ? 'Guardando...' : editId ? '✏️ Actualizar reporte' : '💾 Guardar reporte'}
+            {saving ? 'Guardando...' : editId ? '✏️ Actualizar reporte' : productos.length > 1 ? `💾 Guardar ${productos.length} reportes` : '💾 Guardar reporte'}
           </button>
           {editId && (
             <button onClick={resetForm}
