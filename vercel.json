@@ -3,6 +3,6 @@
   "outputDirectory": "dist",
   "cleanUrls": true,
   "rewrites": [
-    { "source": "/((?!api/|cotizador-importacion).*)", "destination": "/index.html" }
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
