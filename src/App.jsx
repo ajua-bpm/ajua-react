@@ -61,10 +61,11 @@ const ProyeccionSemanal  = lazy(() => import('./modules/proyeccion/ProyeccionSem
 const GastosUnificado    = lazy(() => import('./modules/gastos/GastosUnificado'));
 const AnticiposMX        = lazy(() => import('./modules/finanzas/AnticiposMX'));
 const FinanzasModule     = lazy(() => import('./modules/finanzas/Finanzas'));
-const CotizadorRapido    = lazy(() => import('./modules/cotizador/CotizadorRapido'));
-const CotizadorLista     = lazy(() => import('./modules/cotizador/CotizadorLista'));
-const CotizadorNuevo     = lazy(() => import('./modules/cotizador/CotizadorNuevo'));
-const CotizadorDetalle   = lazy(() => import('./modules/cotizador/CotizadorDetalle'));
+const CotizadorRapido       = lazy(() => import('./modules/cotizador/CotizadorRapido'));
+const CotizadorLista        = lazy(() => import('./modules/cotizador/CotizadorLista'));
+const CotizadorNuevo        = lazy(() => import('./modules/cotizador/CotizadorNuevo'));
+const CotizadorDetalle      = lazy(() => import('./modules/cotizador/CotizadorDetalle'));
+const CotizadorImportLista  = lazy(() => import('./modules/cotizador/CotizadorImportLista'));
 
 // Precios
 const Precios            = lazy(() => import('./modules/precios/Precios'));
@@ -161,6 +162,7 @@ export default function App() {
           <Route path="maquila"                element={<Navigate to="/gastos" replace />} />
           <Route path="anticipos"              element={<AnticiposMX />} />
           <Route path="cotizador/rapido"       element={<CotizadorRapido />} />
+          <Route path="cotizador-import-lista" element={<CotizadorImportLista />} />
           <Route path="cotizador"              element={<CotizadorLista />} />
           <Route path="cotizador/nuevo"        element={<CotizadorNuevo />} />
           <Route path="cotizador/:id"          element={<CotizadorDetalle />} />
