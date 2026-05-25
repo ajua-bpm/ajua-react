@@ -47,6 +47,7 @@ const NAV = [
   { to: '/anticipos',              mod: 'anticipos',         icon: '💵', label: 'Anticipos MX' },
   { to: '/cotizador/rapido',       mod: 'cotizador-rapido',  icon: '💼', label: 'Cotizador Rápido' },
   { to: '/cotizador',              mod: 'cotizador',         icon: '🚢', label: 'Cotizador Contenedor' },
+  { to: '/cotizador-importacion',  mod: 'cotizador-import',  icon: '🇲🇽', label: 'Cotizador Importación', external: true },
   { section: 'Precios' },
   { to: '/precios',                mod: 'precios',           icon: '💲', label: 'Lista de Precios' },
   { section: 'Equipo' },
@@ -174,22 +175,37 @@ export default function Layout() {
               );
             }
             if (!canSee(user, item.mod)) return null;
+            const baseStyle = {
+              display: 'flex',
+              alignItems: 'center',
+              gap: 9,
+              padding: '7px 20px',
+              margin: '1px 0',
+              fontSize: '13px',
+              textDecoration: 'none',
+              borderLeft: '3px solid transparent',
+              fontWeight: 400,
+              letterSpacing: '.01em',
+              transition: 'all .12s',
+              color: 'rgba(255,255,255,.55)',
+              background: 'transparent',
+            };
+            if (item.external) {
+              return (
+                <a key={item.to} href={item.to} onClick={() => setOpen(false)} style={baseStyle}>
+                  <span style={{ fontSize: '13px', opacity: .8 }}>{item.icon}</span>
+                  <span style={{ flex: 1 }}>{item.label}</span>
+                </a>
+              );
+            }
             return (
               <NavLink key={item.to} to={item.to} onClick={() => setOpen(false)}
                 style={({ isActive }) => ({
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 9,
-                  padding: '7px 20px',
-                  margin: '1px 0',
-                  fontSize: '13px',
-                  color: isActive ? '#fff' : 'rgba(255,255,255,.55)',
-                  background: isActive ? 'rgba(255,255,255,.07)' : 'transparent',
-                  textDecoration: 'none',
-                  borderLeft: isActive ? '3px solid var(--gold)' : '3px solid transparent',
+                  ...baseStyle,
+                  color: isActive ? '#fff' : baseStyle.color,
+                  background: isActive ? 'rgba(255,255,255,.07)' : baseStyle.background,
+                  borderLeft: isActive ? '3px solid var(--gold)' : baseStyle.borderLeft,
                   fontWeight: isActive ? 600 : 400,
-                  letterSpacing: '.01em',
-                  transition: 'all .12s',
                 })}>
                 <span style={{ fontSize: '13px', opacity: .8 }}>{item.icon}</span>
                 <span style={{ flex: 1 }}>{item.label}</span>

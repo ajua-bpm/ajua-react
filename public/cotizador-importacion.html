@@ -1,0 +1,1023 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cotización de Importación — México → Guatemala</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600;8..60,700&family=Inter+Tight:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bone:#F8F3E9;--paper:#FFFFFF;--ink:#1A1A18;--forest:#1F3A2C;--canopy:#2D6645;--ochre:#A8835A;
+  --muted:#6B6B60;--sand:#E7DDC9;--rule:rgba(26,26,24,.10);--green:#2E7D32;--red:#C62828;
+  --highlight:rgba(168,131,90,.10);--mxFlag:#B4513A;--gtFlag:#2D6645;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+body{font-family:'Inter Tight','Inter',system-ui,sans-serif;background:var(--bone);color:var(--ink);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums lining-nums;font-feature-settings:"tnum" 1,"lnum" 1;}
+.num,.val,.kpi .val,.pc-totals .v,table.t td.num,table.t td{font-feature-settings:"tnum" 1,"lnum" 1;letter-spacing:0;}
+
+.page{max-width:1180px;margin:0 auto;padding:40px 48px 60px;background:var(--paper);min-height:100vh;}
+
+/* HEADER */
+header.doc-head{border-bottom:3px double var(--forest);padding-bottom:20px;margin-bottom:28px;}
+.head-row{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;flex-wrap:wrap;}
+.brand{font-family:'Inter Tight','Inter',sans-serif;font-size:1.5rem;font-weight:800;color:var(--forest);letter-spacing:.14em;text-transform:uppercase;}
+.brand span{color:var(--ochre);font-weight:600;}
+.doc-title{font-family:'Source Serif 4','Times New Roman',serif;font-size:1.4rem;font-weight:600;color:var(--ink);margin-top:14px;letter-spacing:-.005em;}
+.doc-sub{font-size:.78rem;color:var(--muted);margin-top:4px;letter-spacing:.04em;}
+.meta{text-align:right;font-size:.78rem;color:var(--muted);display:flex;flex-direction:column;gap:3px;}
+.meta b{color:var(--ink);font-weight:600;}
+.meta input{font-family:inherit;color:var(--ink);}
+
+/* SECTIONS */
+section.block{margin-bottom:32px;page-break-inside:avoid;}
+.section-num{font-size:.62rem;font-weight:700;letter-spacing:.3em;text-transform:uppercase;color:var(--ochre);border-top:1.5px solid var(--forest);padding-top:8px;display:inline-block;padding-right:40px;margin-bottom:8px;}
+h2.section-title{font-family:'Source Serif 4','Times New Roman',serif;font-size:1.55rem;font-weight:600;color:var(--forest);letter-spacing:-.01em;margin-bottom:18px;}
+.subnote{font-size:.78rem;color:var(--muted);margin-bottom:10px;}
+
+/* INPUTS */
+input,select{font-family:inherit;font-size:inherit;color:var(--ink);background:transparent;border:none;border-bottom:1px solid var(--rule);padding:3px 4px;outline:none;transition:border-color .15s;border-radius:0;}
+input:hover,select:hover{border-bottom-color:var(--ink);}
+input:focus,select:focus{background:#FBF8F1;border-bottom-color:var(--ink);border-bottom-width:2px;padding-bottom:2px;}
+input[type="number"]::-webkit-inner-spin-button{-webkit-appearance:none;}
+input[type="number"]{-moz-appearance:textfield;}
+
+/* CONFIG */
+.cfg{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:0;padding:16px 0;background:transparent;border-top:1.5px solid var(--forest);border-bottom:1.5px solid var(--forest);border-radius:0;}
+.cfg-field{display:flex;flex-direction:column;gap:6px;padding:0 18px;border-right:1px solid var(--rule);}
+.cfg-field:last-child{border-right:none;}
+.cfg-field label{font-size:.62rem;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--ochre);}
+.cfg-field input,.cfg-field select{font-family:'Source Serif 4',serif;font-size:1.4rem;font-weight:600;color:var(--forest);padding:2px 0;border-bottom:1px solid var(--rule);}
+.cfg-field .hint{font-size:.66rem;color:var(--muted);}
+
+/* TABLES — estilo estado de cuenta formal con identidad AGROAJUA */
+table.t{width:100%;border-collapse:collapse;font-size:.86rem;}
+table.t thead th{text-align:left;padding:10px 12px;font-size:.66rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#fff;background:var(--forest);border-right:1px solid rgba(255,255,255,.12);white-space:nowrap;}
+table.t thead th:last-child{border-right:none;}
+table.t thead th.num{text-align:right;}
+table.t tbody td{padding:8px 12px;border-bottom:1px solid var(--rule);vertical-align:middle;}
+table.t tbody td.num{text-align:right;}
+table.t tbody td.bold{font-weight:600;color:var(--ink);}
+table.t tbody td input{width:100%;}
+table.t tbody td input.num{text-align:right;}
+table.t tbody tr:hover{background:rgba(168,131,90,.06);}
+table.t tfoot td{padding:11px 12px;font-weight:700;background:var(--bone);border-top:2px solid var(--forest);border-bottom:3px double var(--forest);color:var(--forest);font-size:.92rem;}
+table.t tfoot td.num{text-align:right;}
+
+.action-btn{background:transparent;border:1px solid var(--rule);color:var(--muted);padding:3px 9px;border-radius:0;cursor:pointer;font-family:inherit;font-size:.68rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;transition:all .12s;}
+.action-btn:hover{color:var(--ink);border-color:var(--ink);}
+.add-row{margin-top:10px;padding:8px 16px;background:transparent;border:1px solid var(--ink);color:var(--ink);border-radius:2px;cursor:pointer;font-family:inherit;font-size:.7rem;font-weight:600;text-transform:uppercase;letter-spacing:.14em;transition:all .12s;}
+.add-row:hover{background:var(--ink);color:#fff;}
+
+/* CONTAINER BANNER — packing list bancario */
+.banner-cnt{padding:14px 22px;background:var(--forest);color:var(--bone);border:none;border-radius:0;margin-bottom:18px;display:flex;gap:36px;flex-wrap:wrap;align-items:baseline;font-size:.82rem;border-top:3px solid var(--ochre);}
+.banner-cnt .lbl{font-family:'Inter Tight',sans-serif;font-weight:700;font-size:.62rem;letter-spacing:.22em;text-transform:uppercase;color:var(--ochre);opacity:1;}
+.banner-cnt b{font-family:'Source Serif 4',serif;color:#fff;font-weight:600;font-size:1.2rem;}
+
+/* KPIs — tira de earnings report con color formal */
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:0;border-top:2px solid var(--forest);border-bottom:2px solid var(--forest);background:var(--bone);}
+.kpi{padding:16px 18px;background:transparent;border-left:none;border-right:1px solid var(--rule);border-radius:0;}
+.kpi:nth-child(4n){border-right:none;}
+.kpi:nth-child(n+5){border-top:1px solid var(--rule);}
+.kpi .lbl{font-size:.62rem;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--ochre);margin-bottom:8px;}
+.kpi .val{font-family:'Source Serif 4',serif;font-size:1.7rem;font-weight:600;color:var(--forest);line-height:1.1;letter-spacing:0;}
+.kpi .sub{font-size:.74rem;color:var(--muted);margin-top:4px;}
+.kpi.good .val{color:var(--green);}
+.kpi.bad .val{color:var(--red);}
+@media (max-width:780px){.kpis{grid-template-columns:repeat(2,1fr);}.kpi:nth-child(4n){border-right:1px solid var(--rule);}.kpi:nth-child(2n){border-right:none;}}
+
+/* REPARTO */
+.reparto-grid{display:grid;grid-template-columns:2fr 1fr 1fr;gap:1px;background:var(--rule);border:1px solid var(--rule);border-radius:6px;overflow:hidden;}
+.reparto-grid>div{background:var(--paper);padding:14px 16px;}
+.reparto-grid .h{background:var(--forest);color:var(--bone);font-size:.7rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;}
+.reparto-grid .h.num{text-align:right;}
+.reparto-grid .num{text-align:right;font-variant-numeric:tabular-nums;}
+.reparto-grid .total{font-weight:700;color:var(--forest);background:var(--bone);}
+
+/* COMPARACIÓN PROPUESTA */
+.cmp-ok{color:var(--green);font-weight:700;}
+.cmp-bad{color:var(--red);font-weight:700;}
+.pill{padding:2px 8px;border-radius:10px;font-size:.7rem;font-weight:700;letter-spacing:.04em;}
+.pill.lb{background:rgba(46,125,50,.12);color:var(--green);}
+.pill.unid{background:rgba(168,131,90,.15);color:var(--ochre);}
+
+/* ACTIONS */
+.actions{position:sticky;bottom:12px;z-index:10;display:flex;gap:10px;justify-content:flex-end;padding:12px 0;}
+.btn{padding:11px 24px;border-radius:2px;border:1.5px solid var(--forest);font-family:inherit;font-weight:600;font-size:.7rem;letter-spacing:.16em;text-transform:uppercase;cursor:pointer;transition:all .15s;}
+.btn-print{background:var(--forest);color:var(--bone);}.btn-print:hover{background:var(--canopy);}
+.btn-secondary{background:#fff;color:var(--forest);}
+.btn-secondary:hover{background:var(--forest);color:var(--bone);}
+
+footer.doc-foot{margin-top:50px;padding-top:20px;border-top:1px solid var(--rule);font-size:.72rem;color:var(--muted);display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;}
+
+/* ── PRODUCT CARDS — items de cotización con identidad ── */
+.products-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(440px,1fr));gap:20px;margin-top:14px;}
+.pc{background:#fff;border:1px solid var(--rule);border-top:3px solid var(--forest);border-radius:0;padding:18px 22px;box-shadow:none;}
+.pc-head{display:flex;align-items:baseline;gap:12px;padding-bottom:10px;border-bottom:1.5px solid var(--rule);margin-bottom:12px;}
+.pc-name{flex:1;font-family:'Source Serif 4',serif;font-size:1.3rem;font-weight:600;color:var(--forest);border:none;border-bottom:1px solid transparent;padding:2px 0;background:transparent;letter-spacing:-.005em;}
+.pc-name:hover{border-bottom-color:var(--rule);}
+.pc-name:focus{border-bottom-color:var(--forest);}
+.pc-mode-pill{padding:2px 8px;border-radius:0;font-size:.66rem;font-weight:700;letter-spacing:.16em;border:1.5px solid var(--ochre);background:transparent;cursor:pointer;font-family:inherit;text-transform:uppercase;color:var(--ochre);}
+.pc-del{background:none;border:1px solid var(--rule);color:var(--muted);font-size:.68rem;font-weight:600;cursor:pointer;padding:3px 8px;border-radius:0;text-transform:uppercase;letter-spacing:.1em;}
+.pc-del:hover{color:var(--red);border-color:var(--red);}
+.pc-section{margin-bottom:8px;}
+.pc-section-title{font-size:.62rem;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:var(--ochre);margin:14px 0 8px;padding-top:10px;border-top:1px solid var(--rule);}
+.pc-row{display:grid;grid-template-columns:140px 1fr;gap:14px;align-items:center;padding:5px 0;}
+.pc-label{font-size:.78rem;color:var(--muted);font-weight:500;}
+.pc-row input,.pc-row select{font-size:.92rem;padding:5px 10px;border:1px solid var(--rule);border-radius:4px;background:#fff;color:var(--ink);outline:none;border-bottom:1px solid var(--rule);}
+.pc-row input:hover,.pc-row select:hover{background:var(--highlight);border-color:var(--ochre);}
+.pc-row input:focus,.pc-row select:focus{background:#fff;border-color:var(--canopy);}
+.pc-row input[type="number"]{width:90px;text-align:right;font-variant-numeric:tabular-nums;}
+.pc-aux{font-size:.76rem;color:var(--muted);font-style:italic;margin-left:10px;}
+.pc-input-grp{display:inline-flex;align-items:center;gap:6px;}
+.pc-input-grp .ccy{font-size:.78rem;color:var(--muted);font-weight:600;}
+.pc-input-grp .unit{font-size:.74rem;color:var(--muted);}
+.pc-totals{padding:10px 14px;margin:10px 0;background:var(--bone);border:none;border-radius:0;display:flex;gap:24px;flex-wrap:wrap;justify-content:center;font-size:.82rem;color:var(--forest);align-items:baseline;}
+.pc-totals .v{font-family:'Source Serif 4',serif;font-size:1.15rem;font-weight:600;color:var(--forest);margin-right:4px;letter-spacing:0;}
+.pc-totals .unit{font-size:.7rem;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;}
+.pc-sug-info{margin-top:8px;padding:8px 12px;background:rgba(168,131,90,.08);border-left:3px solid var(--ochre);border-radius:0;font-size:.78rem;color:var(--ink);font-weight:500;}
+.pc-sug-info.empty{background:transparent;border-left-color:var(--rule);color:var(--muted);}
+
+@media (max-width:520px){.products-grid{grid-template-columns:1fr;}.pc-row{grid-template-columns:1fr;gap:4px;}.pc-label{font-size:.7rem;}}
+
+@media print{
+  /* @page margin define márgenes de PÁGINA (todas las páginas, no solo la primera) */
+  @page{size:A4 portrait;margin:18mm 16mm 22mm 16mm !important;}
+  html, body, *{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;color-adjust:exact !important;}
+  body{background:#fff !important;font-size:9.5pt;color:#1a1a18;line-height:1.45;margin:0 !important;}
+  .page{padding:0 !important;max-width:none !important;margin:0 !important;}
+
+  /* Hide UI */
+  .actions,#save-status,.add-row,.action-btn,#catalog-picker,#catalog-status,.btn{display:none !important;}
+
+  /* Inputs as plain text */
+  input,select,textarea{border:none !important;background:transparent !important;
+    -webkit-appearance:none !important;appearance:none !important;color:#000 !important;
+    padding:0 !important;font-size:inherit !important;font-weight:inherit !important;}
+  select{padding-right:0 !important;}
+
+  /* Section breaks */
+  section.block{page-break-inside:auto;margin-bottom:14px;}
+  h2.section-title{page-break-after:avoid;font-size:14pt;}
+  header.doc-head{page-break-after:avoid;}
+  .section-num{page-break-after:avoid;}
+
+  /* CARDS — no se rompen entre páginas */
+  .pc, .kpi, #analisis-cards > div, .reparto-grid{break-inside:avoid !important;page-break-inside:avoid !important;}
+  .products-grid{display:grid !important;grid-template-columns:1fr 1fr !important;gap:8px !important;}
+  #analisis-cards{display:grid !important;grid-template-columns:1fr 1fr !important;gap:8px !important;}
+  .kpis{display:grid !important;grid-template-columns:repeat(4,1fr) !important;gap:6px !important;}
+
+  /* Cards compactas */
+  .pc{padding:10px 12px !important;font-size:9.5pt !important;}
+  .pc-head{padding-bottom:6px !important;margin-bottom:6px !important;}
+  .pc-name{font-size:11pt !important;}
+  .pc-row{padding:2px 0 !important;}
+  .pc-totals{padding:6px 8px !important;margin:6px 0 !important;font-size:9pt !important;}
+  .pc-section-title{margin:8px 0 4px !important;padding-top:4px !important;}
+  .kpi{padding:8px 10px !important;}
+  .kpi .val{font-size:13pt !important;}
+  #analisis-cards > div{padding:10px 12px !important;font-size:9pt !important;}
+
+  /* Tablas (gastos) */
+  table.t thead{display:table-header-group;}
+  table.t thead th{background:#1F3A2C !important;color:#fff !important;-webkit-print-color-adjust:exact;print-color-adjust:exact;font-size:8pt !important;}
+  table.t tfoot td{background:#F5F0E4 !important;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  table.t tbody td{padding:5px 8px !important;font-size:9pt !important;}
+
+  /* Banner contenedor con color forest */
+  .banner-cnt{background:#1F3A2C !important;color:#fff !important;border-top:2pt solid #A8835A !important;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  .banner-cnt .lbl{color:#A8835A !important;}
+  .banner-cnt b{color:#fff !important;}
+
+  /* Configuración con rules forest */
+  .cfg{background:transparent !important;padding:10px 0 !important;border-top:1.5pt solid #1F3A2C !important;border-bottom:1.5pt solid #1F3A2C !important;}
+  .cfg-field input{font-size:13pt !important;color:#1F3A2C !important;}
+  .cfg-field label{color:#A8835A !important;}
+
+  /* Tablas con header forest */
+  table.t thead th{background:#1F3A2C !important;color:#fff !important;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  table.t tfoot td{background:#F5F0E4 !important;color:#1F3A2C !important;border-top:1.5pt solid #1F3A2C !important;border-bottom:2.5pt double #1F3A2C !important;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+
+  /* KPIs con fondo bone */
+  .kpis{background:#F5F0E4 !important;border-color:#1F3A2C !important;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  .kpi .lbl{color:#A8835A !important;}
+  .kpi .val{color:#1F3A2C !important;}
+
+  /* Section titles y números */
+  h2.section-title{color:#1F3A2C !important;}
+  .section-num{color:#A8835A !important;border-top-color:#1F3A2C !important;}
+  .brand{color:#1F3A2C !important;}
+  .brand span{color:#A8835A !important;}
+
+  /* Product cards */
+  .pc{border-top:2pt solid #1F3A2C !important;}
+  .pc-name{color:#1F3A2C !important;}
+  .pc-mode-pill{color:#A8835A !important;border-color:#A8835A !important;}
+  .pc-section-title{color:#A8835A !important;}
+  .pc-totals{background:#F5F0E4 !important;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  .pc-totals .v{color:#1F3A2C !important;}
+
+  /* Forzar tabular-nums en todo */
+  *{font-variant-numeric:tabular-nums !important;}
+}
+@media (max-width:780px){.page{padding:24px 18px;}.head-row{flex-direction:column;}.meta{text-align:left;}table.t{font-size:.78rem;}}
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <header class="doc-head">
+    <div class="head-row">
+      <div>
+        <div class="brand">AGROAJUA<span>.</span></div>
+        <div style="font-size:.72rem;color:var(--muted);margin-top:2px;">NIT 1926272-1 · Guatemala</div>
+        <div class="doc-title" style="margin-top:14px;">Cotización de Importación</div>
+        <div class="doc-sub">México → Guatemala — análisis de pago máximo al productor</div>
+      </div>
+      <div class="meta">
+        <div><b>Cotización</b> <input id="m-numero" placeholder="ej: COT-2026-001" size="14"></div>
+        <div><b>Fecha</b> <input type="date" id="m-fecha"></div>
+        <div><b>Productor</b> <input id="m-productor" placeholder="Nombre del productor" size="22"></div>
+        <div><b>Ubicación</b> <input id="m-ubic" placeholder="ej: Sinaloa, México" size="22"></div>
+        <div><b>NIT/RFC productor</b> <input id="m-nit" placeholder="RFC productor" size="22"></div>
+        <div><b>Contacto</b> <input id="m-contacto" placeholder="teléfono / email" size="22"></div>
+      </div>
+    </div>
+  </header>
+
+  <!-- 01 CONFIG -->
+  <section class="block">
+    <div class="section-num">— 01 / Configuración</div>
+    <h2 class="section-title">Tipos de cambio y retenciones</h2>
+    <div class="cfg">
+      <div class="cfg-field"><label>TC · 1 MXN = Q</label><input type="number" id="tcMXN" step="0.0001" value="0.4425"><span class="hint">MXN → GTQ</span></div>
+      <div class="cfg-field"><label>TC · 1 USD = Q</label><input type="number" id="tcUSD" step="0.01" value="7.78"><span class="hint">USD → GTQ</span></div>
+      <div class="cfg-field"><label>IVA Guatemala (%)</label><input type="number" id="ivaPct" step="0.1" value="12"><span class="hint">Sobre precio venta</span></div>
+      <div class="cfg-field"><label>Retención IVA cliente (%)</label><input type="number" id="retIvaPct" step="0.1" value="80"><span class="hint">% del IVA que retiene</span></div>
+      <div class="cfg-field"><label>Pronto pago (%)</label><input type="number" id="prontoPct" step="0.01" value="1.25"><span class="hint">Descuento sobre precio venta</span></div>
+    </div>
+  </section>
+
+  <!-- 02 GASTOS -->
+  <section class="block">
+    <div class="section-num">— 02 / Gastos de importación</div>
+    <h2 class="section-title">Costos asociados al envío</h2>
+    <h3 style="font-size:.7rem;color:var(--ink);margin:14px 0 8px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;">MX · Gastos en origen <span style="color:var(--muted);font-weight:400;">(MXN)</span></h3>
+    <table class="t" id="t-gastosMX">
+      <thead><tr><th>Concepto</th><th class="num">Monto MXN</th><th class="num">Equivalente GTQ</th><th></th></tr></thead>
+      <tbody id="tb-gastosMX"></tbody>
+      <tfoot><tr><td>Total origen</td><td class="num" id="ft-gastosMX-mxn">$ 0.00</td><td class="num" id="ft-gastosMX-gtq">Q 0.00</td><td></td></tr></tfoot>
+    </table>
+    <button class="add-row" onclick="addGasto('mx')">+ Agregar gasto MX</button>
+
+    <h3 style="font-size:.7rem;color:var(--ink);margin:24px 0 8px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;">GT · Gastos en destino <span style="color:var(--muted);font-weight:400;">(GTQ)</span></h3>
+    <table class="t" id="t-gastosGT">
+      <thead><tr><th>Concepto</th><th class="num">Monto GTQ</th><th></th></tr></thead>
+      <tbody id="tb-gastosGT"></tbody>
+      <tfoot><tr><td>Total destino</td><td class="num" id="ft-gastosGT">Q 0.00</td><td></td></tr></tfoot>
+    </table>
+    <button class="add-row" onclick="addGasto('gt')">+ Agregar gasto GT</button>
+  </section>
+
+  <!-- 04 PRODUCTOS + PRECIO VENTA -->
+  <section class="block">
+    <div class="section-num">— 03 / Productos · precio venta · comisión · costo sugerido</div>
+    <h2 class="section-title">Negociación por producto — kg / caja / unidad</h2>
+    <div class="subnote">Por cada producto definí: <b>precio venta /u</b> (Q/lb o Q/uni), <b>comisión AJUA</b> en Q/u, y el <b>costo sugerido</b> en <b>MXN/kg</b> (productos por libra) o <b>MXN/unidad</b> (productos por unidad). Se compara contra el máximo disponible.</div>
+
+    <div class="banner-cnt">
+      <span class="lbl">Contenedor</span>
+      <span><b id="cnt-pallets" style="color:var(--ochre);">0</b> pallets</span>
+      <span><b id="cnt-cajas">0</b> cajas</span>
+      <span><b id="cnt-kg">0.00</b> kg</span>
+      <span><b id="cnt-lbs">0.00</b> lbs</span>
+      <span><b id="cnt-prods">0</b> productos</span>
+    </div>
+
+    <div id="products-grid" class="products-grid"></div>
+    <div style="display:flex;gap:14px;margin-top:8px;flex-wrap:wrap;align-items:center;">
+      <button class="add-row" onclick="addProducto()">Agregar producto manual</button>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <select id="catalog-picker" onchange="addFromCatalog(this.value)"
+          style="font-family:inherit;font-size:.85rem;padding:7px 12px;border:1.5px solid var(--ochre);border-radius:4px;background:#FFFBEF;cursor:pointer;min-width:300px;color:var(--forest);font-weight:500;">
+          <option value="">— Cargar producto del catálogo cliente —</option>
+        </select>
+        <span id="catalog-status" style="font-size:.74rem;color:var(--muted);font-style:italic;">cargando catálogo…</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 05 ANÁLISIS -->
+  <section class="block">
+    <div class="section-num">— 04 / Análisis — Pago máximo al productor</div>
+    <h2 class="section-title">¿Cuánto se puede pagar al productor?</h2>
+    <div class="subnote">Para cada producto: Venta − retenciones − gastos − comisión = disponible para productor. Gastos prorrateados por <b>peso (kg)</b>. Comisión en la unidad de venta del producto (lb o unidad).</div>
+
+    <div id="analisis-cards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:18px;"></div>
+
+    <div style="margin-top:20px;padding:14px 18px;background:var(--bone);border-radius:6px;border-left:3px solid var(--forest);">
+      <div style="font-size:.7rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--forest);margin-bottom:8px;">Totales del contenedor</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;font-size:.86rem;">
+        <div><span style="color:var(--muted);">Venta bruta:</span> <b id="ft-ventaBruta">Q 0.00</b></div>
+        <div><span style="color:var(--muted);">Retenciones:</span> <b style="color:var(--red);" id="ft-reten">Q 0.00</b></div>
+        <div><span style="color:var(--muted);">Venta neta:</span> <b id="ft-ventaNeta">Q 0.00</b></div>
+        <div><span style="color:var(--muted);">Gastos MX:</span> <b style="color:var(--red);" id="ft-gMX">Q 0.00</b></div>
+        <div><span style="color:var(--muted);">Gastos GT:</span> <b style="color:var(--red);" id="ft-gGT">Q 0.00</b></div>
+        <div><span style="color:var(--muted);">Comisión AJUA:</span> <b style="color:var(--red);" id="ft-comision">Q 0.00</b></div>
+        <div><span style="color:var(--muted);">Pago productor GTQ:</span> <b style="color:var(--green);" id="ft-dispGTQ">Q 0.00</b></div>
+        <div><span style="color:var(--muted);">Pago productor MXN:</span> <b style="color:var(--green);" id="ft-dispMXN">$ 0.00</b></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 06 KPIS -->
+  <section class="block">
+    <div class="section-num">— 05 / Resumen financiero</div>
+    <h2 class="section-title">Indicadores clave de la operación</h2>
+    <div class="kpis">
+      <div class="kpi"><div class="lbl">Venta bruta</div><div class="val" id="k-vbruta">Q 0.00</div><div class="sub" id="k-vbrutaUSD">$ 0.00 USD</div></div>
+      <div class="kpi"><div class="lbl">Venta neta (post retenciones)</div><div class="val" id="k-vneta">Q 0.00</div><div class="sub" id="k-vnetaUSD">$ 0.00 USD</div></div>
+      <div class="kpi"><div class="lbl">Gastos importación</div><div class="val" id="k-gastos">Q 0.00</div><div class="sub" id="k-gastosPct">— de venta neta</div></div>
+      <div class="kpi good"><div class="lbl">Comisión AGROAJUA</div><div class="val" id="k-com">Q 0.00</div><div class="sub" id="k-comInfo">—</div></div>
+      <div class="kpi"><div class="lbl">Pago al productor</div><div class="val" id="k-prod">Q 0.00</div><div class="sub" id="k-prodMXN">$ 0.00 MXN</div></div>
+      <div class="kpi"><div class="lbl">% al productor de venta bruta</div><div class="val" id="k-prodPct">0%</div><div class="sub">Lo que retorna a origen</div></div>
+      <div class="kpi"><div class="lbl">Q/lb promedio al productor</div><div class="val" id="k-prodQlb">Q 0.00</div><div class="sub" id="k-prodMXNlb">$ 0.00 MXN/lb</div></div>
+      <div class="kpi"><div class="lbl">Contenedor</div><div class="val" id="k-pallets">0</div><div class="sub" id="k-cntInfo">pallets · cajas · kg</div></div>
+    </div>
+  </section>
+
+  <!-- 06 REPARTO (oculto - innecesario, mantengo elementos calc en script) -->
+  <section class="block" style="display:none;">
+    <div class="section-num">— 06 / Reparto entre empresas</div>
+    <h2 class="section-title">Distribución del precio venta bruto</h2>
+    <div style="margin-bottom:24px;">
+      <div style="display:flex;height:42px;border-radius:8px;overflow:hidden;border:1px solid var(--rule);">
+        <div id="bar-prod"></div>
+        <div id="bar-gmx"></div>
+        <div id="bar-ggt"></div>
+        <div id="bar-ajua"></div>
+        <div id="bar-imp"></div>
+      </div>
+    </div>
+    <div class="reparto-grid" style="margin-bottom:18px;">
+      <div><b id="lbl-productor">Productor</b></div>
+      <div class="num" id="rep-productor">Q 0.00</div><div class="num" id="rep-productorPct">0%</div>
+      <div><b>Gastos México</b><br><span style="font-size:.74rem;color:var(--muted);">Flete origen, empaque, documentación</span></div>
+      <div class="num" id="rep-gastosMX">Q 0.00</div><div class="num" id="rep-gastosMXPct">0%</div>
+      <div class="total"><b>Subtotal México</b></div><div class="num total" id="rep-subMX">Q 0.00</div><div class="num total" id="rep-subMXPct">0%</div>
+    </div>
+
+    <h3 style="font-size:.85rem;color:var(--gtFlag);margin-bottom:6px;font-weight:600;">🇬🇹 Guatemala (destino)</h3>
+    <div class="reparto-grid">
+      <div class="h">Empresa / concepto</div><div class="h num">Monto GTQ</div><div class="h num">% venta bruta</div>
+      <div><b>Gastos Guatemala</b><br><span style="font-size:.74rem;color:var(--muted);">Aduana, transporte interno, almacenamiento</span></div>
+      <div class="num" id="rep-gastosGT">Q 0.00</div><div class="num" id="rep-gastosGTPct">0%</div>
+      <div><b>AGROAJUA</b><br><span style="font-size:.74rem;color:var(--muted);">Comisión, manejo, riesgo comercial</span></div>
+      <div class="num" id="rep-ajua">Q 0.00</div><div class="num" id="rep-ajuaPct">0%</div>
+      <div><b>Retenciones e impuestos</b><br><span style="font-size:.74rem;color:var(--muted);">IVA retenido + pronto pago al fisco GT</span></div>
+      <div class="num" id="rep-impuestos">Q 0.00</div><div class="num" id="rep-impuestosPct">0%</div>
+      <div class="total"><b>Subtotal Guatemala</b></div><div class="num total" id="rep-subGT">Q 0.00</div><div class="num total" id="rep-subGTPct">0%</div>
+    </div>
+
+    <div style="margin-top:14px;padding:14px 18px;background:var(--bone);border-radius:6px;display:flex;justify-content:space-between;align-items:center;border-left:3px solid var(--forest);">
+      <span style="font-family:'Source Serif 4','Times New Roman',serif;font-weight:700;color:var(--forest);font-size:1.05rem;">Precio venta bruto al cliente</span>
+      <span style="font-family:'Source Serif 4','Times New Roman',serif;font-weight:700;color:var(--forest);font-size:1.3rem;" id="rep-total">Q 0.00</span>
+    </div>
+  </section>
+
+  <div class="actions">
+    <button class="btn btn-secondary" onclick="loadCotizacionPicker()">Cargar cotización</button>
+    <button class="btn btn-secondary" onclick="printDoc()">Imprimir / PDF</button>
+    <button class="btn btn-print" onclick="saveCotizacion()">Guardar cotización</button>
+  </div>
+  <div style="text-align:right;padding:4px 8px;font-size:.7rem;color:var(--muted);font-style:italic;">
+    Al imprimir: Márgenes "Predeterminado" + Más opciones → "Gráficos en segundo plano"
+  </div>
+  <div id="save-status" style="text-align:right;padding:4px 8px;font-size:.74rem;color:var(--muted);font-style:italic;min-height:18px;"></div>
+
+  <footer class="doc-foot">
+    <span>Documento generado por AGROAJUA · contacto@agroajua.com</span>
+    <span id="foot-ts"></span>
+  </footer>
+
+</div>
+
+<script>
+const $=(id)=>document.getElementById(id);
+const fmt=(n,d=2)=>Number.isFinite(n)?n.toLocaleString('es-GT',{minimumFractionDigits:d,maximumFractionDigits:d}):'0.00';
+const fmtQ=(n)=>'Q '+fmt(n);
+const fmt$=(n)=>'$ '+fmt(n);
+const today=()=>new Date().toISOString().slice(0,10);
+
+// ── State (modelo pallet-based)
+// Cada producto: pallets × cajasPorPallet = totalCajas
+// KG/Caja siempre input. LBS/Caja se calcula (kg × 2.20462).
+// modoVenta determina si se vende por libra o por unidad.
+// comPorU: comisión en la unidad de venta (Q/lb o Q/unidad).
+let productos = [
+  { nombre:'Zanahoria Granel', empaque:'caja', modoVenta:'lb',     kgCaja:9.98, uniCaja:0, cajasPorPallet:80,  pallets:16, precioVentaU:5.00,  comPorU:1.00, costoSugeridoMXN:'' },
+  { nombre:'Repollo Unidades', empaque:'caja', modoVenta:'unidad', kgCaja:8.00, uniCaja:4, cajasPorPallet:100, pallets:8,  precioVentaU:11.00, comPorU:1.50, costoSugeridoMXN:'' },
+];
+let gastosMX = [
+  { concepto:'Flete México',           monto:0 },
+  { concepto:'Gastos Frontera México', monto:0 },
+];
+let gastosGT = [
+  { concepto:'Flete Guatemala',         monto:0 },
+  { concepto:'Impuestos Importación',   monto:0 },
+  { concepto:'Gastos Aduana Guatemala', monto:0 },
+];
+
+// ── Add/remove
+function addProducto(){ productos.push({nombre:'Nuevo producto',empaque:'caja',modoVenta:'lb',kgCaja:0,uniCaja:0,cajasPorPallet:0,pallets:0,precioVentaU:0,comPorU:1.00,costoSugeridoMXN:''}); renderProductos(); recalc(); }
+function removeProducto(i){ productos.splice(i,1); renderProductos(); recalc(); }
+function addGasto(tipo){ (tipo==='mx'?gastosMX:gastosGT).push({concepto:'Nuevo gasto',monto:0}); renderGastos(); recalc(); }
+function removeGasto(tipo,i){ (tipo==='mx'?gastosMX:gastosGT).splice(i,1); renderGastos(); recalc(); }
+
+// ── Productos render — CARDS
+function renderProductos(){
+  const host=$('products-grid');
+  host.innerHTML=productos.map((p,i)=>{
+    const isU=p.modoVenta==='unidad';
+    const uNeg = isU?'uni':'lb';
+    const uSug = isU?'unidad':'kg';
+    return `<div class="pc" data-idx="${i}">
+      <div class="pc-head">
+        <input class="pc-name" value="${p.nombre||''}" data-i="${i}" data-f="nombre" placeholder="Nombre del producto">
+        <select class="pc-mode-pill ${isU?'uni':'lb'}" data-i="${i}" data-f="modoVenta">
+          <option value="lb" ${!isU?'selected':''}>LBS</option>
+          <option value="unidad" ${isU?'selected':''}>UNI</option>
+        </select>
+        <button class="pc-del" onclick="removeProducto(${i})" title="Quitar">✕</button>
+      </div>
+
+      <div class="pc-section">
+        <div class="pc-row">
+          <span class="pc-label">Empaque</span>
+          <select data-i="${i}" data-f="empaque">
+            ${['caja','bolsa','saco','malla','red','bulto'].map(o=>`<option ${p.empaque===o?'selected':''}>${o}</option>`).join('')}
+          </select>
+        </div>
+        <div class="pc-row">
+          <span class="pc-label">KG / caja</span>
+          <span><input type="number" step="0.01" value="${p.kgCaja}" data-i="${i}" data-f="kgCaja"><span class="pc-aux">= <b id="c${i}-lbsCja">—</b> lbs/caja</span></span>
+        </div>
+        ${isU?`<div class="pc-row">
+          <span class="pc-label">Unidades / caja</span>
+          <input type="number" step="1" value="${p.uniCaja||0}" data-i="${i}" data-f="uniCaja">
+        </div>`:''}
+        <div class="pc-row">
+          <span class="pc-label">Cajas / pallet</span>
+          <span><input type="number" step="1" value="${p.cajasPorPallet||0}" data-i="${i}" data-f="cajasPorPallet"><span class="pc-aux">= <b id="c${i}-kgPallet">—</b> kg/pallet</span></span>
+        </div>
+        <div class="pc-row">
+          <span class="pc-label">Pallets</span>
+          <input type="number" step="1" value="${p.pallets||0}" data-i="${i}" data-f="pallets">
+        </div>
+      </div>
+
+      <div class="pc-totals">
+        <span><span class="v" id="c${i}-totCajas">—</span><span class="unit">cajas</span></span>
+        <span>·</span>
+        <span><span class="v" id="c${i}-kgTot">—</span><span class="unit">kg</span></span>
+        <span>·</span>
+        <span><span class="v" id="c${i}-lbsTot">—</span><span class="unit">lbs</span></span>
+        ${isU?`<span>·</span><span><span class="v" id="c${i}-uniTot">—</span><span class="unit">unidades</span></span>`:''}
+      </div>
+
+      <div class="pc-section-title">Venta y negociación</div>
+
+      <div class="pc-row">
+        <span class="pc-label">Precio venta</span>
+        <span class="pc-input-grp"><span class="ccy">Q</span><input type="number" step="0.01" value="${p.precioVentaU}" data-i="${i}" data-f="precioVentaU"><span class="unit">/${uNeg}</span></span>
+      </div>
+      <div class="pc-row">
+        <span class="pc-label">Comisión AJUA</span>
+        <span class="pc-input-grp"><span class="ccy">Q</span><input type="number" step="0.01" value="${p.comPorU}" data-i="${i}" data-f="comPorU"><span class="unit">/${uNeg}</span></span>
+      </div>
+      <div class="pc-row">
+        <span class="pc-label">Costo sugerido</span>
+        <span class="pc-input-grp"><span class="ccy">$</span><input type="number" step="0.01" value="${p.costoSugeridoMXN||''}" data-i="${i}" data-f="costoSugeridoMXN" placeholder="ej: 28"><span class="unit">MXN/${uSug}</span></span>
+      </div>
+      <div class="pc-sug-info empty" id="c${i}-sugInfo">Sin costo sugerido — ingresá MXN/${uSug} para comparar contra el máximo</div>
+    </div>`;
+  }).join('');
+
+  host.querySelectorAll('input,select').forEach(el=>{
+    el.addEventListener('input',e=>{
+      const idx=+e.target.dataset.i, f=e.target.dataset.f, v=e.target.value;
+      if(['nombre','empaque','modoVenta'].includes(f)){
+        productos[idx][f]=v;
+        if(f==='modoVenta') renderProductos();
+      } else if(f==='costoSugeridoMXN'){
+        productos[idx][f]=v;
+      } else {
+        productos[idx][f]=parseFloat(v)||0;
+      }
+      recalc();
+    });
+  });
+}
+
+// Actualiza las celdas calculadas de cada fila (se llama desde recalc)
+function updateRowCells(){
+  productos.forEach((p,i)=>{
+    const kg=parseFloat(p.kgCaja)||0;
+    const ue=parseFloat(p.uniCaja)||0;
+    const cxp=parseFloat(p.cajasPorPallet)||0;
+    const pall=parseFloat(p.pallets)||0;
+    const isU=p.modoVenta==='unidad';
+    const kgPallet=cxp*kg;
+    const totCajas=cxp*pall;
+    const kgTot=totCajas*kg;
+    const lbsTot=kgTot*2.20462;
+    const uniTot=isU?totCajas*ue:0;
+    const lbsCja=kg*2.20462;
+    const elL=$(`c${i}-lbsCja`);   if(elL) elL.textContent=fmt(lbsCja,2);
+    const elP=$(`c${i}-kgPallet`); if(elP) elP.textContent=fmt(kgPallet,2);
+    const elT=$(`c${i}-totCajas`); if(elT) elT.textContent=fmt(totCajas,0);
+    const elK=$(`c${i}-kgTot`);    if(elK) elK.textContent=fmt(kgTot,2);
+    const elB=$(`c${i}-lbsTot`);   if(elB) elB.textContent=fmt(lbsTot,2);
+    const elU=$(`c${i}-uniTot`);   if(elU) elU.textContent=isU?fmt(uniTot,0):'—';
+    // Sugerido sub-info: muestra equivalentes y total
+    const elSug=$(`c${i}-sugInfo`);
+    if(elSug){
+      const sug=parseFloat(p.costoSugeridoMXN);
+      if(Number.isFinite(sug) && sug>0){
+        elSug.classList.remove('empty');
+        if(isU){
+          const totMXN = sug * uniTot;
+          elSug.innerHTML = `<b>$ ${fmt(sug,2)} MXN/unidad</b> × ${fmt(uniTot,0)} unidades = <b>$ ${fmt(totMXN,0)} MXN total</b>`;
+        } else {
+          const mxnCaja = sug * kg;
+          const totMXN  = sug * kgTot;
+          elSug.innerHTML = `<b>$ ${fmt(sug,2)} MXN/kg</b> · $ ${fmt(mxnCaja,2)}/caja · total <b>$ ${fmt(totMXN,0)} MXN</b>`;
+        }
+      } else {
+        elSug.classList.add('empty');
+        elSug.textContent = `Sin costo sugerido — ingresá MXN/${isU?'unidad':'kg'} para comparar contra el máximo`;
+      }
+    }
+  });
+}
+
+// ── Gastos render
+function renderGastos(){
+  const tc=parseFloat($('tcMXN').value)||0;
+  const r=(arr,bodyId,tipo)=>{
+    const tb=$(bodyId);
+    tb.innerHTML=arr.map((g,i)=>{
+      const m=parseFloat(g.monto)||0;
+      const cells=tipo==='mx'
+        ?`<td class="num"><input class="num" type="number" step="0.01" value="${g.monto}" data-i="${i}" data-f="monto" data-t="mx"></td><td class="num bold">${fmtQ(m*tc)}</td>`
+        :`<td class="num"><input class="num" type="number" step="0.01" value="${g.monto}" data-i="${i}" data-f="monto" data-t="gt"></td>`;
+      return `<tr><td><input value="${g.concepto}" data-i="${i}" data-f="concepto" data-t="${tipo}"></td>${cells}<td><button class="action-btn" onclick="removeGasto('${tipo}',${i})">✕</button></td></tr>`;
+    }).join('');
+    tb.querySelectorAll('input').forEach(inp=>{
+      inp.addEventListener('input',e=>{
+        const idx=+e.target.dataset.i, f=e.target.dataset.f, t=e.target.dataset.t;
+        const a=t==='mx'?gastosMX:gastosGT;
+        a[idx][f]=f==='concepto'?e.target.value:(parseFloat(e.target.value)||0);
+        recalc();
+      });
+    });
+  };
+  r(gastosMX,'tb-gastosMX','mx');
+  r(gastosGT,'tb-gastosGT','gt');
+}
+
+// ── RECALC — REVERSE ENGINEERING MODEL
+function recalc(){
+  const tc=parseFloat($('tcMXN').value)||0;
+  const tcUSD=parseFloat($('tcUSD').value)||1;
+  const ivaPct=(parseFloat($('ivaPct').value)||0)/100;
+  const retIvaPct=(parseFloat($('retIvaPct').value)||0)/100;
+  const prontoPct=(parseFloat($('prontoPct').value)||0)/100;
+
+  // Actualiza celdas calculadas en cada fila
+  updateRowCells();
+
+  // Totales productos (pallet-based)
+  let totalKg=0, totalLbs=0, totalUnid=0, totalCajas=0, totalPallets=0;
+  productos.forEach(p=>{
+    const kg=parseFloat(p.kgCaja)||0;
+    const ue=parseFloat(p.uniCaja)||0;
+    const cxp=parseFloat(p.cajasPorPallet)||0;
+    const pall=parseFloat(p.pallets)||0;
+    const cajas = cxp*pall;
+    totalKg     += cajas*kg;
+    totalLbs    += cajas*kg*2.20462;
+    totalCajas  += cajas;
+    totalPallets+= pall;
+    if(p.modoVenta==='unidad') totalUnid += cajas*ue;
+  });
+  $('cnt-pallets').textContent=fmt(totalPallets,0);
+  $('cnt-cajas').textContent=fmt(totalCajas,0);
+  $('cnt-kg').textContent=fmt(totalKg,2);
+  $('cnt-lbs').textContent=fmt(totalLbs,2);
+  $('cnt-prods').textContent=productos.length;
+
+  // Gastos
+  let gMXmxn=0, gMXgtq=0;
+  gastosMX.forEach(g=>{ const m=parseFloat(g.monto)||0; gMXmxn+=m; gMXgtq+=m*tc; });
+  let gGTgtq=0;
+  gastosGT.forEach(g=>{ gGTgtq += parseFloat(g.monto)||0; });
+  $('ft-gastosMX-mxn').textContent=fmt$(gMXmxn);
+  $('ft-gastosMX-gtq').textContent=fmtQ(gMXgtq);
+  $('ft-gastosGT').textContent=fmtQ(gGTgtq);
+
+  // Pass 1: per producto venta y comisión (pallet-based)
+  let totalVentaBruta=0, totalVentaNeta=0, totalRetenciones=0;
+  productos.forEach(p=>{
+    const kg=parseFloat(p.kgCaja)||0;
+    const ue=parseFloat(p.uniCaja)||0;
+    const cxp=parseFloat(p.cajasPorPallet)||0;
+    const pall=parseFloat(p.pallets)||0;
+    const totCajas = cxp*pall;
+    const isU=p.modoVenta==='unidad';
+    const cantVenta = isU ? totCajas*ue : totCajas*kg*2.20462;
+    const precio=parseFloat(p.precioVentaU)||0;
+    const ventaBruta = precio*cantVenta;
+    const sinIVA = ventaBruta/(1+ivaPct);
+    const iva = ventaBruta-sinIVA;
+    const retIVA = iva*retIvaPct;
+    const pronto = ventaBruta*prontoPct;
+    const retenciones = retIVA+pronto;
+    const ventaNeta = ventaBruta - retenciones;
+    p._totCajas = totCajas;
+    p._cantVenta = cantVenta;
+    p._ventaBruta=ventaBruta; p._ventaNeta=ventaNeta; p._retenciones=retenciones;
+    p._lbsTotal = totCajas*kg*2.20462;
+    p._kgTotal  = totCajas*kg;
+    p._unidTotal = isU ? totCajas*ue : 0;
+    totalVentaBruta += ventaBruta;
+    totalVentaNeta  += ventaNeta;
+    totalRetenciones+= retenciones;
+  });
+
+  // Pass 2: prorratear gastos + comisión per producto en su unidad de venta
+  const cardsHost=$('analisis-cards'); cardsHost.innerHTML='';
+  let totalDispGTQ=0, totalDispMXN=0, totalGMXprorr=0, totalGGTprorr=0, totalComision=0;
+  productos.forEach((p,i)=>{
+    const c = p._totCajas || 0; // total cajas para dividir disponible MXN
+    const isU=p.modoVenta==='unidad';
+    const pctPeso = totalKg>0 ? p._kgTotal/totalKg : 0;
+    const gMXp = gMXgtq * pctPeso;
+    const gGTp = gGTgtq * pctPeso;
+    // Comisión en la unidad de venta del producto
+    const comPorU = parseFloat(p.comPorU)||0;
+    const comProd = comPorU * p._cantVenta;
+    totalComision += comProd;
+
+    const dispGTQ = p._ventaNeta - gMXp - gGTp - comProd;
+    const dispMXN = tc>0 ? dispGTQ/tc : 0;
+    // Máximo según unidad de negociación: MXN/kg (lb mode) o MXN/unidad (unidad mode)
+    const cantNeg = isU ? p._unidTotal : p._kgTotal; // unidades para uni mode, kg para lb mode
+    const maxMXNu = cantNeg>0 ? dispMXN/cantNeg : 0;
+    const maxMXNemp = c>0 ? dispMXN/c : 0; // mantiene por caja para referencia
+    const sugerido = parseFloat(p.costoSugeridoMXN); // MXN/kg o MXN/unidad
+    const tieneSugerido = Number.isFinite(sugerido) && sugerido>0;
+    const diff = tieneSugerido ? maxMXNu - sugerido : null;
+    const cabe = diff!=null && diff>=0;
+    const uNegLbl = isU ? 'unidad' : 'kg';
+    const totalSugMXN = tieneSugerido ? sugerido * cantNeg : 0;
+    const totalMaxMXN = maxMXNu * cantNeg;
+
+    p._dispGTQ=dispGTQ; p._dispMXN=dispMXN; p._maxMXNemp=maxMXNemp; p._comProd=comProd; p._gMXp=gMXp; p._gGTp=gGTp;
+    totalDispGTQ+=dispGTQ; totalDispMXN+=dispMXN;
+    totalGMXprorr+=gMXp; totalGGTprorr+=gGTp;
+
+    const uLbl = isU ? 'unidad' : 'lb';
+    const cantStr = isU ? `${fmt(p._cantVenta, 0)} unid` : `${fmt(p._cantVenta, 2)} lbs`;
+    const borderColor = tieneSugerido ? (cabe ? 'var(--green)' : 'var(--red)') : 'var(--ochre)';
+    const cmpBlock = tieneSugerido ? `
+      <div style="margin-top:10px;padding:10px 12px;border-radius:6px;background:${cabe?'rgba(46,125,50,.08)':'rgba(198,40,40,.08)'};">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;">
+          <span style="font-size:.78rem;color:var(--muted);">Costo sugerido al productor:</span>
+          <b>$ ${fmt(sugerido,2)} MXN/${uNegLbl}</b>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:4px;">
+          <span style="font-size:.78rem;color:var(--muted);">Máximo posible:</span>
+          <b style="color:var(--canopy);">$ ${fmt(maxMXNu,2)} MXN/${uNegLbl}</b>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:4px;font-size:.76rem;color:var(--muted);">
+          <span>Total sugerido:</span>
+          <span>$ ${fmt(totalSugMXN,0)} MXN  ·  máx: $ ${fmt(totalMaxMXN,0)} MXN</span>
+        </div>
+        <div style="margin-top:8px;padding-top:8px;border-top:1px dashed ${cabe?'var(--green)':'var(--red)'};display:flex;justify-content:space-between;align-items:baseline;">
+          <b style="color:${cabe?'var(--green)':'var(--red)'};">${cabe?'✓ Cabe el sugerido':'✗ No alcanza'}</b>
+          <b style="color:${cabe?'var(--green)':'var(--red)'};">${cabe?'sobran':'faltan'} $ ${fmt(Math.abs(diff),2)} MXN/${uNegLbl}</b>
+        </div>
+      </div>` : `
+      <div style="margin-top:10px;padding:8px 12px;border-radius:6px;background:var(--bone);font-size:.78rem;color:var(--muted);text-align:center;font-style:italic;">
+        Ingresá el costo sugerido (MXN/${uNegLbl}) en la sección 03 para comparar
+      </div>`;
+
+    cardsHost.innerHTML += `
+      <div style="background:#fff;border:1.5px solid ${borderColor};border-left:4px solid ${borderColor};border-radius:8px;padding:16px 18px;">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px;border-bottom:1px solid var(--rule);padding-bottom:10px;">
+          <div>
+            <div style="font-family:'Source Serif 4','Times New Roman',serif;font-weight:700;font-size:1.15rem;color:var(--forest);">${p.nombre||'—'}</div>
+            <div style="font-size:.74rem;color:var(--muted);margin-top:2px;">
+              <span class="pill ${isU?'unid':'lb'}">${isU?'unidad':'libra'}</span>
+              · ${c} ${p.empaque || 'empaque'}${c===1?'':'s'} · ${cantStr}
+            </div>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr auto;gap:6px 14px;font-size:.84rem;font-variant-numeric:tabular-nums;">
+          <span style="color:var(--muted);">Venta bruta (${fmt(parseFloat(p.precioVentaU)||0,2)} × ${cantStr})</span>
+          <b>${fmtQ(p._ventaBruta)}</b>
+
+          <span style="color:var(--red);">− Retenciones IVA + pronto pago</span>
+          <span style="color:var(--red);">${fmtQ(p._retenciones)}</span>
+
+          <span style="color:var(--ink);font-weight:600;border-top:1px solid var(--rule);padding-top:6px;">Venta neta</span>
+          <b style="border-top:1px solid var(--rule);padding-top:6px;">${fmtQ(p._ventaNeta)}</b>
+
+          <span style="color:var(--red);">− Gastos México (prorrateado)</span>
+          <span style="color:var(--red);">${fmtQ(gMXp)}</span>
+
+          <span style="color:var(--red);">− Gastos Guatemala (prorrateado)</span>
+          <span style="color:var(--red);">${fmtQ(gGTp)}</span>
+
+          <span style="color:var(--red);">− Comisión AJUA (Q ${fmt(comPorU,2)}/${uLbl} × ${cantStr})</span>
+          <span style="color:var(--red);">${fmtQ(comProd)}</span>
+
+          <span style="color:var(--green);font-weight:700;border-top:1px solid var(--rule);padding-top:6px;">Pago al productor</span>
+          <b style="color:var(--green);border-top:1px solid var(--rule);padding-top:6px;">${fmtQ(dispGTQ)}</b>
+
+          <span style="color:var(--muted);font-size:.78rem;">  ÷ TC ${fmt(tc,4)} = MXN total</span>
+          <span style="font-size:.78rem;color:var(--muted);">$ ${fmt(dispMXN,2)} MXN</span>
+
+          <span style="color:var(--canopy);font-weight:700;">  ÷ ${fmt(cantNeg, isU?0:2)} ${isU?'unidades':'kg'} = Máx MXN/${uNegLbl}</span>
+          <b style="color:var(--canopy);font-size:1rem;">$ ${fmt(maxMXNu,2)} MXN/${uNegLbl}</b>
+
+          <span style="color:var(--muted);font-size:.76rem;">  · equivalente</span>
+          <span style="font-size:.76rem;color:var(--muted);">$ ${fmt(maxMXNemp,2)} MXN/caja</span>
+        </div>
+
+        ${cmpBlock}
+      </div>`;
+  });
+  $('ft-ventaBruta').textContent=fmtQ(totalVentaBruta);
+  $('ft-reten').textContent=fmtQ(totalRetenciones);
+  $('ft-ventaNeta').textContent=fmtQ(totalVentaNeta);
+  $('ft-gMX').textContent=fmtQ(totalGMXprorr);
+  $('ft-gGT').textContent=fmtQ(totalGGTprorr);
+  $('ft-comision').textContent=fmtQ(totalComision);
+  $('ft-dispGTQ').textContent=fmtQ(totalDispGTQ);
+  $('ft-dispMXN').textContent=fmt$(totalDispMXN)+' MXN';
+
+  // KPIs ampliados
+  $('k-vbruta').textContent=fmtQ(totalVentaBruta);
+  $('k-vbrutaUSD').textContent=fmt$(tcUSD>0?totalVentaBruta/tcUSD:0)+' USD';
+  $('k-vneta').textContent=fmtQ(totalVentaNeta);
+  $('k-vnetaUSD').textContent=fmt$(tcUSD>0?totalVentaNeta/tcUSD:0)+' USD';
+  const totalGastos = gMXgtq + gGTgtq;
+  $('k-gastos').textContent=fmtQ(totalGastos);
+  $('k-gastosPct').textContent = totalVentaNeta>0 ? (totalGastos/totalVentaNeta*100).toFixed(1)+'% de venta neta' : '—';
+  $('k-com').textContent=fmtQ(totalComision);
+  $('k-comInfo').textContent = `Suma por producto (Q/lb o Q/uni)`;
+  $('k-prod').textContent=fmtQ(totalDispGTQ);
+  $('k-prodMXN').textContent=fmt$(totalDispMXN)+' MXN';
+  $('k-prodPct').textContent = totalVentaBruta>0 ? (totalDispGTQ/totalVentaBruta*100).toFixed(1)+'%' : '0%';
+  const qLbProd = totalLbs>0 ? totalDispGTQ/totalLbs : 0;
+  $('k-prodQlb').textContent = fmtQ(qLbProd) + ' / lb';
+  $('k-prodMXNlb').textContent = '$ ' + fmt(tc>0?qLbProd/tc:0,2) + ' MXN/lb';
+  $('k-pallets').textContent = fmt(totalPallets,0);
+  $('k-cntInfo').textContent = `${fmt(totalCajas,0)} cajas · ${fmt(totalKg,0)} kg · ${fmt(totalLbs,0)} lbs`;
+  // Color KPI prod
+  document.querySelectorAll('.kpi').forEach((el,idx)=>{ if(idx===4){ el.classList.remove('good','bad'); el.classList.add(totalDispGTQ<0?'bad':'good'); } });
+
+  // Reparto entre empresas
+  const subMX = totalDispGTQ + gMXgtq;     // lo que finalmente va a México (productor + gastos origen)
+  const subGT = gGTgtq + totalComision + totalRetenciones;
+  const pct = (n)=> totalVentaBruta>0 ? (n/totalVentaBruta*100).toFixed(1)+'%' : '0%';
+  $('rep-productor').textContent=fmtQ(totalDispGTQ);   $('rep-productorPct').textContent=pct(totalDispGTQ);
+  $('rep-gastosMX').textContent=fmtQ(gMXgtq);          $('rep-gastosMXPct').textContent=pct(gMXgtq);
+  $('rep-subMX').textContent=fmtQ(subMX);              $('rep-subMXPct').textContent=pct(subMX);
+  $('rep-gastosGT').textContent=fmtQ(gGTgtq);          $('rep-gastosGTPct').textContent=pct(gGTgtq);
+  $('rep-ajua').textContent=fmtQ(totalComision);       $('rep-ajuaPct').textContent=pct(totalComision);
+  $('rep-impuestos').textContent=fmtQ(totalRetenciones); $('rep-impuestosPct').textContent=pct(totalRetenciones);
+  $('rep-subGT').textContent=fmtQ(subGT);              $('rep-subGTPct').textContent=pct(subGT);
+  $('rep-total').textContent=fmtQ(totalVentaBruta);
+
+  // Barra visual de reparto
+  const safePct = (n)=> totalVentaBruta>0 ? Math.max(0, n/totalVentaBruta*100) : 0;
+  const setBar = (id, val) => {
+    const pct = safePct(val);
+    const el = $(id);
+    el.style.width = pct + '%';
+    el.textContent = pct >= 6 ? pct.toFixed(0)+'%' : '';
+  };
+  setBar('bar-prod', Math.max(0, totalDispGTQ));
+  setBar('bar-gmx',  gMXgtq);
+  setBar('bar-ggt',  gGTgtq);
+  setBar('bar-ajua', totalComision);
+  setBar('bar-imp',  totalRetenciones);
+
+  const prodName=$('m-productor').value;
+  $('lbl-productor').textContent = prodName ? `Productor — ${prodName}` : 'Productor';
+}
+
+function copyShareableLink(){ navigator.clipboard.writeText(window.location.href); alert('Enlace copiado.'); }
+async function printDoc(){
+  // html2pdf rompe con layouts complejos — uso window.print() con instrucción clara
+  alert('Para guardar como PDF profesional:\n\n1. Se abrirá el diálogo de impresión\n2. Destino: "Guardar como PDF"\n3. Márgenes: "Predeterminado"\n4. Más opciones → activá "Gráficos en segundo plano"\n5. Guardar\n\nChrome recuerda estos ajustes la próxima vez.');
+  setTimeout(()=>window.print(), 200);
+}
+
+// ── Persistencia en Firestore (colección cotizacionesImport)
+const FS_BASE='https://firestore.googleapis.com/v1/projects/ajuabmp/databases/(default)/documents';
+function jsToFS(v){
+  if(v===null||v===undefined||v==='') return {nullValue:null};
+  if(typeof v==='string') return {stringValue:v};
+  if(typeof v==='boolean') return {booleanValue:v};
+  if(typeof v==='number') return Number.isInteger(v)?{integerValue:String(v)}:{doubleValue:v};
+  if(Array.isArray(v)) return {arrayValue:{values:v.map(jsToFS)}};
+  if(typeof v==='object'){const fields={};for(const[k,val]of Object.entries(v)) fields[k]=jsToFS(val);return {mapValue:{fields}};}
+  return {nullValue:null};
+}
+function fsToJs(v){
+  if(!v) return null;
+  if('stringValue' in v) return v.stringValue;
+  if('booleanValue' in v) return v.booleanValue;
+  if('integerValue' in v) return parseInt(v.integerValue,10);
+  if('doubleValue' in v) return v.doubleValue;
+  if('nullValue' in v) return null;
+  if('arrayValue' in v) return (v.arrayValue.values||[]).map(fsToJs);
+  if('mapValue' in v){const r={};for(const[k,val]of Object.entries(v.mapValue.fields||{})) r[k]=fsToJs(val);return r;}
+  return null;
+}
+function getState(){
+  return {
+    meta:{ numero:$('m-numero').value, fecha:$('m-fecha').value, productor:$('m-productor').value, ubicacion:$('m-ubic').value, nit:$('m-nit').value, contacto:$('m-contacto').value },
+    config:{ tcMXN:$('tcMXN').value, tcUSD:$('tcUSD').value, ivaPct:$('ivaPct').value, retIvaPct:$('retIvaPct').value, prontoPct:$('prontoPct').value },
+    productos:productos.map(p=>({nombre:p.nombre,empaque:p.empaque,modoVenta:p.modoVenta,kgCaja:p.kgCaja,uniCaja:p.uniCaja,cajasPorPallet:p.cajasPorPallet,pallets:p.pallets,precioVentaU:p.precioVentaU,comPorU:p.comPorU,costoSugeridoMXN:String(p.costoSugeridoMXN||'')})),
+    gastosMX:gastosMX.map(g=>({concepto:g.concepto,monto:g.monto})),
+    gastosGT:gastosGT.map(g=>({concepto:g.concepto,monto:g.monto})),
+    actualizadoEn:new Date().toISOString(),
+  };
+}
+async function saveCotizacion(){
+  const numero=$('m-numero').value.trim();
+  if(!numero){ alert('Asigna un número de cotización antes de guardar (ej: COT-2026-001).'); $('m-numero').focus(); return; }
+  const st=$('save-status'); st.textContent='guardando…'; st.style.color='var(--muted)';
+  const state=getState();
+  const docId=encodeURIComponent(numero);
+  try {
+    const r=await fetch(`${FS_BASE}/cotizacionesImport/${docId}`,{
+      method:'PATCH',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({fields:jsToFS(state).mapValue.fields}),
+    });
+    if(!r.ok) throw new Error('error servidor');
+    st.textContent=`✓ Guardada como ${numero} · ${new Date().toLocaleTimeString('es-GT')}`;
+    st.style.color='var(--green)';
+  } catch(e){
+    st.textContent='✗ Error al guardar — verificá conexión';
+    st.style.color='var(--red)';
+  }
+}
+async function loadCotizacionPicker(){
+  try {
+    const r=await fetch(`${FS_BASE}/cotizacionesImport?pageSize=100`);
+    if(!r.ok) throw new Error('error');
+    const data=await r.json();
+    const docs=(data.documents||[]).map(doc=>{
+      const id=doc.name.split('/').pop();
+      const f=doc.fields||{};
+      const meta=fsToJs(f.meta)||{};
+      return { id, numero:meta.numero||id, productor:meta.productor||'', fecha:meta.fecha||'', actualizadoEn:fsToJs(f.actualizadoEn)||'' };
+    });
+    if(docs.length===0){ alert('No hay cotizaciones guardadas todavía.'); return; }
+    docs.sort((a,b)=>(b.actualizadoEn||'').localeCompare(a.actualizadoEn||''));
+    const list=docs.map((d,i)=>`${i+1}. ${d.numero} — ${d.productor||'(sin productor)'} — ${d.fecha||'(sin fecha)'}`).join('\n');
+    const choice=prompt('Cotizaciones guardadas:\n\n'+list+'\n\nEscribe el número (1, 2, ...) para cargar:');
+    if(!choice) return;
+    const idx=parseInt(choice,10)-1;
+    if(isNaN(idx)||idx<0||idx>=docs.length){ alert('Selección inválida.'); return; }
+    await loadCotizacion(docs[idx].id);
+  } catch(e){ alert('Error cargando lista de cotizaciones.'); }
+}
+async function loadCotizacion(docId){
+  const st=$('save-status'); st.textContent='cargando…'; st.style.color='var(--muted)';
+  try {
+    const r=await fetch(`${FS_BASE}/cotizacionesImport/${encodeURIComponent(docId)}`);
+    if(!r.ok) throw new Error('not found');
+    const doc=await r.json();
+    const data=fsToJs({mapValue:{fields:doc.fields}});
+    if(data.meta){
+      $('m-numero').value=data.meta.numero||'';
+      $('m-fecha').value=data.meta.fecha||today();
+      $('m-productor').value=data.meta.productor||'';
+      $('m-ubic').value=data.meta.ubicacion||'';
+      $('m-nit').value=data.meta.nit||'';
+      $('m-contacto').value=data.meta.contacto||'';
+    }
+    if(data.config){
+      for(const[k,v]of Object.entries(data.config)) if($(k)) $(k).value=v;
+    }
+    if(Array.isArray(data.productos)) productos=data.productos.map(p=>({...p,costoSugeridoMXN:p.costoSugeridoMXN==null?'':p.costoSugeridoMXN}));
+    if(Array.isArray(data.gastosMX)) gastosMX=data.gastosMX;
+    if(Array.isArray(data.gastosGT)) gastosGT=data.gastosGT;
+    renderProductos(); renderGastos(); recalc();
+    st.textContent=`✓ Cotización ${data.meta?.numero||docId} cargada`;
+    st.style.color='var(--green)';
+  } catch(e){
+    st.textContent='✗ Error al cargar';
+    st.style.color='var(--red)';
+  }
+}
+
+// ── Catálogo Walmart (jala de Firestore — colección iPresentaciones)
+let walmartCatalog = [];
+function parseFS(v){
+  if(!v) return null;
+  if('stringValue' in v) return v.stringValue;
+  if('integerValue' in v) return parseInt(v.integerValue,10);
+  if('doubleValue' in v) return v.doubleValue;
+  if('booleanValue' in v) return v.booleanValue;
+  return null;
+}
+async function loadCatalog(){
+  const st=$('catalog-status');
+  try {
+    const url='https://firestore.googleapis.com/v1/projects/ajuabmp/databases/(default)/documents/iPresentaciones?pageSize=500';
+    const r=await fetch(url);
+    if(!r.ok) throw new Error('catálogo no disponible');
+    const data=await r.json();
+    walmartCatalog=(data.documents||[]).map(doc=>{
+      const f=doc.fields||{};
+      return {
+        id:doc.name.split('/').pop(),
+        nombre:parseFS(f.nombre)||parseFS(f.descripcion)||'(sin nombre)',
+        codigoSAP:parseFS(f.codigoSAP)||parseFS(f.codigo)||'',
+        canal:parseFS(f.canal)||'',
+        tipoContenido:parseFS(f.tipoContenido)||'granel',
+        cantidadCaja:parseFloat(parseFS(f.cantidadCaja))||0,
+        lbsUnidad:parseFloat(parseFS(f.lbsUnidad))||0,
+        totalLbsCaja:parseFloat(parseFS(f.totalLbsCaja))||0,
+        precioBase:parseFloat(parseFS(f.precioBase))||0,
+        activo:parseFS(f.activo)!==false,
+      };
+    }).filter(p=>p.activo && (p.canal||'').toLowerCase().includes('walmart'));
+    walmartCatalog.sort((a,b)=>a.nombre.localeCompare(b.nombre));
+    const sel=$('catalog-picker');
+    walmartCatalog.forEach((p,i)=>{
+      const opt=document.createElement('option');
+      opt.value=i;
+      const tipoLbl = p.tipoContenido==='unidades' ? `${p.cantidadCaja} uni/cja` : `${fmt(p.totalLbsCaja,1)} lbs/cja`;
+      opt.textContent = `${p.nombre} · ${tipoLbl} · Q${fmt(p.precioBase,2)}`;
+      sel.appendChild(opt);
+    });
+    st.textContent = walmartCatalog.length>0 ? `${walmartCatalog.length} productos disponibles` : 'sin productos en catálogo';
+    st.style.color = walmartCatalog.length>0 ? 'var(--green)' : 'var(--muted)';
+  } catch(e) {
+    st.textContent = 'no se pudo cargar catálogo';
+    st.style.color = 'var(--red)';
+  }
+}
+function addFromCatalog(idx){
+  if(idx==='' || idx==null) return;
+  const p = walmartCatalog[parseInt(idx)];
+  if(!p) return;
+  const isU = p.tipoContenido==='unidades';
+  const totalLbsCja = isU ? (p.lbsUnidad * p.cantidadCaja) : p.totalLbsCaja;
+  const kgCja = totalLbsCja > 0 ? (totalLbsCja / 2.20462) : 0;
+  productos.push({
+    nombre: p.nombre,
+    empaque: 'caja',
+    modoVenta: isU ? 'unidad' : 'lb',
+    kgCaja: +kgCja.toFixed(2),
+    uniCaja: isU ? p.cantidadCaja : 0,
+    cajasPorPallet: 0,
+    pallets: 0,
+    precioVentaU: p.precioBase,
+    comPorU: 1.00,
+    costoSugeridoMXN: '',
+  });
+  renderProductos();
+  recalc();
+  $('catalog-picker').value='';
+}
+
+// ── Init
+$('m-fecha').value=today();
+$('foot-ts').textContent='Última actualización: '+new Date().toLocaleString('es-GT');
+
+renderProductos();
+renderGastos();
+recalc();
+loadCatalog();
+
+['tcMXN','tcUSD','ivaPct','retIvaPct','prontoPct','m-productor'].forEach(id=>{
+  $(id).addEventListener('input',()=>{ renderProductos(); renderGastos(); recalc(); });
+});
+</script>
+</body>
+</html>

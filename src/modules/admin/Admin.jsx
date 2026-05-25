@@ -38,6 +38,7 @@ const MODULOS = [
   { id:'anticipos',        label:'Anticipos MX' },
   { id:'cotizador-rapido', label:'Cotizador Rápido' },
   { id:'cotizador',        label:'Cotizador' },
+  { id:'cotizador-import', label:'Cotizador Importación México' },
   { id:'precios',          label:'Lista de Precios' },
   { id:'personal',         label:'Personal' },
   { id:'guatecompras',     label:'Guatecompras' },
