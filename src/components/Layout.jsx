@@ -49,6 +49,7 @@ const NAV = [
   { to: '/cotizador',              mod: 'cotizador',         icon: '🚢', label: 'Cotizador Contenedor' },
   { to: '/cotizador-import-lista', mod: 'cotizador-import',  icon: '📋', label: 'Cotizaciones Importación' },
   { to: '/cotizador-importacion',  mod: 'cotizador-import',  icon: '🇲🇽', label: 'Cotizador Importación (Nuevo)', external: true },
+  { to: '/actividad-proveedores',  mod: 'cotizador-import',  icon: '🔎', label: 'Actividad Proveedores' },
   { section: 'Precios' },
   { to: '/precios',                mod: 'precios',           icon: '💲', label: 'Lista de Precios' },
   { section: 'Equipo' },

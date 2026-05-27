@@ -66,6 +66,7 @@ const CotizadorLista        = lazy(() => import('./modules/cotizador/CotizadorLi
 const CotizadorNuevo        = lazy(() => import('./modules/cotizador/CotizadorNuevo'));
 const CotizadorDetalle      = lazy(() => import('./modules/cotizador/CotizadorDetalle'));
 const CotizadorImportLista  = lazy(() => import('./modules/cotizador/CotizadorImportLista'));
+const ActividadProveedores  = lazy(() => import('./modules/cotizador/ActividadProveedores'));
 
 // Precios
 const Precios            = lazy(() => import('./modules/precios/Precios'));
@@ -163,6 +164,7 @@ export default function App() {
           <Route path="anticipos"              element={<AnticiposMX />} />
           <Route path="cotizador/rapido"       element={<CotizadorRapido />} />
           <Route path="cotizador-import-lista" element={<CotizadorImportLista />} />
+          <Route path="actividad-proveedores"  element={<ActividadProveedores />} />
           <Route path="cotizador"              element={<CotizadorLista />} />
           <Route path="cotizador/nuevo"        element={<CotizadorNuevo />} />
           <Route path="cotizador/:id"          element={<CotizadorDetalle />} />
