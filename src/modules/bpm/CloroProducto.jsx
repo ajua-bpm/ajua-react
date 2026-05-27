@@ -18,7 +18,6 @@ const UNIDADES_CLORO = [
   { v: 'mL', label: 'mL (líquido)' },
 ];
 
-// Productos comerciales de cloro/hipoclorito — % de cloro activo
 const PRODUCTOS_CLORO = [
   { id: 'naclo5',   nombre: 'Hipoclorito de sodio 5%',          conc: 5,    tipo: 'liquido' },
   { id: 'naclo6',   nombre: 'Hipoclorito de sodio 6% (doméstico)', conc: 6,  tipo: 'liquido' },
@@ -30,7 +29,6 @@ const PRODUCTOS_CLORO = [
   { id: 'custom',   nombre: 'Personalizado',                    conc: 0,    tipo: 'liquido' },
 ];
 
-// Recomendaciones por rango de ppm objetivo
 const REC_PPM = [
   { max: 1.5,    label: 'Agua potable (NOM-127: 0.2–1.5 mg/L)', color: '#1565C0' },
   { max: 50,     label: 'Agua de proceso / cisterna baja',       color: '#1565C0' },
@@ -54,10 +52,79 @@ const fmtNum = (n, d = 2) => Number.isFinite(n) ? Number(n).toFixed(d).replace(/
 const card = { background: '#fff', borderRadius: 8, boxShadow: '0 1px 3px rgba(0,0,0,.10)', padding: 22, marginBottom: 20 };
 const LS = { display: 'flex', flexDirection: 'column', gap: 4, fontSize: '.72rem', fontWeight: 600, textTransform: 'uppercase', color: T.textMid, letterSpacing: '.06em' };
 const IS = { padding: '8px 10px', border: '1.5px solid #E0E0E0', borderRadius: 6, fontSize: '.86rem', outline: 'none', fontFamily: 'inherit', width: '100%', boxSizing: 'border-box', marginTop: 2 };
-
-const blankMed  = (hora) => ({ hora: hora || nowHM(), ppm: '', cloroAgregado: '', obs: '' });
-const blankProd = () => ({ nombre: 'Repollo', nombreOtro: '', cantidad: '', unidad: 'lb', obs: '' });
 const UNIDADES_PROD = ['lb', 'kg', 'caja', 'red', 'unidad'];
+
+const blankT2Med = (hora) => ({ hora: hora || nowHM(), ppm: '', cloroAgregado: '', obs: '' });
+
+const blankProd = () => ({
+  // Metadata producto
+  nombre: 'Repollo',
+  nombreOtro: '',
+  cantidad: '',
+  unidad: 'lb',
+  obs: '',
+  horaInicio: nowHM(),
+  // T1 agua (pre-lavado)
+  t1Usado: true,
+  t1Obs: '',
+  // T2 cloro
+  t2Usado: true,
+  t2VolumenL: 10,
+  t2PpmObjetivo: 200,
+  t2UnidadCloro: 'g',
+  t2Mediciones: [blankT2Med()],
+  // T3 agua (enjuague)
+  t3Usado: true,
+  t3Obs: '',
+  // UI
+  _expanded: true,
+});
+
+// Convertir registro legacy (tanques compartidos) a formato producto
+function legacyToProducto(r) {
+  const isSug = PRODUCTOS_SUG.includes(r.producto || '');
+  return {
+    nombre:     isSug ? r.producto : 'Otro',
+    nombreOtro: isSug ? '' : (r.producto || ''),
+    cantidad:   r.cantidad != null ? String(r.cantidad) : '',
+    unidad:     r.unidadProd || 'lb',
+    obs:        r.obsProducto || '',
+    horaInicio: r.horaInicio || (r.mediciones?.[0]?.hora) || nowHM(),
+    t1Usado:    r.t1Usado !== false,
+    t1Obs:      r.t1Obs || '',
+    t2Usado:    Array.isArray(r.mediciones) && r.mediciones.length > 0,
+    t2VolumenL: r.volumenL || 10,
+    t2PpmObjetivo: r.ppmObjetivo || 200,
+    t2UnidadCloro: r.unidadCloro || 'g',
+    t2Mediciones: (r.mediciones && r.mediciones.length) ? r.mediciones.map(m => ({ ...m })) : [blankT2Med()],
+    t3Usado:    r.t3Usado !== false,
+    t3Obs:      r.t3Obs || '',
+    _expanded:  true,
+  };
+}
+
+// Si el registro ya está en formato v2 (tiene r.t1/t2/t3 objetos)
+function v2ToProducto(r) {
+  const isSug = PRODUCTOS_SUG.includes(r.producto || '');
+  return {
+    nombre:     isSug ? r.producto : 'Otro',
+    nombreOtro: isSug ? '' : (r.producto || ''),
+    cantidad:   r.cantidad != null ? String(r.cantidad) : '',
+    unidad:     r.unidadProd || 'lb',
+    obs:        r.obsProducto || '',
+    horaInicio: r.horaInicio || nowHM(),
+    t1Usado:    r.t1?.usado !== false,
+    t1Obs:      r.t1?.obs || '',
+    t2Usado:    r.t2?.usado !== false,
+    t2VolumenL: r.t2?.volumenL || 10,
+    t2PpmObjetivo: r.t2?.ppmObjetivo || 200,
+    t2UnidadCloro: r.t2?.unidadCloro || 'g',
+    t2Mediciones: (r.t2?.mediciones && r.t2.mediciones.length) ? r.t2.mediciones.map(m => ({ ...m })) : [blankT2Med()],
+    t3Usado:    r.t3?.usado !== false,
+    t3Obs:      r.t3?.obs || '',
+    _expanded:  true,
+  };
+}
 
 export default function CloroProducto() {
   const toast = useToast();
@@ -65,163 +132,182 @@ export default function CloroProducto() {
   const { data: registros, loading } = useCollection('cloroProducto', { orderField: 'fecha', orderDir: 'desc', limit: 100 });
   const { add, update, remove, saving } = useWrite('cloroProducto');
 
-  // Tab
   const [tab, setTab] = useState('control');
 
   // Form state
   const [editId, setEditId] = useState(null);
   const [fecha, setFecha]   = useState(today());
   const [responsable, setResponsable] = useState('');
-  // Productos a registrar — al guardar se crea 1 reporte por producto
   const [productos, setProductos] = useState([blankProd()]);
-  // Tanques de agua (lavado triple)
-  const [t1Usado, setT1Usado] = useState(true);
-  const [t1Obs, setT1Obs]     = useState('');
-  const [t3Usado, setT3Usado] = useState(true);
-  const [t3Obs, setT3Obs]     = useState('');
-  // Tanque cloro
-  const [volumenL, setVolumenL] = useState(10);
-  const [ppmObjetivo, setPpmObjetivo] = useState(200);
-  const [unidadCloro, setUnidadCloro] = useState('g');
-  const [mediciones, setMediciones] = useState([blankMed()]);
-  const [expandedId, setExpandedId] = useState(null);
-
-  // Calcular ratio a partir de la primera medición
-  const ratio = useMemo(() => {
-    const m0 = mediciones[0];
-    if (!m0) return null;
-    const g = parseFloat(m0.cloroAgregado);
-    const p = parseFloat(m0.ppm);
-    if (g > 0 && p > 0) return g / p;
-    return null;
-  }, [mediciones]);
-
-  // Para una medición posterior, calcular sugerencia de gramos
-  const sugerencia = (ppmActual) => {
-    if (!ratio) return null;
-    const ppmNum = parseFloat(ppmActual);
-    if (!Number.isFinite(ppmNum)) return null;
-    const deficit = ppmObjetivo - ppmNum;
-    if (deficit <= 0) return 0;
-    return deficit * ratio;
-  };
-
-  const setMed = (idx, patch) =>
-    setMediciones(prev => prev.map((m, i) => i === idx ? { ...m, ...patch } : m));
-
-  const agregarMedicion = () => {
-    const last = mediciones[mediciones.length - 1];
-    const nuevaHora = last?.hora ? addHora(last.hora, 1) : nowHM();
-    setMediciones(prev => [...prev, blankMed(nuevaHora)]);
-  };
-
-  const quitarMedicion = (idx) => {
-    if (mediciones.length === 1) return;
-    setMediciones(prev => prev.filter((_, i) => i !== idx));
-  };
+  const [expandedHistId, setExpandedHistId] = useState(null);
 
   const setProd    = (idx, patch) => setProductos(prev => prev.map((p, i) => i === idx ? { ...p, ...patch } : p));
-  const addProd    = () => setProductos(prev => [...prev, blankProd()]);
+  const addProd    = () => setProductos(prev => {
+    // colapsa todos los existentes, expande el nuevo
+    const collapsed = prev.map(p => ({ ...p, _expanded: false }));
+    return [...collapsed, blankProd()];
+  });
   const removeProd = (idx) => setProductos(prev => prev.length === 1 ? prev : prev.filter((_, i) => i !== idx));
+  const toggleExpanded = (idx) => setProd(idx, { _expanded: !productos[idx]._expanded });
+
+  // T2 mediciones helpers (por producto)
+  const setT2Med = (pIdx, mIdx, patch) => {
+    setProductos(prev => prev.map((p, i) => {
+      if (i !== pIdx) return p;
+      return { ...p, t2Mediciones: p.t2Mediciones.map((m, j) => j === mIdx ? { ...m, ...patch } : m) };
+    }));
+  };
+  const agregarMedicion = (pIdx) => {
+    setProductos(prev => prev.map((p, i) => {
+      if (i !== pIdx) return p;
+      const last = p.t2Mediciones[p.t2Mediciones.length - 1];
+      const nuevaHora = last?.hora ? addHora(last.hora, 1) : nowHM();
+      return { ...p, t2Mediciones: [...p.t2Mediciones, blankT2Med(nuevaHora)] };
+    }));
+  };
+  const quitarMedicion = (pIdx, mIdx) => {
+    setProductos(prev => prev.map((p, i) => {
+      if (i !== pIdx) return p;
+      if (p.t2Mediciones.length === 1) return p;
+      return { ...p, t2Mediciones: p.t2Mediciones.filter((_, j) => j !== mIdx) };
+    }));
+  };
+
+  // Ratio aprendido por producto (basado en 1ª medición de T2)
+  const ratioForProd = (p) => {
+    const m0 = p.t2Mediciones?.[0];
+    if (!m0) return null;
+    const g = parseFloat(m0.cloroAgregado);
+    const ppm = parseFloat(m0.ppm);
+    if (g > 0 && ppm > 0) return g / ppm;
+    return null;
+  };
 
   const resetForm = () => {
     setEditId(null);
     setFecha(today());
-    setVolumenL(10); setPpmObjetivo(200);
-    setUnidadCloro('g');
-    setT1Usado(true); setT1Obs('');
-    setT3Usado(true); setT3Obs('');
     setResponsable('');
-    setMediciones([blankMed()]);
     setProductos([blankProd()]);
   };
 
   const handleEdit = (r) => {
     setEditId(r.id);
     setFecha(r.fecha || today());
-    setVolumenL(r.volumenL || 10);
-    setPpmObjetivo(r.ppmObjetivo || 200);
-    setUnidadCloro(r.unidadCloro || 'g');
-    setT1Usado(r.t1Usado !== false); setT1Obs(r.t1Obs || '');
-    setT3Usado(r.t3Usado !== false); setT3Obs(r.t3Obs || '');
     setResponsable(r.responsable || '');
-    setMediciones(r.mediciones?.length ? r.mediciones : [blankMed()]);
-    // Edit = 1 producto (el del registro)
-    const nombreProd = r.producto || r.productos?.[0]?.nombre || '';
-    const isSug = PRODUCTOS_SUG.includes(nombreProd);
-    setProductos([{
-      nombre:     isSug ? nombreProd : 'Otro',
-      nombreOtro: isSug ? '' : nombreProd,
-      cantidad:   r.cantidad != null ? String(r.cantidad) : '',
-      unidad:     r.unidadProd || 'lb',
-      obs:        r.obsProducto || '',
-    }]);
-    setExpandedId(null);
+    // Detectar formato
+    const isV2 = r.formato === 'v2' || r.t2 || r.t1;
+    setProductos([isV2 ? v2ToProducto(r) : legacyToProducto(r)]);
+    setExpandedHistId(null);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleSave = async () => {
-    if (!responsable) { toast('Seleccioná responsable', 'error'); return; }
-    if (mediciones.length === 0 || !mediciones[0].ppm || !mediciones[0].cloroAgregado) {
-      toast('La primera medición necesita ppm y cloro agregado', 'error'); return;
+  const validar = () => {
+    if (!responsable) return 'Seleccioná responsable';
+    for (let i = 0; i < productos.length; i++) {
+      const p = productos[i];
+      const nombre = (p.nombre === 'Otro' ? p.nombreOtro : p.nombre || '').trim();
+      if (!nombre) return `Producto ${i + 1}: nombre requerido`;
+      const tanquesUsados = (p.t1Usado ? 1 : 0) + (p.t2Usado ? 1 : 0) + (p.t3Usado ? 1 : 0);
+      if (tanquesUsados === 0) return `Producto ${i + 1} (${nombre}): al menos un tanque (T1, T2 o T3) debe estar marcado`;
+      if (p.t2Usado) {
+        const m0 = p.t2Mediciones?.[0];
+        if (!m0 || !m0.ppm || !m0.cloroAgregado) {
+          return `Producto ${i + 1} (${nombre}): la 1ª medición de T2 necesita ppm y cloro agregado`;
+        }
+      }
     }
-    const productosNorm = productos.map(p => ({
-      nombre:   (p.nombre === 'Otro' ? p.nombreOtro : p.nombre || '').trim(),
+    return null;
+  };
+
+  const productoToDoc = (p) => {
+    const nombre = (p.nombre === 'Otro' ? p.nombreOtro : p.nombre || '').trim();
+    const mediciones = p.t2Usado
+      ? p.t2Mediciones.map(m => ({
+          hora: m.hora,
+          ppm: parseFloat(m.ppm) || 0,
+          cloroAgregado: parseFloat(m.cloroAgregado) || 0,
+          obs: m.obs || '',
+        }))
+      : [];
+    const totalCloro = mediciones.reduce((s, m) => s + (m.cloroAgregado || 0), 0);
+    const ratio = ratioForProd(p) || 0;
+    return {
+      formato: 'v2',
+      fecha,
+      responsable,
+      // metadata producto
+      producto: nombre,
       cantidad: parseFloat(p.cantidad) || 0,
-      unidad:   p.unidad || 'lb',
-      obs:      p.obs || '',
-    })).filter(p => p.nombre);
-    if (productosNorm.length === 0) { toast('Especificá al menos un producto', 'error'); return; }
-
-    const medicionesNorm = mediciones.map(m => ({
-      hora: m.hora,
-      ppm: parseFloat(m.ppm) || 0,
-      cloroAgregado: parseFloat(m.cloroAgregado) || 0,
-      obs: m.obs || '',
-    }));
-
-    // Datos compartidos entre todos los reportes (tanques + cloro)
-    const shared = {
-      fecha, responsable,
-      t1Usado, t1Obs, t3Usado, t3Obs,
-      volumenL: parseFloat(volumenL) || 0,
-      ppmObjetivo: parseFloat(ppmObjetivo) || 0,
-      unidadCloro,
-      mediciones: medicionesNorm,
-      ratioG_ppm: ratio || 0,
-      totalCloro: medicionesNorm.reduce((s, m) => s + (m.cloroAgregado || 0), 0),
-      cantMediciones: medicionesNorm.length,
+      unidadProd: p.unidad || 'lb',
+      obsProducto: p.obs || '',
+      horaInicio: p.horaInicio || '',
+      // tanques con datos propios
+      t1: { usado: !!p.t1Usado, obs: p.t1Obs || '' },
+      t2: p.t2Usado ? {
+        usado: true,
+        volumenL: parseFloat(p.t2VolumenL) || 0,
+        ppmObjetivo: parseFloat(p.t2PpmObjetivo) || 0,
+        unidadCloro: p.t2UnidadCloro || 'g',
+        mediciones,
+        ratioG_ppm: ratio,
+        totalCloro,
+        cantMediciones: mediciones.length,
+      } : { usado: false },
+      t3: { usado: !!p.t3Usado, obs: p.t3Obs || '' },
+      // Espejos para que el historial viejo siga ordenando/leyendo bien
+      volumenL: p.t2Usado ? (parseFloat(p.t2VolumenL) || 0) : 0,
+      ppmObjetivo: p.t2Usado ? (parseFloat(p.t2PpmObjetivo) || 0) : 0,
+      unidadCloro: p.t2UnidadCloro || 'g',
+      mediciones,
+      ratioG_ppm: ratio,
+      totalCloro,
+      cantMediciones: mediciones.length,
+      t1Usado: !!p.t1Usado,
+      t1Obs: p.t1Obs || '',
+      t3Usado: !!p.t3Usado,
+      t3Obs: p.t3Obs || '',
     };
+  };
 
+  const handleSave = async () => {
+    const err = validar();
+    if (err) { toast(err, 'error'); return; }
     try {
       if (editId) {
-        // Edición: solo el primer producto, sobrescribe el registro
-        const p = productosNorm[0];
-        await update(editId, { ...shared, producto: p.nombre, cantidad: p.cantidad, unidadProd: p.unidad, obsProducto: p.obs });
+        await update(editId, productoToDoc(productos[0]));
         toast('✓ Reporte actualizado');
       } else {
-        // Creación: 1 registro por producto (mismos tanques y mediciones)
-        for (const p of productosNorm) {
-          await add({ ...shared, producto: p.nombre, cantidad: p.cantidad, unidadProd: p.unidad, obsProducto: p.obs });
-        }
-        toast(productosNorm.length === 1 ? '✓ Reporte guardado' : `✓ ${productosNorm.length} reportes guardados (1 por producto)`);
+        for (const p of productos) await add(productoToDoc(p));
+        toast(productos.length === 1 ? '✓ Reporte guardado' : `✓ ${productos.length} reportes guardados`);
       }
       resetForm();
     } catch (e) { toast('Error: ' + e.message, 'error'); }
   };
 
+  // Resumen badges por producto (header del card)
+  const resumenProducto = (p) => {
+    const nombre = (p.nombre === 'Otro' ? p.nombreOtro : p.nombre) || 'sin nombre';
+    const usados = [p.t1Usado && 'T1', p.t2Usado && 'T2', p.t3Usado && 'T3'].filter(Boolean);
+    const cant = parseFloat(p.cantidad);
+    return {
+      nombre,
+      tanques: usados.length ? usados.join('·') : '—',
+      cantStr: Number.isFinite(cant) && cant > 0 ? `${fmtNum(cant, 2)} ${p.unidad}` : '',
+      meds: p.t2Usado ? p.t2Mediciones.length : 0,
+    };
+  };
+
   return (
-    <div style={{ fontFamily: 'inherit', maxWidth: 1080 }}>
+    <div style={{ fontFamily: 'inherit', maxWidth: 1100 }}>
       <div style={{ marginBottom: 14 }}>
         <h1 style={{ fontSize: '1.4rem', fontWeight: 800, color: T.primary, margin: 0 }}>
           Control de Lavado por Producto
         </h1>
         <p style={{ fontSize: '.83rem', color: T.textMid, marginTop: 4 }}>
-          Lavado triple con mediciones por hora · Calculadora de dosis de cloro.
+          Varios productos lavándose al mismo tiempo · cada uno con sus tanques y mediciones independientes.
         </p>
       </div>
 
-      {/* Tabs */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 18, borderBottom: `2px solid ${T.border}` }}>
         {[
           { k: 'control', label: '💧 Control de Lavado' },
@@ -243,13 +329,13 @@ export default function CloroProducto() {
 
       {tab === 'control' && <>
 
-      {/* Form encabezado */}
+      {/* Sesión: fecha + responsable */}
       <div style={card}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: 12, marginBottom: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: 12 }}>
           <label style={LS}>Fecha
             <input type="date" value={fecha} onChange={e => setFecha(e.target.value)} style={IS} />
           </label>
-          <label style={LS}>Responsable
+          <label style={LS}>Responsable de la sesión
             {empLoad ? <Skeleton height={36} /> : (
               <select value={responsable} onChange={e => setResponsable(e.target.value)} style={{ ...IS, cursor: 'pointer' }}>
                 <option value="">— Seleccionar —</option>
@@ -258,231 +344,269 @@ export default function CloroProducto() {
             )}
           </label>
         </div>
+      </div>
 
-        {/* Tanque 1 — agua */}
-        <div style={{ padding: 12, border: `1.5px solid ${T.border}`, borderRadius: 8, marginBottom: 12, background: t1Usado ? '#F0F8FF' : T.bgLight }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: t1Usado ? 8 : 0 }}>
-            <input type="checkbox" checked={t1Usado} onChange={e => setT1Usado(e.target.checked)}
-              style={{ width: 17, height: 17, cursor: 'pointer', accentColor: T.secondary }} />
-            <span style={{ fontWeight: 700, fontSize: '.92rem', color: T.textDark }}>Tanque 1 — Agua (pre-lavado)</span>
-            {!t1Usado && <span style={{ fontSize: '.74rem', color: T.textMid, fontStyle: 'italic' }}>no usado</span>}
-          </div>
-          {t1Usado && (
-            <input value={t1Obs} onChange={e => setT1Obs(e.target.value)}
-              placeholder="Observación (opcional)" style={{ ...IS, marginTop: 0 }} />
-          )}
-        </div>
-
-        {/* Tanque 2 — Cloro */}
-        <div style={{ padding: 14, border: `1.5px solid ${T.accent}`, borderRadius: 8, marginBottom: 12, background: '#F1F8E9' }}>
-          <div style={{ fontWeight: 700, fontSize: '.92rem', color: T.primary, marginBottom: 10 }}>
-            Tanque 2 — Cloro (con re-medición horaria)
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(130px,1fr))', gap: 10, marginBottom: 10 }}>
-            <label style={LS}>Volumen agua (L)
-              <input type="number" step="0.1" value={volumenL} onChange={e => setVolumenL(e.target.value)} style={IS} />
-            </label>
-            <label style={LS}>Unidad cloro
-              <select value={unidadCloro} onChange={e => setUnidadCloro(e.target.value)} style={{ ...IS, cursor: 'pointer' }}>
-                {UNIDADES_CLORO.map(u => <option key={u.v} value={u.v}>{u.label}</option>)}
-              </select>
-            </label>
-            <label style={LS}>PPM Objetivo
-              <input type="number" value={ppmObjetivo} onChange={e => setPpmObjetivo(e.target.value)} style={IS} />
-            </label>
-          </div>
-
-          {/* Ratio info */}
-          {ratio && (
-            <div style={{ padding: '8px 14px', background: '#fff', borderRadius: 6, fontSize: '.8rem', color: T.secondary, marginBottom: 12, border: `1px solid ${T.accent}` }}>
-              <b>Ratio aprendido:</b> {fmtNum(ratio, 4)} {unidadCloro} por cada 1 ppm ({volumenL}L).
-              <span style={{ color: T.textMid, marginLeft: 8 }}>
-                Para subir 50 ppm: ≈ {fmtNum(ratio * 50, 2)} {unidadCloro}.
+      {/* Productos — cada uno con sus tanques propios */}
+      {productos.map((p, pIdx) => {
+        const res = resumenProducto(p);
+        const ratio = ratioForProd(p);
+        return (
+          <div key={pIdx} style={{ ...card, borderLeft: `4px solid ${T.accent}` }}>
+            {/* Header del producto */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: p._expanded ? 16 : 0, cursor: 'pointer' }}
+                 onClick={() => toggleExpanded(pIdx)}>
+              <span style={{ fontSize: '.72rem', fontWeight: 700, color: T.secondary, textTransform: 'uppercase', letterSpacing: '.08em' }}>
+                Producto {productos.length > 1 ? `${pIdx + 1} de ${productos.length}` : ''}
               </span>
-            </div>
-          )}
-
-          {/* Tabla de mediciones */}
-          <div style={{ fontSize: '.74rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: T.secondary, marginBottom: 8 }}>
-            Mediciones · {mediciones.length}
-          </div>
-          <div style={{ border: `1px solid ${T.border}`, borderRadius: 8, overflow: 'hidden', overflowX: 'auto', background: '#fff' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
-              <thead>
-                <tr style={{ background: T.bgLight }}>
-                  {['#', 'Hora', 'PPM medido', `Cloro sugerido (${unidadCloro})`, `Cloro real agregado (${unidadCloro})`, 'Observación', ''].map(h => (
-                    <th key={h} style={{ padding: '8px 10px', textAlign: 'left', fontSize: '.7rem',
-                      fontWeight: 700, color: T.textMid, textTransform: 'uppercase', letterSpacing: '.04em' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {mediciones.map((m, idx) => {
-                  const isFirst = idx === 0;
-                  const sug = !isFirst ? sugerencia(m.ppm) : null;
-                  const ppmNum = parseFloat(m.ppm);
-                  const ppmStatus = !ppmNum ? '' :
-                    ppmNum >= ppmObjetivo * 0.9 ? 'ok' :
-                    ppmNum >= ppmObjetivo * 0.6 ? 'bajo' : 'critico';
-
-                  return (
-                    <tr key={idx} style={{ borderTop: `1px solid ${T.border}` }}>
-                      <td style={{ padding: '6px 10px', fontSize: '.82rem', fontWeight: 700, color: isFirst ? T.primary : T.textMid }}>
-                        {isFirst ? '1ª' : idx + 1}
-                      </td>
-                      <td style={{ padding: '4px 8px' }}>
-                        <input type="time" value={m.hora} onChange={e => setMed(idx, { hora: e.target.value })}
-                          style={{ ...IS, width: 110, marginTop: 0 }} />
-                      </td>
-                      <td style={{ padding: '4px 8px' }}>
-                        <input type="number" step="any" value={m.ppm}
-                          onChange={e => {
-                            const patch = { ppm: e.target.value };
-                            if (!isFirst && ratio) {
-                              const v = parseFloat(e.target.value);
-                              if (Number.isFinite(v)) {
-                                const def = ppmObjetivo - v;
-                                patch.cloroAgregado = def > 0 ? fmtNum(def * ratio, 2) : '0';
-                              }
-                            }
-                            setMed(idx, patch);
-                          }}
-                          placeholder={isFirst ? 'ej: 200' : '0'}
-                          style={{ ...IS, width: 100, marginTop: 0,
-                            background: ppmStatus === 'ok' ? T.greenBg : ppmStatus === 'bajo' ? T.warnBg : ppmStatus === 'critico' ? T.redBg : '#fff',
-                            borderColor: ppmStatus === 'ok' ? T.secondary : ppmStatus === 'bajo' ? T.warn : ppmStatus === 'critico' ? T.danger : T.border }} />
-                      </td>
-                      <td style={{ padding: '4px 8px', fontSize: '.84rem', fontWeight: 700,
-                        color: isFirst ? T.textMid : sug == null ? T.border : sug === 0 ? T.secondary : T.warn }}>
-                        {isFirst ? '— inicial —' : sug == null ? '...' : sug === 0 ? 'OK, no agregar' : `${fmtNum(sug, 2)} ${unidadCloro}`}
-                      </td>
-                      <td style={{ padding: '4px 8px' }}>
-                        <input type="number" step="any" value={m.cloroAgregado}
-                          onChange={e => setMed(idx, { cloroAgregado: e.target.value })}
-                          placeholder={isFirst ? 'ej: 3' : '0'}
-                          style={{ ...IS, width: 110, marginTop: 0, fontWeight: 700 }} />
-                      </td>
-                      <td style={{ padding: '4px 8px' }}>
-                        <input value={m.obs} onChange={e => setMed(idx, { obs: e.target.value })}
-                          placeholder="opcional" style={{ ...IS, marginTop: 0 }} />
-                      </td>
-                      <td style={{ padding: '4px 8px', textAlign: 'center' }}>
-                        {mediciones.length > 1 && (
-                          <button onClick={() => quitarMedicion(idx)}
-                            style={{ background: 'none', border: `1px solid ${T.border}`, borderRadius: 4,
-                              padding: '3px 8px', cursor: 'pointer', fontSize: '.72rem', color: T.textMid }}>✕</button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          <button onClick={agregarMedicion} style={{
-              marginTop: 12, padding: '8px 16px', background: '#fff',
-              color: T.secondary, border: `1.5px solid ${T.secondary}`, borderRadius: 6,
-              fontWeight: 700, fontSize: '.82rem', cursor: 'pointer', fontFamily: 'inherit' }}>
-            + Medición de próxima hora
-          </button>
-        </div>{/* fin Tanque 2 */}
-
-        {/* Tanque 3 — agua final */}
-        <div style={{ padding: 12, border: `1.5px solid ${T.border}`, borderRadius: 8, marginBottom: 14, background: t3Usado ? '#F0F8FF' : T.bgLight }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: t3Usado ? 8 : 0 }}>
-            <input type="checkbox" checked={t3Usado} onChange={e => setT3Usado(e.target.checked)}
-              style={{ width: 17, height: 17, cursor: 'pointer', accentColor: T.secondary }} />
-            <span style={{ fontWeight: 700, fontSize: '.92rem', color: T.textDark }}>Tanque 3 — Agua (enjuague)</span>
-            {!t3Usado && <span style={{ fontSize: '.74rem', color: T.textMid, fontStyle: 'italic' }}>no usado</span>}
-          </div>
-          {t3Usado && (
-            <input value={t3Obs} onChange={e => setT3Obs(e.target.value)}
-              placeholder="Observación (opcional)" style={{ ...IS, marginTop: 0 }} />
-          )}
-        </div>
-
-        {/* Productos — al guardar se crea 1 reporte por producto */}
-        <div style={{ padding: 14, border: `1.5px solid ${T.accent}`, borderRadius: 8, marginBottom: 14, background: '#F9FEF9' }}>
-          <div style={{ fontWeight: 700, fontSize: '.92rem', color: T.primary, marginBottom: 4 }}>
-            {editId ? 'Producto' : `Productos a registrar${productos.length > 1 ? ` · ${productos.length}` : ''}`}
-          </div>
-          <div style={{ fontSize: '.76rem', color: T.textMid, marginBottom: 12 }}>
-            {editId
-              ? 'Editando un solo registro de producto.'
-              : 'Si lavás varios productos al mismo tiempo, agregalos acá. Cada uno queda como un reporte separado compartiendo los tanques y mediciones de cloro.'}
-          </div>
-
-          {productos.map((p, idx) => (
-            <div key={idx} style={{ padding: 12, background: '#fff', border: `1px solid ${T.border}`, borderRadius: 8, marginBottom: 10 }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                <span style={{ fontSize: '.72rem', fontWeight: 700, color: T.secondary, textTransform: 'uppercase', letterSpacing: '.06em' }}>
-                  Producto {productos.length > 1 ? `${idx + 1}` : ''}
+              <span style={{ flex: 1, fontWeight: 700, fontSize: '1rem', color: T.textDark }}>
+                {res.nombre}
+                {res.cantStr && <span style={{ marginLeft: 8, color: T.textMid, fontWeight: 500, fontSize: '.85rem' }}>· {res.cantStr}</span>}
+              </span>
+              <span style={{ padding: '3px 10px', borderRadius: 4, background: T.greenBg, color: T.secondary, fontSize: '.74rem', fontWeight: 700 }}>
+                {res.tanques}
+              </span>
+              {p.t2Usado && (
+                <span style={{ padding: '3px 10px', borderRadius: 4, background: T.bgLight, color: T.textMid, fontSize: '.74rem', fontWeight: 600 }}>
+                  {res.meds} medic.
                 </span>
-                {productos.length > 1 && (
-                  <button onClick={() => removeProd(idx)}
-                    style={{ background: 'none', border: `1px solid ${T.border}`, borderRadius: 4,
-                      padding: '3px 10px', cursor: 'pointer', fontSize: '.72rem', color: T.danger }}>
-                    ✕ Quitar
-                  </button>
-                )}
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 10 }}>
-                <label style={LS}>Producto
-                  <select value={p.nombre} onChange={e => setProd(idx, { nombre: e.target.value })} style={{ ...IS, cursor: 'pointer' }}>
-                    {PRODUCTOS_SUG.map(s => <option key={s}>{s}</option>)}
-                  </select>
-                </label>
-                {p.nombre === 'Otro' && (
-                  <label style={LS}>Especificar
-                    <input value={p.nombreOtro} onChange={e => setProd(idx, { nombreOtro: e.target.value })} placeholder="Nombre" style={IS} />
-                  </label>
-                )}
-                <label style={LS}>Cantidad
-                  <input type="number" step="any" value={p.cantidad} onChange={e => setProd(idx, { cantidad: e.target.value })} placeholder="opcional" style={IS} />
-                </label>
-                <label style={LS}>Unidad
-                  <select value={p.unidad} onChange={e => setProd(idx, { unidad: e.target.value })} style={{ ...IS, cursor: 'pointer' }}>
-                    {UNIDADES_PROD.map(u => <option key={u}>{u}</option>)}
-                  </select>
-                </label>
-                <label style={LS}>Observación
-                  <input value={p.obs} onChange={e => setProd(idx, { obs: e.target.value })} placeholder="opcional" style={IS} />
-                </label>
-              </div>
+              )}
+              {productos.length > 1 && !editId && (
+                <button onClick={(e) => { e.stopPropagation(); removeProd(pIdx); }}
+                  style={{ background: 'none', border: `1px solid ${T.border}`, borderRadius: 4, padding: '4px 10px', cursor: 'pointer', fontSize: '.72rem', color: T.danger }}>
+                  ✕ Quitar
+                </button>
+              )}
+              <button style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1rem', color: T.secondary, fontWeight: 700 }}>
+                {p._expanded ? '▲' : '▼'}
+              </button>
             </div>
-          ))}
 
-          {!editId && (
-            <button onClick={addProd}
-              style={{ padding: '8px 16px', background: '#fff', color: T.secondary, border: `1.5px solid ${T.secondary}`,
-                borderRadius: 6, fontWeight: 700, fontSize: '.82rem', cursor: 'pointer', fontFamily: 'inherit' }}>
-              + Agregar otro producto
-            </button>
-          )}
-        </div>
+            {p._expanded && <>
+              {/* Datos del producto */}
+              <div style={{ padding: 12, background: '#F9FEF9', border: `1px solid ${T.border}`, borderRadius: 8, marginBottom: 14 }}>
+                <div style={{ fontSize: '.72rem', fontWeight: 700, color: T.secondary, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>
+                  Datos del producto
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 10 }}>
+                  <label style={LS}>Producto
+                    <select value={p.nombre} onChange={e => setProd(pIdx, { nombre: e.target.value })} style={{ ...IS, cursor: 'pointer' }}>
+                      {PRODUCTOS_SUG.map(s => <option key={s}>{s}</option>)}
+                    </select>
+                  </label>
+                  {p.nombre === 'Otro' && (
+                    <label style={LS}>Especificar
+                      <input value={p.nombreOtro} onChange={e => setProd(pIdx, { nombreOtro: e.target.value })} placeholder="Nombre" style={IS} />
+                    </label>
+                  )}
+                  <label style={LS}>Cantidad
+                    <input type="number" step="any" value={p.cantidad} onChange={e => setProd(pIdx, { cantidad: e.target.value })} placeholder="opcional" style={IS} />
+                  </label>
+                  <label style={LS}>Unidad
+                    <select value={p.unidad} onChange={e => setProd(pIdx, { unidad: e.target.value })} style={{ ...IS, cursor: 'pointer' }}>
+                      {UNIDADES_PROD.map(u => <option key={u}>{u}</option>)}
+                    </select>
+                  </label>
+                  <label style={LS}>Hora inicio lavado
+                    <input type="time" value={p.horaInicio} onChange={e => setProd(pIdx, { horaInicio: e.target.value })} style={IS} />
+                  </label>
+                  <label style={LS}>Observación
+                    <input value={p.obs} onChange={e => setProd(pIdx, { obs: e.target.value })} placeholder="opcional" style={IS} />
+                  </label>
+                </div>
+              </div>
 
-        <div style={{ display: 'flex', gap: 10, marginTop: 4, flexWrap: 'wrap' }}>
-          <button onClick={handleSave} disabled={saving}
-            style={{ padding: '10px 22px', background: saving ? '#BDBDBD' : editId ? T.warn : T.primary,
-              color: '#fff', border: 'none', borderRadius: 6, fontWeight: 700,
-              fontSize: '.88rem', cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
-            {saving ? 'Guardando...' : editId ? '✏️ Actualizar reporte' : productos.length > 1 ? `💾 Guardar ${productos.length} reportes` : '💾 Guardar reporte'}
+              {/* T1 agua */}
+              <div style={{ padding: 12, border: `1.5px solid ${T.border}`, borderRadius: 8, marginBottom: 10, background: p.t1Usado ? '#F0F8FF' : T.bgLight }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: p.t1Usado ? 8 : 0 }}>
+                  <input type="checkbox" checked={p.t1Usado} onChange={e => setProd(pIdx, { t1Usado: e.target.checked })}
+                    style={{ width: 17, height: 17, cursor: 'pointer', accentColor: T.secondary }} />
+                  <span style={{ fontWeight: 700, fontSize: '.9rem', color: T.textDark }}>Tanque 1 — Agua (pre-lavado)</span>
+                  {!p.t1Usado && <span style={{ fontSize: '.74rem', color: T.textMid, fontStyle: 'italic' }}>no usado</span>}
+                </div>
+                {p.t1Usado && (
+                  <input value={p.t1Obs} onChange={e => setProd(pIdx, { t1Obs: e.target.value })}
+                    placeholder="Observación (opcional)" style={{ ...IS, marginTop: 0 }} />
+                )}
+              </div>
+
+              {/* T2 cloro */}
+              <div style={{ padding: 14, border: `1.5px solid ${p.t2Usado ? T.accent : T.border}`, borderRadius: 8, marginBottom: 10, background: p.t2Usado ? '#F1F8E9' : T.bgLight }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: p.t2Usado ? 12 : 0 }}>
+                  <input type="checkbox" checked={p.t2Usado} onChange={e => setProd(pIdx, { t2Usado: e.target.checked })}
+                    style={{ width: 17, height: 17, cursor: 'pointer', accentColor: T.secondary }} />
+                  <span style={{ fontWeight: 700, fontSize: '.9rem', color: T.primary }}>Tanque 2 — Cloro (con re-medición horaria)</span>
+                  {!p.t2Usado && <span style={{ fontSize: '.74rem', color: T.textMid, fontStyle: 'italic' }}>no usado</span>}
+                </div>
+
+                {p.t2Usado && <>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(130px,1fr))', gap: 10, marginBottom: 10 }}>
+                    <label style={LS}>Volumen agua (L)
+                      <input type="number" step="0.1" value={p.t2VolumenL} onChange={e => setProd(pIdx, { t2VolumenL: e.target.value })} style={IS} />
+                    </label>
+                    <label style={LS}>Unidad cloro
+                      <select value={p.t2UnidadCloro} onChange={e => setProd(pIdx, { t2UnidadCloro: e.target.value })} style={{ ...IS, cursor: 'pointer' }}>
+                        {UNIDADES_CLORO.map(u => <option key={u.v} value={u.v}>{u.label}</option>)}
+                      </select>
+                    </label>
+                    <label style={LS}>PPM Objetivo
+                      <input type="number" value={p.t2PpmObjetivo} onChange={e => setProd(pIdx, { t2PpmObjetivo: e.target.value })} style={IS} />
+                    </label>
+                  </div>
+
+                  {ratio && (
+                    <div style={{ padding: '8px 14px', background: '#fff', borderRadius: 6, fontSize: '.8rem', color: T.secondary, marginBottom: 12, border: `1px solid ${T.accent}` }}>
+                      <b>Ratio aprendido:</b> {fmtNum(ratio, 4)} {p.t2UnidadCloro} por cada 1 ppm ({p.t2VolumenL}L).
+                      <span style={{ color: T.textMid, marginLeft: 8 }}>
+                        Para subir 50 ppm: ≈ {fmtNum(ratio * 50, 2)} {p.t2UnidadCloro}.
+                      </span>
+                    </div>
+                  )}
+
+                  <div style={{ fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: T.secondary, marginBottom: 8 }}>
+                    Mediciones · {p.t2Mediciones.length}
+                  </div>
+                  <div style={{ border: `1px solid ${T.border}`, borderRadius: 8, overflowX: 'auto', background: '#fff' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
+                      <thead>
+                        <tr style={{ background: T.bgLight }}>
+                          {['#', 'Hora', 'PPM medido', `Sugerido (${p.t2UnidadCloro})`, `Cloro real (${p.t2UnidadCloro})`, 'Observación', ''].map(h => (
+                            <th key={h} style={{ padding: '8px 10px', textAlign: 'left', fontSize: '.7rem',
+                              fontWeight: 700, color: T.textMid, textTransform: 'uppercase', letterSpacing: '.04em' }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {p.t2Mediciones.map((m, mIdx) => {
+                          const isFirst = mIdx === 0;
+                          const ppmNum = parseFloat(m.ppm);
+                          const ppmStatus = !ppmNum ? '' :
+                            ppmNum >= p.t2PpmObjetivo * 0.9 ? 'ok' :
+                            ppmNum >= p.t2PpmObjetivo * 0.6 ? 'bajo' : 'critico';
+                          let sug = null;
+                          if (!isFirst && ratio) {
+                            const ppmN = parseFloat(m.ppm);
+                            if (Number.isFinite(ppmN)) {
+                              const def = p.t2PpmObjetivo - ppmN;
+                              sug = def <= 0 ? 0 : def * ratio;
+                            }
+                          }
+                          return (
+                            <tr key={mIdx} style={{ borderTop: `1px solid ${T.border}` }}>
+                              <td style={{ padding: '6px 10px', fontSize: '.82rem', fontWeight: 700, color: isFirst ? T.primary : T.textMid }}>
+                                {isFirst ? '1ª' : mIdx + 1}
+                              </td>
+                              <td style={{ padding: '4px 8px' }}>
+                                <input type="time" value={m.hora} onChange={e => setT2Med(pIdx, mIdx, { hora: e.target.value })}
+                                  style={{ ...IS, width: 110, marginTop: 0 }} />
+                              </td>
+                              <td style={{ padding: '4px 8px' }}>
+                                <input type="number" step="any" value={m.ppm}
+                                  onChange={e => {
+                                    const patch = { ppm: e.target.value };
+                                    if (!isFirst && ratio) {
+                                      const v = parseFloat(e.target.value);
+                                      if (Number.isFinite(v)) {
+                                        const def = p.t2PpmObjetivo - v;
+                                        patch.cloroAgregado = def > 0 ? fmtNum(def * ratio, 2) : '0';
+                                      }
+                                    }
+                                    setT2Med(pIdx, mIdx, patch);
+                                  }}
+                                  placeholder={isFirst ? 'ej: 200' : '0'}
+                                  style={{ ...IS, width: 100, marginTop: 0,
+                                    background: ppmStatus === 'ok' ? T.greenBg : ppmStatus === 'bajo' ? T.warnBg : ppmStatus === 'critico' ? T.redBg : '#fff',
+                                    borderColor: ppmStatus === 'ok' ? T.secondary : ppmStatus === 'bajo' ? T.warn : ppmStatus === 'critico' ? T.danger : T.border }} />
+                              </td>
+                              <td style={{ padding: '4px 8px', fontSize: '.84rem', fontWeight: 700,
+                                color: isFirst ? T.textMid : sug == null ? T.border : sug === 0 ? T.secondary : T.warn }}>
+                                {isFirst ? '— inicial —' : sug == null ? '...' : sug === 0 ? 'OK, no agregar' : `${fmtNum(sug, 2)} ${p.t2UnidadCloro}`}
+                              </td>
+                              <td style={{ padding: '4px 8px' }}>
+                                <input type="number" step="any" value={m.cloroAgregado}
+                                  onChange={e => setT2Med(pIdx, mIdx, { cloroAgregado: e.target.value })}
+                                  placeholder={isFirst ? 'ej: 3' : '0'}
+                                  style={{ ...IS, width: 110, marginTop: 0, fontWeight: 700 }} />
+                              </td>
+                              <td style={{ padding: '4px 8px' }}>
+                                <input value={m.obs} onChange={e => setT2Med(pIdx, mIdx, { obs: e.target.value })}
+                                  placeholder="opcional" style={{ ...IS, marginTop: 0 }} />
+                              </td>
+                              <td style={{ padding: '4px 8px', textAlign: 'center' }}>
+                                {p.t2Mediciones.length > 1 && (
+                                  <button onClick={() => quitarMedicion(pIdx, mIdx)}
+                                    style={{ background: 'none', border: `1px solid ${T.border}`, borderRadius: 4,
+                                      padding: '3px 8px', cursor: 'pointer', fontSize: '.72rem', color: T.textMid }}>✕</button>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <button onClick={() => agregarMedicion(pIdx)} style={{
+                      marginTop: 12, padding: '8px 16px', background: '#fff',
+                      color: T.secondary, border: `1.5px solid ${T.secondary}`, borderRadius: 6,
+                      fontWeight: 700, fontSize: '.82rem', cursor: 'pointer', fontFamily: 'inherit' }}>
+                    + Medición de próxima hora
+                  </button>
+                </>}
+              </div>
+
+              {/* T3 agua */}
+              <div style={{ padding: 12, border: `1.5px solid ${T.border}`, borderRadius: 8, background: p.t3Usado ? '#F0F8FF' : T.bgLight }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: p.t3Usado ? 8 : 0 }}>
+                  <input type="checkbox" checked={p.t3Usado} onChange={e => setProd(pIdx, { t3Usado: e.target.checked })}
+                    style={{ width: 17, height: 17, cursor: 'pointer', accentColor: T.secondary }} />
+                  <span style={{ fontWeight: 700, fontSize: '.9rem', color: T.textDark }}>Tanque 3 — Agua (enjuague)</span>
+                  {!p.t3Usado && <span style={{ fontSize: '.74rem', color: T.textMid, fontStyle: 'italic' }}>no usado</span>}
+                </div>
+                {p.t3Usado && (
+                  <input value={p.t3Obs} onChange={e => setProd(pIdx, { t3Obs: e.target.value })}
+                    placeholder="Observación (opcional)" style={{ ...IS, marginTop: 0 }} />
+                )}
+              </div>
+            </>}
+          </div>
+        );
+      })}
+
+      {/* Agregar otro producto */}
+      {!editId && (
+        <div style={{ marginBottom: 20 }}>
+          <button onClick={addProd}
+            style={{ padding: '10px 20px', background: T.secondary, color: '#fff', border: 'none',
+              borderRadius: 6, fontWeight: 700, fontSize: '.86rem', cursor: 'pointer', fontFamily: 'inherit' }}>
+            + Agregar otro producto al mismo tiempo
           </button>
-          {editId && (
-            <button onClick={resetForm}
-              style={{ padding: '10px 16px', background: '#fff', color: T.textMid,
-                border: `1px solid ${T.border}`, borderRadius: 6, fontWeight: 600, fontSize: '.84rem',
-                cursor: 'pointer', fontFamily: 'inherit' }}>
-              Cancelar edición
-            </button>
-          )}
-          {editId && (
-            <span style={{ alignSelf: 'center', fontSize: '.78rem', color: T.warn, fontStyle: 'italic' }}>
-              Editando · los cambios reemplazarán el reporte actual
-            </span>
-          )}
+          <span style={{ marginLeft: 10, fontSize: '.78rem', color: T.textMid, fontStyle: 'italic' }}>
+            cada uno con sus propios tanques y mediciones
+          </span>
         </div>
+      )}
+
+      {/* Guardar */}
+      <div style={{ ...card, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+        <button onClick={handleSave} disabled={saving}
+          style={{ padding: '10px 22px', background: saving ? '#BDBDBD' : editId ? T.warn : T.primary,
+            color: '#fff', border: 'none', borderRadius: 6, fontWeight: 700,
+            fontSize: '.88rem', cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+          {saving ? 'Guardando...' : editId ? '✏️ Actualizar reporte' : productos.length > 1 ? `💾 Guardar ${productos.length} reportes` : '💾 Guardar reporte'}
+        </button>
+        {editId && (
+          <button onClick={resetForm}
+            style={{ padding: '10px 16px', background: '#fff', color: T.textMid,
+              border: `1px solid ${T.border}`, borderRadius: 6, fontWeight: 600, fontSize: '.84rem',
+              cursor: 'pointer', fontFamily: 'inherit' }}>
+            Cancelar edición
+          </button>
+        )}
+        {editId && (
+          <span style={{ fontSize: '.78rem', color: T.warn, fontStyle: 'italic' }}>
+            Editando · los cambios reemplazarán el reporte actual
+          </span>
+        )}
       </div>
 
       {/* Historial */}
@@ -497,7 +621,7 @@ export default function CloroProducto() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: T.primary }}>
-                  {['Fecha', 'Producto', 'Cantidad', 'Volumen', 'Objetivo', 'Mediciones', 'Total cloro', 'Responsable', '', 'Acciones'].map(h => (
+                  {['Fecha', 'Producto', 'Cant.', 'Tanques', 'Volumen', 'Objetivo', 'Med.', 'Total cloro', 'Resp.', '', 'Acc.'].map(h => (
                     <th key={h} style={{ padding: '9px 12px', color: '#fff', fontSize: '.7rem', fontWeight: 700,
                       textTransform: 'uppercase', letterSpacing: '.05em', textAlign: 'left', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
@@ -505,22 +629,41 @@ export default function CloroProducto() {
               </thead>
               <tbody>
                 {(registros || []).map((r, i) => {
-                  const isExp = expandedId === r.id;
+                  const isExp = expandedHistId === r.id;
+                  // Detect v2 vs legacy
+                  const isV2 = r.formato === 'v2' || r.t2 || r.t1;
+                  const t1u = isV2 ? r.t1?.usado !== false : r.t1Usado !== false;
+                  const t2u = isV2 ? r.t2?.usado !== false : (Array.isArray(r.mediciones) && r.mediciones.length > 0);
+                  const t3u = isV2 ? r.t3?.usado !== false : r.t3Usado !== false;
+                  const tanquesBadge = [t1u && 'T1', t2u && 'T2', t3u && 'T3'].filter(Boolean).join('·') || '—';
+                  const volumenL    = isV2 ? r.t2?.volumenL : r.volumenL;
+                  const ppmObjetivo = isV2 ? r.t2?.ppmObjetivo : r.ppmObjetivo;
+                  const mediciones  = isV2 ? (r.t2?.mediciones || []) : (r.mediciones || []);
+                  const cantMed     = mediciones.length;
+                  const totalCloro  = isV2 ? r.t2?.totalCloro : r.totalCloro;
+                  const unidadCloro = isV2 ? r.t2?.unidadCloro : r.unidadCloro;
+                  const ratio       = isV2 ? r.t2?.ratioG_ppm : r.ratioG_ppm;
+
                   return (
                     <Fragment key={r.id}>
                       <tr style={{ background: isExp ? '#F1F8E9' : i % 2 === 0 ? '#fff' : '#F9FBF9', cursor: 'pointer' }}
-                        onClick={() => setExpandedId(prev => prev === r.id ? null : r.id)}>
-                        <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0', fontWeight: 600, color: T.textMid, whiteSpace: 'nowrap' }}>{r.fecha}</td>
+                        onClick={() => setExpandedHistId(prev => prev === r.id ? null : r.id)}>
+                        <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0', fontWeight: 600, color: T.textMid, whiteSpace: 'nowrap' }}>
+                          {r.fecha}{r.horaInicio && <div style={{ fontSize: '.72rem', color: T.textMid }}>{r.horaInicio}</div>}
+                        </td>
                         <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0', fontWeight: 700, color: T.textDark }}>
-                          {r.producto || (r.productos?.map(p => p.nombre).join(', ')) || '—'}
+                          {r.producto || '—'}
                         </td>
                         <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0', color: T.textMid }}>
                           {r.cantidad ? `${fmtNum(r.cantidad, 2)} ${r.unidadProd || 'lb'}` : '—'}
                         </td>
-                        <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0' }}>{r.volumenL ? `${r.volumenL} L` : '—'}</td>
-                        <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0', fontWeight: 700, color: T.secondary }}>{r.ppmObjetivo ? `${r.ppmObjetivo} ppm` : '—'}</td>
-                        <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0', fontWeight: 700, color: T.textDark }}>{r.cantMediciones ?? (r.mediciones?.length ?? 0)}</td>
-                        <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0', fontWeight: 700, color: T.warn }}>{r.totalCloro ? `${fmtNum(r.totalCloro, 2)} ${r.unidadCloro || 'g'}` : '—'}</td>
+                        <td style={{ padding: '8px 12px', fontSize: '.78rem', borderBottom: '1px solid #F0F0F0' }}>
+                          <span style={{ padding: '2px 8px', borderRadius: 4, background: T.greenBg, color: T.secondary, fontWeight: 700 }}>{tanquesBadge}</span>
+                        </td>
+                        <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0' }}>{volumenL ? `${volumenL} L` : '—'}</td>
+                        <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0', fontWeight: 700, color: T.secondary }}>{ppmObjetivo ? `${ppmObjetivo} ppm` : '—'}</td>
+                        <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0', fontWeight: 700, color: T.textDark }}>{cantMed || 0}</td>
+                        <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0', fontWeight: 700, color: T.warn }}>{totalCloro ? `${fmtNum(totalCloro, 2)} ${unidadCloro || 'g'}` : '—'}</td>
                         <td style={{ padding: '8px 12px', fontSize: '.82rem', borderBottom: '1px solid #F0F0F0' }}>{r.responsable || '—'}</td>
                         <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0', textAlign: 'center', color: T.secondary, fontWeight: 700 }}>
                           {isExp ? '▲' : '▼'}
@@ -540,60 +683,65 @@ export default function CloroProducto() {
                       </tr>
                       {isExp && (
                         <tr>
-                          <td colSpan={10} style={{ padding: 0, borderBottom: '2px solid #A5D6A7' }}>
+                          <td colSpan={11} style={{ padding: 0, borderBottom: '2px solid #A5D6A7' }}>
                             <div style={{ padding: '14px 18px', background: '#F9FEF9', borderLeft: `4px solid ${T.secondary}` }}>
                               <div style={{ fontWeight: 700, fontSize: '.72rem', color: T.secondary, textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 10 }}>
-                                Detalle — <span style={{ color: T.textDark }}>{r.producto || r.productos?.[0]?.nombre || 'sin producto'}</span>
+                                Detalle — <span style={{ color: T.textDark }}>{r.producto || 'sin producto'}</span>
                                 {r.cantidad ? <span style={{ color: T.textMid, fontWeight: 400 }}> · {fmtNum(r.cantidad, 2)} {r.unidadProd || 'lb'}</span> : null}
-                                <span style={{ color: T.textMid, fontWeight: 400 }}> · {r.volumenL}L · objetivo {r.ppmObjetivo} ppm</span>
-                                {r.ratioG_ppm > 0 && <span style={{ marginLeft: 8, color: T.textMid, fontWeight: 400 }}>ratio {fmtNum(r.ratioG_ppm, 4)} {r.unidadCloro || 'g'}/ppm</span>}
+                                {t2u && <span style={{ color: T.textMid, fontWeight: 400 }}> · {volumenL}L · objetivo {ppmObjetivo} ppm</span>}
+                                {ratio > 0 && <span style={{ marginLeft: 8, color: T.textMid, fontWeight: 400 }}>ratio {fmtNum(ratio, 4)} {unidadCloro || 'g'}/ppm</span>}
+                                {!isV2 && <span style={{ marginLeft: 10, padding: '2px 8px', background: T.warnBg, color: T.warn, borderRadius: 4, fontSize: '.68rem' }}>formato legacy</span>}
                               </div>
                               <div style={{ display: 'flex', gap: 14, marginBottom: 12, flexWrap: 'wrap', fontSize: '.78rem' }}>
-                                <span style={{ padding: '4px 10px', borderRadius: 4, background: r.t1Usado === false ? T.bgLight : '#E3F2FD', color: r.t1Usado === false ? T.textMid : '#1565C0', fontWeight: 600 }}>
-                                  T1 Agua: {r.t1Usado === false ? 'no usado' : 'usado'}{r.t1Obs ? ` · ${r.t1Obs}` : ''}
+                                <span style={{ padding: '4px 10px', borderRadius: 4, background: t1u ? '#E3F2FD' : T.bgLight, color: t1u ? '#1565C0' : T.textMid, fontWeight: 600 }}>
+                                  T1 Agua: {t1u ? 'usado' : 'no usado'}{(isV2 ? r.t1?.obs : r.t1Obs) ? ` · ${isV2 ? r.t1.obs : r.t1Obs}` : ''}
                                 </span>
-                                <span style={{ padding: '4px 10px', borderRadius: 4, background: T.greenBg, color: T.secondary, fontWeight: 600 }}>
-                                  T2 Cloro: {r.cantMediciones || (r.mediciones?.length ?? 0)} mediciones
+                                <span style={{ padding: '4px 10px', borderRadius: 4, background: t2u ? T.greenBg : T.bgLight, color: t2u ? T.secondary : T.textMid, fontWeight: 600 }}>
+                                  T2 Cloro: {t2u ? `${cantMed} mediciones` : 'no usado'}
                                 </span>
-                                <span style={{ padding: '4px 10px', borderRadius: 4, background: r.t3Usado === false ? T.bgLight : '#E3F2FD', color: r.t3Usado === false ? T.textMid : '#1565C0', fontWeight: 600 }}>
-                                  T3 Agua: {r.t3Usado === false ? 'no usado' : 'usado'}{r.t3Obs ? ` · ${r.t3Obs}` : ''}
+                                <span style={{ padding: '4px 10px', borderRadius: 4, background: t3u ? '#E3F2FD' : T.bgLight, color: t3u ? '#1565C0' : T.textMid, fontWeight: 600 }}>
+                                  T3 Agua: {t3u ? 'usado' : 'no usado'}{(isV2 ? r.t3?.obs : r.t3Obs) ? ` · ${isV2 ? r.t3.obs : r.t3Obs}` : ''}
                                 </span>
                               </div>
-                              <div style={{ overflowX: 'auto' }}>
-                                <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff', borderRadius: 6 }}>
-                                  <thead>
-                                    <tr style={{ background: T.bgLight }}>
-                                      {['#', 'Hora', 'PPM medido', `Cloro agregado (${r.unidadCloro || 'g'})`, 'Observación'].map(h => (
-                                        <th key={h} style={{ padding: '6px 10px', textAlign: 'left', fontSize: '.7rem',
-                                          fontWeight: 700, color: T.textMid, textTransform: 'uppercase' }}>{h}</th>
-                                      ))}
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {(r.mediciones || []).map((m, mi) => {
-                                      const ppmOk = m.ppm >= r.ppmObjetivo * 0.9;
-                                      const ppmBajo = m.ppm < r.ppmObjetivo * 0.6;
-                                      return (
-                                        <tr key={mi} style={{ borderTop: `1px solid ${T.border}` }}>
-                                          <td style={{ padding: '6px 10px', fontSize: '.82rem', fontWeight: 700, color: mi === 0 ? T.primary : T.textMid }}>
-                                            {mi === 0 ? '1ª' : mi + 1}
-                                          </td>
-                                          <td style={{ padding: '6px 10px', fontSize: '.82rem' }}>{m.hora}</td>
-                                          <td style={{ padding: '6px 10px', fontSize: '.82rem', fontWeight: 700,
-                                            color: ppmOk ? T.secondary : ppmBajo ? T.danger : T.warn }}>{m.ppm} ppm</td>
-                                          <td style={{ padding: '6px 10px', fontSize: '.82rem', fontWeight: 700, color: T.textDark }}>{fmtNum(m.cloroAgregado, 2)} g</td>
-                                          <td style={{ padding: '6px 10px', fontSize: '.78rem', color: T.textMid, fontStyle: m.obs ? 'normal' : 'italic' }}>
-                                            {m.obs || '—'}
-                                          </td>
-                                        </tr>
-                                      );
-                                    })}
-                                  </tbody>
-                                </table>
-                              </div>
-                              <div style={{ marginTop: 10, fontSize: '.82rem', color: T.textMid }}>
-                                Total cloro usado en el turno: <b style={{ color: T.warn }}>{fmtNum(r.totalCloro, 2)} {r.unidadCloro || 'g'}</b>
-                              </div>
+                              {t2u && mediciones.length > 0 && (
+                                <div style={{ overflowX: 'auto' }}>
+                                  <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff', borderRadius: 6 }}>
+                                    <thead>
+                                      <tr style={{ background: T.bgLight }}>
+                                        {['#', 'Hora', 'PPM', `Cloro (${unidadCloro || 'g'})`, 'Obs.'].map(h => (
+                                          <th key={h} style={{ padding: '6px 10px', textAlign: 'left', fontSize: '.7rem',
+                                            fontWeight: 700, color: T.textMid, textTransform: 'uppercase' }}>{h}</th>
+                                        ))}
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {mediciones.map((m, mi) => {
+                                        const ppmOk = m.ppm >= ppmObjetivo * 0.9;
+                                        const ppmBajo = m.ppm < ppmObjetivo * 0.6;
+                                        return (
+                                          <tr key={mi} style={{ borderTop: `1px solid ${T.border}` }}>
+                                            <td style={{ padding: '6px 10px', fontSize: '.82rem', fontWeight: 700, color: mi === 0 ? T.primary : T.textMid }}>
+                                              {mi === 0 ? '1ª' : mi + 1}
+                                            </td>
+                                            <td style={{ padding: '6px 10px', fontSize: '.82rem' }}>{m.hora}</td>
+                                            <td style={{ padding: '6px 10px', fontSize: '.82rem', fontWeight: 700,
+                                              color: ppmOk ? T.secondary : ppmBajo ? T.danger : T.warn }}>{m.ppm} ppm</td>
+                                            <td style={{ padding: '6px 10px', fontSize: '.82rem', fontWeight: 700, color: T.textDark }}>{fmtNum(m.cloroAgregado, 2)} {unidadCloro || 'g'}</td>
+                                            <td style={{ padding: '6px 10px', fontSize: '.78rem', color: T.textMid, fontStyle: m.obs ? 'normal' : 'italic' }}>
+                                              {m.obs || '—'}
+                                            </td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              )}
+                              {totalCloro > 0 && (
+                                <div style={{ marginTop: 10, fontSize: '.82rem', color: T.textMid }}>
+                                  Total cloro usado: <b style={{ color: T.warn }}>{fmtNum(totalCloro, 2)} {unidadCloro || 'g'}</b>
+                                </div>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -635,8 +783,8 @@ function Calculadora() {
     const deficit = obj - actual;
     if (deficit <= 0) return { ok: true, mensaje: 'La concentración actual ya alcanza el objetivo. No hace falta agregar.' };
 
-    const mgNecesarios = deficit * vol;          // mg de cloro activo total
-    const mgPorUnidad  = conc * 10;              // % × 10 = mg por mL (líquido) o mg por g (granular)
+    const mgNecesarios = deficit * vol;
+    const mgPorUnidad  = conc * 10;
     const cantidad     = mgNecesarios / mgPorUnidad;
     const unidad       = tipo === 'liquido' ? 'mL' : 'g';
     const rec          = getRecomendacion(obj);
@@ -680,7 +828,6 @@ function Calculadora() {
         )}
       </div>
 
-      {/* Recomendación rango */}
       {parseFloat(ppmObjetivo) > 0 && (() => {
         const rec = getRecomendacion(parseFloat(ppmObjetivo));
         return (
@@ -691,7 +838,6 @@ function Calculadora() {
         );
       })()}
 
-      {/* Resultado */}
       {calc?.error && (
         <div style={{ padding: 14, borderRadius: 8, background: T.warnBg, color: T.warn, fontWeight: 600, fontSize: '.9rem' }}>
           ⚠ {calc.error}
@@ -721,7 +867,6 @@ function Calculadora() {
         </div>
       )}
 
-      {/* Tabla referencia rápida */}
       <div style={{ marginTop: 22 }}>
         <div style={{ fontSize: '.74rem', fontWeight: 700, color: T.secondary, textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 8 }}>
           Referencia rápida — rangos típicos
