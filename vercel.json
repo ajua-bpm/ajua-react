@@ -1,8 +1,9 @@
 {
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-  "cleanUrls": true,
   "rewrites": [
-    { "source": "/(.*)", "destination": "/index.html" }
+    { "source": "/cotizador-importacion", "destination": "/cotizador-importacion.html" },
+    { "source": "/((?!api/|assets/|cotizador-importacion).*)", "destination": "/index.html" }
   ]
 }
+
