@@ -1,4 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import { getAuth, createUserWithEmailAndPassword, sendPasswordResetEmail, signOut } from 'firebase/auth';
+import { firebaseConfig } from '../../firebase';
 
 const T = {
   forest:'#1F3A2C', canopy:'#2D6645', ochre:'#A8835A', bone:'#F8F3E9',
@@ -7,6 +10,21 @@ const T = {
 };
 
 const FS_BASE = 'https://firestore.googleapis.com/v1/projects/ajuabmp/databases/(default)/documents';
+
+// Instancia Firebase secundaria SOLO para crear usuarios sin desloguear al admin
+function getAuthCreator() {
+  const name = 'authCreator';
+  const exists = getApps().find(a => a.name === name);
+  const app = exists || initializeApp(firebaseConfig, name);
+  return getAuth(app);
+}
+
+function generarClaveTemporal() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  let pwd = '';
+  for (let i = 0; i < 10; i++) pwd += chars[Math.floor(Math.random() * chars.length)];
+  return pwd + '!';
+}
 
 function fsToJs(v) {
   if (!v) return null;
@@ -145,6 +163,60 @@ export default function ActividadProveedores() {
     }).length,
   }), [usuarios, accesos, cambios]);
 
+  // ─── Crear cuenta de productor ─────────────────────────
+  const [crearOpen, setCrearOpen] = useState(false);
+  const [nuevoEmail, setNuevoEmail] = useState('');
+  const [creando, setCreando] = useState(false);
+  const [resultadoCrear, setResultadoCrear] = useState(null); // { email, password, sentReset }
+  const [errorCrear, setErrorCrear] = useState(null);
+
+  const handleCrearCuenta = async () => {
+    const email = (nuevoEmail || '').trim().toLowerCase();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setErrorCrear('Ingresá un email válido.');
+      return;
+    }
+    setCreando(true); setErrorCrear(null); setResultadoCrear(null);
+    try {
+      const password = generarClaveTemporal();
+      const authCreator = getAuthCreator();
+      await createUserWithEmailAndPassword(authCreator, email, password);
+      // Desloguear la instancia secundaria para que no quede sesión colgada
+      await signOut(authCreator);
+      setResultadoCrear({ email, password, sentReset: false });
+      setNuevoEmail('');
+    } catch (e) {
+      const msg = (e.code === 'auth/email-already-in-use') ? 'Ese email ya tiene cuenta. Usá "Reset contraseña" abajo o el botón de Firebase Console.' :
+                  (e.code === 'auth/invalid-email')        ? 'Email inválido.' :
+                  (e.code === 'auth/weak-password')        ? 'Clave débil (algo no esperado, generamos una larga).' :
+                  e.message;
+      setErrorCrear(msg);
+    } finally {
+      setCreando(false);
+    }
+  };
+
+  const handleEnviarReset = async (email) => {
+    try {
+      const authCreator = getAuthCreator();
+      await sendPasswordResetEmail(authCreator, email);
+      setResultadoCrear(prev => prev ? { ...prev, sentReset: true } : prev);
+    } catch (e) {
+      setErrorCrear('No se pudo enviar reset: ' + e.message);
+    }
+  };
+
+  const handleResetCuentaExistente = async (email) => {
+    if (!window.confirm(`Enviar email de reset de contraseña a ${email}?`)) return;
+    try {
+      const authCreator = getAuthCreator();
+      await sendPasswordResetEmail(authCreator, email);
+      alert(`✓ Email de reset enviado a ${email}.\nEl productor recibe link para cambiar su clave.`);
+    } catch (e) {
+      alert('Error: ' + e.message);
+    }
+  };
+
   const TH = { padding:'10px 12px', textAlign:'left', fontSize:'.7rem', fontWeight:700, letterSpacing:'.1em', textTransform:'uppercase', background:T.forest, color:T.white };
   const TD = (i) => ({ padding:'9px 12px', fontSize:'.83rem', background: i%2 ? '#FAFAF7' : T.white, borderBottom:`1px solid ${T.rule}` });
 
@@ -159,11 +231,87 @@ export default function ActividadProveedores() {
             Auditoría de accesos al portal y cambios sobre cotizaciones
           </p>
         </div>
-        <button onClick={cargar} style={{
-          padding:'9px 16px', background:T.white, color:T.ink, border:`1px solid ${T.rule}`,
-          borderRadius:4, fontWeight:600, fontSize:'.8rem', cursor:'pointer',
-        }}>↻ Recargar</button>
+        <div style={{ display:'flex', gap:8 }}>
+          <button onClick={() => { setCrearOpen(v => !v); setResultadoCrear(null); setErrorCrear(null); }} style={{
+            padding:'9px 16px', background:T.forest, color:T.white, border:'none',
+            borderRadius:4, fontWeight:600, fontSize:'.8rem', cursor:'pointer',
+          }}>{crearOpen ? '× Cerrar' : '+ Crear cuenta productor'}</button>
+          <button onClick={cargar} style={{
+            padding:'9px 16px', background:T.white, color:T.ink, border:`1px solid ${T.rule}`,
+            borderRadius:4, fontWeight:600, fontSize:'.8rem', cursor:'pointer',
+          }}>↻ Recargar</button>
+        </div>
       </div>
+
+      {/* Panel crear cuenta */}
+      {crearOpen && (
+        <div style={{ background:T.white, border:`1px solid ${T.rule}`, borderLeft:`4px solid ${T.forest}`, padding:'20px 24px', marginBottom:18 }}>
+          <div style={{ fontFamily:"'Source Serif 4', serif", fontSize:'1.1rem', fontWeight:700, color:T.forest, marginBottom:6 }}>
+            Crear cuenta de productor
+          </div>
+          <div style={{ fontSize:'.82rem', color:T.muted, marginBottom:14 }}>
+            Generamos una clave temporal. Mandala al productor por WhatsApp junto con el link <code style={{ fontSize:'.85em' }}>proveedores.agroajua.com</code>. Él puede cambiarla con "¿Olvidé contraseña?".
+          </div>
+
+          <div style={{ display:'flex', gap:10, alignItems:'stretch', flexWrap:'wrap', marginBottom:12 }}>
+            <input
+              type="email"
+              value={nuevoEmail}
+              onChange={e => { setNuevoEmail(e.target.value); setErrorCrear(null); }}
+              placeholder="email@productor.com"
+              style={{ flex:'1 1 280px', padding:'10px 14px', border:`1px solid ${T.rule}`, borderRadius:3, fontSize:'.92rem', outline:'none', fontFamily:'inherit' }}
+              onKeyDown={e => { if (e.key === 'Enter') handleCrearCuenta(); }}
+              autoFocus
+            />
+            <button onClick={handleCrearCuenta} disabled={creando} style={{
+              padding:'10px 22px', background: creando ? '#999' : T.forest, color:T.white, border:'none',
+              borderRadius:3, fontWeight:600, fontSize:'.86rem', cursor: creando ? 'not-allowed' : 'pointer',
+            }}>{creando ? 'Creando…' : 'Crear cuenta'}</button>
+          </div>
+
+          {errorCrear && (
+            <div style={{ padding:'10px 14px', background:'rgba(198,40,40,.08)', borderLeft:`3px solid ${T.red}`, color:T.red, fontSize:'.85rem', marginTop:6 }}>
+              ✗ {errorCrear}
+            </div>
+          )}
+
+          {resultadoCrear && (
+            <div style={{ padding:'14px 18px', background:'rgba(46,125,50,.08)', borderLeft:`3px solid ${T.green}`, marginTop:6 }}>
+              <div style={{ fontSize:'.86rem', color:T.green, fontWeight:700, marginBottom:8 }}>✓ Cuenta creada</div>
+              <div style={{ display:'grid', gridTemplateColumns:'120px 1fr auto', gap:8, alignItems:'center', fontSize:'.85rem' }}>
+                <span style={{ color:T.muted, fontWeight:600 }}>Email:</span>
+                <code style={{ fontSize:'.92rem', fontFamily:'monospace' }}>{resultadoCrear.email}</code>
+                <span></span>
+                <span style={{ color:T.muted, fontWeight:600 }}>Clave temporal:</span>
+                <code style={{ fontSize:'.95rem', fontFamily:'monospace', fontWeight:700, color:T.ink, padding:'4px 8px', background:T.white, border:`1px solid ${T.rule}`, borderRadius:3 }}>{resultadoCrear.password}</code>
+                <button onClick={() => { navigator.clipboard?.writeText(resultadoCrear.password); }} style={{
+                  padding:'6px 10px', background:T.white, color:T.forest, border:`1px solid ${T.forest}`,
+                  borderRadius:3, fontSize:'.72rem', fontWeight:600, cursor:'pointer',
+                }}>Copiar</button>
+              </div>
+              <div style={{ marginTop:12, paddingTop:10, borderTop:`1px dashed ${T.rule}`, fontSize:'.8rem', color:T.muted, display:'flex', gap:10, flexWrap:'wrap', alignItems:'center' }}>
+                <span>📲 Mensaje sugerido para el productor:</span>
+                <button onClick={() => {
+                  const msg = `Hola! Te creamos tu cuenta en el portal de proveedores AGROAJUA.\n\nLink: https://proveedores.agroajua.com\nEmail: ${resultadoCrear.email}\nClave temporal: ${resultadoCrear.password}\n\nPodés cambiarla con "¿Olvidé contraseña?" después del primer login.`;
+                  navigator.clipboard?.writeText(msg);
+                  alert('✓ Mensaje copiado al portapapeles');
+                }} style={{
+                  padding:'5px 12px', background:T.ochre, color:T.white, border:'none',
+                  borderRadius:3, fontSize:'.72rem', fontWeight:600, cursor:'pointer',
+                }}>Copiar mensaje completo</button>
+                {!resultadoCrear.sentReset ? (
+                  <button onClick={() => handleEnviarReset(resultadoCrear.email)} style={{
+                    padding:'5px 12px', background:T.white, color:T.canopy, border:`1px solid ${T.canopy}`,
+                    borderRadius:3, fontSize:'.72rem', fontWeight:600, cursor:'pointer',
+                  }}>O mandarle email de reset</button>
+                ) : (
+                  <span style={{ color:T.green, fontWeight:600 }}>✓ Email de reset enviado</span>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Stats */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(170px, 1fr))', gap:12, marginBottom:18 }}>
@@ -208,10 +356,11 @@ export default function ActividadProveedores() {
               <th style={TH}>Último acceso</th>
               <th style={TH}>Primer acceso</th>
               <th style={TH}>Navegador · Plataforma</th>
+              <th style={TH}>Acciones</th>
             </tr></thead>
             <tbody>
               {usuarios.length === 0 && (
-                <tr><td colSpan={5} style={{ padding:40, textAlign:'center', color:T.muted, fontStyle:'italic' }}>
+                <tr><td colSpan={6} style={{ padding:40, textAlign:'center', color:T.muted, fontStyle:'italic' }}>
                   Nadie se ha conectado al portal todavía.
                 </td></tr>
               )}
@@ -227,6 +376,12 @@ export default function ActividadProveedores() {
                   <td style={TD(i)}>
                     {navegadorCorto(u.userAgent)} · {plataformaCorta(u.userAgent)}
                     {u.screen && <span style={{ color:T.muted, fontSize:'.74rem' }}> · {u.screen}</span>}
+                  </td>
+                  <td style={TD(i)}>
+                    <button onClick={() => handleResetCuentaExistente(u.email)} style={{
+                      padding:'5px 10px', background:T.white, color:T.canopy, border:`1px solid ${T.canopy}`,
+                      borderRadius:3, fontSize:'.72rem', fontWeight:600, cursor:'pointer',
+                    }}>↻ Reset clave</button>
                   </td>
                 </tr>
               ))}
