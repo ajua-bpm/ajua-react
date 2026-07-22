@@ -85,8 +85,6 @@ const CuentasClientes    = lazy(() => import('./modules/cuentasClientes/CuentasC
 const Pendientes         = lazy(() => import('./modules/pendientes/Pendientes'));
 
 // Sistema
-const Guatecompras       = lazy(() => import('./modules/guatecompras/Guatecompras'));
-const Reportes           = lazy(() => import('./modules/reportes/Reportes'));
 const Admin              = lazy(() => import('./modules/admin/Admin'));
 
 function RequireAuth({ children }) {
@@ -184,8 +182,6 @@ export default function App() {
           <Route path="personal"               element={<Personal />} />
 
           {/* Sistema */}
-          <Route path="guatecompras"           element={<Guatecompras />} />
-          <Route path="reportes"               element={<Reportes />} />
           <Route path="admin"                  element={<RequireAdmin><Admin /></RequireAdmin>} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

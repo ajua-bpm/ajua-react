@@ -57,8 +57,6 @@ const NAV = [
   { section: 'Personal' },
   { to: '/personal',               mod: 'personal',          icon: '👥', label: 'Personal' },
   { section: 'Sistema' },
-  { to: '/guatecompras',           mod: 'guatecompras',      icon: '🏛️', label: 'Guatecompras' },
-  { to: '/reportes',               mod: 'reportes',          icon: '📈', label: 'Reportes' },
   { to: '/admin',                  mod: '_admin',            icon: '⚙️', label: 'Administración' },
 ];
 
