@@ -41,6 +41,7 @@ const NAV = [
   { section: 'Finanzas' },
   { to: '/proyeccion-semanal',     mod: 'proyeccion-semanal', icon: '📊', label: 'Proyección Semanal' },
   { to: '/finanzas',               mod: 'finanzas',          icon: '💰', label: 'Finanzas' },
+  { to: '/finanzas-nuevo',         mod: 'finanzas',          icon: '✨', label: 'Finanzas (nuevo)' },
   { to: '/gastos',                 mod: 'gastos',            icon: '💸', label: 'Gastos' },
   { to: '/cuentas-proveedores',    mod: 'cuentas-proveedores', icon: '🏪', label: 'Cuentas Proveedores' },
   { to: '/cuentas-clientes',       mod: 'cuentas-clientes',    icon: '🛒', label: 'Cuentas Clientes' },

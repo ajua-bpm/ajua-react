@@ -51,12 +51,88 @@ export function AuthProvider({ children }) {
     return r === 'admin' || r === 'superadmin';
   };
 
+  // ─── Permisos granulares del módulo Finanzas ────────────────────
+  // Aditivo: no reemplaza rol/modulos. Devuelve un objeto con todos
+  // los permisos posibles. Fallback inteligente para no romper usuarios
+  // existentes que aún no tienen el campo permisos_finanzas.
+  const getFinanzasPerms = (u) => {
+    const target = u || user;
+    if (!target) return DEFAULT_PERMS_NO_ACCESS;
+    // Admin/superadmin: todo automático
+    if (target.rol === 'admin' || target.rol === 'superadmin') {
+      return DEFAULT_PERMS_ADMIN;
+    }
+    // Si tiene permisos_finanzas explícito, usarlos
+    if (target.permisos_finanzas && typeof target.permisos_finanzas === 'object') {
+      return { ...DEFAULT_PERMS_NO_ACCESS, ...target.permisos_finanzas };
+    }
+    // Sin permisos_finanzas pero con módulo finanzas asignado: defaults seguros
+    const hasFinanzasModulo = (target.modulos || []).includes('finanzas') ||
+                              (target.modulos || []).length === 0; // fallback histórico
+    if (hasFinanzasModulo) return DEFAULT_PERMS_BASIC;
+    return DEFAULT_PERMS_NO_ACCESS;
+  };
+
   return (
-    <AuthContext.Provider value={{ user, login, logout, loading, isAdmin }}>
+    <AuthContext.Provider value={{ user, login, logout, loading, isAdmin, getFinanzasPerms }}>
       {children}
     </AuthContext.Provider>
   );
 }
+
+// Sets de permisos por defecto (constantes)
+const DEFAULT_PERMS_NO_ACCESS = {
+  ver_dashboard: false,
+  ver_movimientos: false,
+  ver_empleados: false,
+  ver_grupos: false,
+  ver_resultados: false,
+  admin_usuarios_finanzas: false,
+  cargar_pagos: false,
+  cargar_cobros: false,
+  cargar_gastos_op: false,
+  cargar_sueldos: false,
+  marcar_pagado: false,
+  anular: false,
+  aprobar_pendientes: false,
+  aprobar_hasta: 0,
+  exportar: false,
+  tope_gastos_op: 0,
+  historial_dias: 0,
+  hide_utility: true,
+  hide_sueldos: true,
+};
+
+const DEFAULT_PERMS_BASIC = {
+  ...DEFAULT_PERMS_NO_ACCESS,
+  ver_dashboard: true,
+  ver_movimientos: true,
+  cargar_pagos: true,
+  cargar_cobros: true,
+  marcar_pagado: true,
+};
+
+const DEFAULT_PERMS_ADMIN = {
+  ver_dashboard: true,
+  ver_movimientos: true,
+  ver_empleados: true,
+  ver_grupos: true,
+  ver_resultados: true,
+  admin_usuarios_finanzas: true,
+  cargar_pagos: true,
+  cargar_cobros: true,
+  cargar_gastos_op: true,
+  cargar_sueldos: true,
+  marcar_pagado: true,
+  anular: true,
+  aprobar_pendientes: true,
+  aprobar_hasta: Infinity,
+  exportar: true,
+  tope_gastos_op: Infinity,
+  historial_dias: 0, // 0 = todo el historial
+  hide_utility: false,
+  hide_sueldos: false,
+};
 
 export function useAuth() {
   return useContext(AuthContext);

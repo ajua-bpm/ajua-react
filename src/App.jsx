@@ -61,6 +61,12 @@ const ProyeccionSemanal  = lazy(() => import('./modules/proyeccion/ProyeccionSem
 const GastosUnificado    = lazy(() => import('./modules/gastos/GastosUnificado'));
 const AnticiposMX        = lazy(() => import('./modules/finanzas/AnticiposMX'));
 const FinanzasModule     = lazy(() => import('./modules/finanzas/Finanzas'));
+
+// Finanzas nuevo (unificado) — corre en paralelo al viejo hasta validar
+const FinanzasNuevoLayout   = lazy(() => import('./modules/finanzas/FinanzasLayout'));
+const FinanzasDashboard     = lazy(() => import('./modules/finanzas/FinanzasDashboard'));
+const FinanzasMovimientos   = lazy(() => import('./modules/finanzas/FinanzasMovimientos'));
+const FinanzasPlaceholder   = lazy(() => import('./modules/finanzas/FinanzasPlaceholder'));
 const CotizadorRapido       = lazy(() => import('./modules/cotizador/CotizadorRapido'));
 const CotizadorLista        = lazy(() => import('./modules/cotizador/CotizadorLista'));
 const CotizadorNuevo        = lazy(() => import('./modules/cotizador/CotizadorNuevo'));
@@ -156,6 +162,16 @@ export default function App() {
           {/* Finanzas */}
           <Route path="proyeccion-semanal"     element={<ProyeccionSemanal />} />
           <Route path="finanzas"               element={<FinanzasModule />} />
+
+          {/* Finanzas nuevo (unificado) — en paralelo, aún en pruebas */}
+          <Route path="finanzas-nuevo"         element={<FinanzasNuevoLayout />}>
+            <Route index                          element={<FinanzasDashboard />} />
+            <Route path="movimientos"             element={<FinanzasMovimientos />} />
+            <Route path="empleados"               element={<FinanzasPlaceholder titulo="Empleados" subtitulo="Traer empleados de Control Acceso y Lavado" icono="👥" />} />
+            <Route path="grupos"                  element={<FinanzasPlaceholder titulo="Grupos importación" subtitulo="Agrupar gastos por contenedor para rentabilidad" icono="📦" />} />
+            <Route path="resultados"              element={<FinanzasPlaceholder titulo="Estado de resultados" subtitulo="Utilidad neta por período, producto y cliente" icono="📈" />} />
+            <Route path="usuarios"                element={<FinanzasPlaceholder titulo="Usuarios y permisos" subtitulo="Configurar permisos granulares por usuario" icono="🔐" />} />
+          </Route>
           <Route path="gastos"                 element={<GastosUnificado />} />
           <Route path="gastos/semanales"       element={<Navigate to="/gastos" replace />} />
           <Route path="maquila"                element={<Navigate to="/gastos" replace />} />
