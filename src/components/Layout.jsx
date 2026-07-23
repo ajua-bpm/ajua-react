@@ -3,7 +3,7 @@ import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useNotifications } from '../hooks/useNotifications';
 import { useCollection } from '../hooks/useFirestore';
-import { AREAS, SECTION_AREA, areaById } from '../areas';
+import { SECTION_AREA, areaById } from '../areas';
 import IngieMari from './asistente/IngieMari';
 
 const NAV = [
@@ -188,30 +188,19 @@ export default function Layout() {
           )}
         </div>
 
-        {/* Selector de área */}
-        <div style={{ padding: '12px 14px 8px', borderBottom: '1px solid rgba(255,255,255,.08)' }}>
-          <div style={{ display: 'flex', gap: 5, marginBottom: 8 }}>
-            {AREAS.map(a => {
-              const on = a.id === activeArea;
-              return (
-                <button key={a.id} onClick={() => navigate(a.home)} title={a.label} style={{
-                  flex: 1, padding: '7px 4px', borderRadius: 5, cursor: 'pointer',
-                  border: `1px solid ${on ? 'rgba(168,131,90,.7)' : 'rgba(255,255,255,.10)'}`,
-                  background: on ? 'rgba(168,131,90,.18)' : 'transparent',
-                  color: on ? '#fff' : 'rgba(255,255,255,.45)',
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, fontFamily: 'inherit',
-                }}>
-                  <span style={{ fontSize: '1.05rem' }}>{a.icon}</span>
-                  <span style={{ fontSize: '8px', fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase' }}>{a.label}</span>
-                </button>
-              );
-            })}
-          </div>
+        {/* Área activa */}
+        <div style={{ padding: '13px 18px 12px', borderBottom: '1px solid rgba(255,255,255,.08)' }}>
           <button onClick={() => navigate('/areas')} style={{
-            width: '100%', padding: '5px', background: 'transparent', border: 'none',
-            color: 'rgba(255,255,255,.35)', fontSize: '10px', fontWeight: 600, letterSpacing: '.08em',
-            textTransform: 'uppercase', cursor: 'pointer', fontFamily: 'inherit',
-          }}>◄ Todas las áreas</button>
+            background: 'none', border: 'none', padding: 0, marginBottom: 8, cursor: 'pointer', fontFamily: 'inherit',
+            color: 'rgba(255,255,255,.4)', fontSize: '10px', fontWeight: 600, letterSpacing: '.1em', textTransform: 'uppercase',
+            display: 'flex', alignItems: 'center', gap: 5,
+          }}>
+            <span style={{ fontSize: '12px' }}>←</span> Áreas
+          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+            <span style={{ fontSize: '1.1rem' }}>{area.icon}</span>
+            <span style={{ fontFamily: 'var(--font-heading, serif)', fontSize: '1.02rem', fontWeight: 700, color: '#fff', letterSpacing: '.01em' }}>{area.label}</span>
+          </div>
         </div>
 
         {/* Nav items */}
