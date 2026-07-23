@@ -1,8 +1,9 @@
 import { useState, useMemo } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useNotifications } from '../hooks/useNotifications';
 import { useCollection } from '../hooks/useFirestore';
+import { AREAS, SECTION_AREA, areaById } from '../areas';
 import IngieMari from './asistente/IngieMari';
 
 const NAV = [
@@ -39,8 +40,7 @@ const NAV = [
   { section: 'Equipo' },
   { to: '/pendientes',             mod: 'pendientes',        icon: '✅', label: 'Pendientes Equipo' },
 
-  // ═══ CUMPLIMIENTO — BPM, inocuidad, sanitario (separado de lo administrativo) ═══
-  { divider: 'Cumplimiento · BPM' },
+  // ═══ CUMPLIMIENTO — BPM, inocuidad, sanitario ═══
   { section: 'Transporte' },
   { to: '/bpm/tl',                 mod: 'tl',                icon: '🚛', label: 'Limpieza Transporte' },
   { to: '/bpm/dt',                 mod: 'dt',                icon: '📋', label: 'Despacho' },
@@ -81,10 +81,38 @@ function canSee(user, mod) {
 const today = () => new Date().toISOString().slice(0, 10);
 const weekStart = () => { const d = new Date(); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d.toISOString().slice(0, 10); };
 
+// A qué área pertenece una ruta (match exacto o por prefijo más largo)
+function areaForPath(pathname) {
+  let curArea = 'admin', best = null, bestLen = -1;
+  for (const item of NAV) {
+    if (item.section) { curArea = SECTION_AREA[item.section] || 'admin'; continue; }
+    if (!item.to) continue;
+    if (pathname === item.to || pathname.startsWith(item.to + '/')) {
+      if (item.to.length > bestLen) { bestLen = item.to.length; best = curArea; }
+    }
+  }
+  return best;
+}
+
+// Items del menú de un área (mantiene headers de sección + sus items)
+function navForArea(area) {
+  const out = [];
+  let curArea = 'admin';
+  for (const item of NAV) {
+    if (item.section) { curArea = SECTION_AREA[item.section] || 'admin'; if (curArea === area) out.push(item); continue; }
+    if (curArea === area) out.push(item);
+  }
+  return out;
+}
+
 export default function Layout() {
   const [open, setOpen] = useState(false);
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const activeArea = areaForPath(location.pathname) || 'admin';
+  const area = areaById(activeArea);
+  const navItems = navForArea(activeArea);
   const { permission, supported, requestPermission } = useNotifications();
 
   // Badge: pedidos Walmart pendientes de esta semana en adelante
@@ -160,37 +188,38 @@ export default function Layout() {
           )}
         </div>
 
+        {/* Selector de área */}
+        <div style={{ padding: '12px 14px 8px', borderBottom: '1px solid rgba(255,255,255,.08)' }}>
+          <div style={{ display: 'flex', gap: 5, marginBottom: 8 }}>
+            {AREAS.map(a => {
+              const on = a.id === activeArea;
+              return (
+                <button key={a.id} onClick={() => navigate(a.home)} title={a.label} style={{
+                  flex: 1, padding: '7px 4px', borderRadius: 5, cursor: 'pointer',
+                  border: `1px solid ${on ? 'rgba(168,131,90,.7)' : 'rgba(255,255,255,.10)'}`,
+                  background: on ? 'rgba(168,131,90,.18)' : 'transparent',
+                  color: on ? '#fff' : 'rgba(255,255,255,.45)',
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, fontFamily: 'inherit',
+                }}>
+                  <span style={{ fontSize: '1.05rem' }}>{a.icon}</span>
+                  <span style={{ fontSize: '8px', fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase' }}>{a.label}</span>
+                </button>
+              );
+            })}
+          </div>
+          <button onClick={() => navigate('/areas')} style={{
+            width: '100%', padding: '5px', background: 'transparent', border: 'none',
+            color: 'rgba(255,255,255,.35)', fontSize: '10px', fontWeight: 600, letterSpacing: '.08em',
+            textTransform: 'uppercase', cursor: 'pointer', fontFamily: 'inherit',
+          }}>◄ Todas las áreas</button>
+        </div>
+
         {/* Nav items */}
         <div style={{ flex: 1, padding: '8px 0 16px' }}>
-          {NAV.map((item, i) => {
-            if (item.divider) {
-              // Visible solo si hay algún item navegable después (hasta el próximo divisor)
-              const rest = NAV.slice(i + 1);
-              const nd = rest.findIndex(n => n.divider);
-              const block = nd === -1 ? rest : rest.slice(0, nd);
-              if (!block.some(n => n.to && canSee(user, n.mod))) return null;
-              return (
-                <div key={i} style={{
-                  margin: '18px 20px 4px',
-                  paddingTop: 14,
-                  borderTop: '1px solid rgba(255,255,255,.10)',
-                  fontSize: '9.5px',
-                  fontWeight: 700,
-                  color: 'rgba(168,131,90,.95)',
-                  letterSpacing: '.16em',
-                  textTransform: 'uppercase',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 7,
-                }}>
-                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'rgba(168,131,90,.9)', flexShrink: 0 }} />
-                  {item.divider}
-                </div>
-              );
-            }
+          {navItems.map((item, i) => {
             if (item.section) {
-              const nextSection = NAV.slice(i + 1).findIndex(n => n.section);
-              const sectionItems = nextSection === -1 ? NAV.slice(i + 1) : NAV.slice(i + 1, i + 1 + nextSection);
+              const nextSection = navItems.slice(i + 1).findIndex(n => n.section);
+              const sectionItems = nextSection === -1 ? navItems.slice(i + 1) : navItems.slice(i + 1, i + 1 + nextSection);
               const sectionVisible = sectionItems.some(n => canSee(user, n.mod));
               if (!sectionVisible) return null;
               return (

@@ -19,6 +19,7 @@ class ErrorBoundary extends Component {
 }
 import { useAuth } from './hooks/useAuth';
 import Layout from './components/Layout';
+import AreaSelector from './components/AreaSelector';
 import Login from './modules/auth/Login';
 import LoadingSpinner from './components/LoadingSpinner';
 
@@ -121,12 +122,17 @@ export default function App() {
       <Suspense fallback={<LoadingSpinner />}>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/areas" element={
+          <RequireAuth>
+            <AreaSelector />
+          </RequireAuth>
+        } />
         <Route path="/" element={
           <RequireAuth>
             <Layout />
           </RequireAuth>
         }>
-          <Route index element={<Navigate to="/dashboard" replace />} />
+          <Route index element={<Navigate to="/areas" replace />} />
           <Route path="dashboard"              element={<Dashboard />} />
 
           {/* BPM Transporte */}

@@ -16,7 +16,7 @@ export default function Login() {
     setLoading(true);
     try {
       const ok = await login(email.trim(), pass);
-      if (ok) navigate('/dashboard', { replace: true });
+      if (ok) navigate('/areas', { replace: true });
       else setError('Usuario o contraseña incorrectos');
     } catch (err) {
       setError('Error de conexión: ' + (err.message || 'intenta de nuevo'));
