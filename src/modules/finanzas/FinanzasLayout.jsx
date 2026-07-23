@@ -14,6 +14,8 @@ const T = {
 const ITEMS = [
   { to: '/finanzas-nuevo',              perm: 'ver_dashboard',   icon: '📊', label: 'Dashboard',       end: true },
   { to: '/finanzas-nuevo/movimientos',  perm: 'ver_movimientos', icon: '💸', label: 'Movimientos' },
+  { to: '/finanzas-nuevo/proveedores',  perm: 'ver_movimientos', icon: '🏪', label: 'Cta. Proveedores' },
+  { to: '/finanzas-nuevo/clientes',     perm: 'ver_movimientos', icon: '🛒', label: 'Cta. Clientes' },
   { to: '/finanzas-nuevo/empleados',    perm: 'ver_empleados',   icon: '👥', label: 'Empleados' },
   { to: '/finanzas-nuevo/grupos',       perm: 'ver_grupos',      icon: '📦', label: 'Grupos importación' },
   { to: '/finanzas-nuevo/resultados',   perm: 'ver_resultados',  icon: '📈', label: 'Estado resultados' },

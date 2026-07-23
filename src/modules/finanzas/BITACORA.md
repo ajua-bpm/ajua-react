@@ -21,7 +21,20 @@ PnL, FEL, Walmart, Importadores) que sigue **INTACTO**. En el menú aparecen los
 | `f6ec4de` | 2B | Empleados — CxP personal desde AL |
 | `fa7e26d` | 2C | Grupos importación — rentabilidad por contenedor |
 | `6c2f32a` | 3  | CRUD completo (ver/editar/anular) + export Excel |
-| `(fase 4)` | 4  | **Ruteo a estados de cuenta reales + pantalla única de registro** |
+| `932632a` | 4  | Ruteo a estados de cuenta reales + pantalla única de registro |
+| `(fase 5)` | 5  | **Estados de cuenta embebidos en el hub (Proveedores + Clientes)** |
+
+---
+
+## Fase 5 — Estados de cuenta embebidos (2026-07-23)
+
+Cierra la pregunta de Ricardo "¿dónde veré los estados de cuenta?": ahora se ven DENTRO del hub.
+- `FinanzasProveedores.jsx` — selector proveedor + saldo (comprado/rechazos/pagado/saldo) + movimientos con saldo acumulado. **Reusa `useCuentaProveedor`** (misma lógica probada de Cuentas Proveedores).
+- `FinanzasClientes.jsx` — selector cliente + CxC (vendido/notas/cobrado/saldo) + movimientos. **Reusa `useCuentaCliente`**.
+- Nav: nuevos items "Cta. Proveedores" y "Cta. Clientes" (gateados por `ver_movimientos`).
+- Cada página linkea al módulo viejo completo (↗) para operaciones avanzadas.
+- Read-only: para registrar se usa Movimientos → Registrar (que ya rutea a estas colecciones).
+- Empleados (anticipos) ya tenía su página (CxP desde AL); su estado de cuenta de anticipos queda pendiente de sumar.
 
 ---
 
