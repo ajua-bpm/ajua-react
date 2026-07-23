@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react';
+import * as XLSX from 'xlsx';
 import { useCollection, useWrite } from '../../hooks/useFirestore';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../components/Toast';
 import ModalNuevoPago from './modals/ModalNuevoPago';
 import ModalNuevoCobro from './modals/ModalNuevoCobro';
 import ModalNuevoGastoOp from './modals/ModalNuevoGastoOp';
+import ModalDetalleMovimiento from './modals/ModalDetalleMovimiento';
 
 const T = {
   bg: '#F8F3E9', paper: '#FFFFFF', ink: '#1A1A18', forest: '#1F3A2C',
@@ -42,6 +44,7 @@ export default function FinanzasMovimientos() {
   const [filEstado, setFilEstado] = useState('');
   const [search, setSearch] = useState('');
   const [modal, setModal] = useState(null);
+  const [detalle, setDetalle] = useState(null);
 
   // Modo supervisor = solo puede cargar gastos operativos
   const modoSupervisor = perms.cargar_gastos_op && !perms.cargar_pagos && !perms.cargar_cobros;
@@ -77,6 +80,22 @@ export default function FinanzasMovimientos() {
     } catch (e) { toast('Error: ' + e.message, 'error'); }
   };
 
+  const exportar = () => {
+    if (filtrados.length === 0) { toast('No hay movimientos para exportar', 'error'); return; }
+    const header = ['Fecha', 'Tipo', 'Categoría', 'Sub-categoría', 'Concepto', 'Proveedor/Cliente', 'Monto', 'Moneda', 'Forma', 'Estado'];
+    const rows = filtrados.map(m => [
+      m.fecha || '', m.tipo || '', CAT_LABELS[m.categoria] || '', m.subcategoria || '',
+      m.concepto || '', m.proveedor || m.cliente || '',
+      parseFloat(m.monto) || 0, m.moneda || 'GTQ', m.forma_pago || '', m.estado || '',
+    ]);
+    const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
+    ws['!cols'] = [12, 10, 18, 20, 30, 22, 12, 8, 14, 12].map(w => ({ wch: w }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Movimientos');
+    XLSX.writeFile(wb, `movimientos_finanzas_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    toast(`✓ ${rows.length} movimientos exportados`);
+  };
+
   return (
     <div>
       <div style={{ fontSize: '.82rem', color: T.muted, marginBottom: 4 }}>Finanzas · Movimientos</div>
@@ -90,7 +109,7 @@ export default function FinanzasMovimientos() {
       </div>
 
       {/* Botones de acción según permisos */}
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 18 }}>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 18, alignItems: 'center' }}>
         {perms.cargar_pagos && (
           <button className="btn" onClick={() => setModal('pago')} style={btnPrimary}>+ Nuevo pago</button>
         )}
@@ -99,6 +118,10 @@ export default function FinanzasMovimientos() {
         )}
         {perms.cargar_gastos_op && (
           <button className="btn" onClick={() => setModal('gasto_op')} style={btnOchre}>+ Nuevo gasto operativo</button>
+        )}
+        <div style={{ flex: 1 }} />
+        {perms.exportar && (
+          <button onClick={exportar} style={btnExport}>⬇ Exportar Excel</button>
         )}
       </div>
 
@@ -163,14 +186,14 @@ export default function FinanzasMovimientos() {
               <td style={tdStyle}>{m.forma_pago || '—'}</td>
               <td style={tdStyle}>{renderEstado(m)}</td>
               <td style={tdStyle}>
-                {(m.estado === 'pendiente' || m.estado === 'pendiente_aprobacion') && perms.marcar_pagado && (
-                  <button onClick={() => marcarPagado(m)} style={btnMiniOk}>
-                    Marcar {m.tipo === 'cobro' ? 'cobrado' : 'pagado'}
-                  </button>
-                )}
-                {(m.estado === 'pagado' || m.estado === 'cobrado' || m.estado === 'cargado') && (
-                  <button style={btnMini}>Ver</button>
-                )}
+                <div style={{ display: 'flex', gap: 5 }}>
+                  {(m.estado === 'pendiente' || m.estado === 'pendiente_aprobacion') && perms.marcar_pagado && (
+                    <button onClick={() => marcarPagado(m)} style={btnMiniOk}>
+                      Marcar {m.tipo === 'cobro' ? 'cobrado' : 'pagado'}
+                    </button>
+                  )}
+                  <button onClick={() => setDetalle(m)} style={btnMini}>Ver</button>
+                </div>
               </td>
             </tr>
           ))}
@@ -180,6 +203,7 @@ export default function FinanzasMovimientos() {
       {modal === 'pago' && <ModalNuevoPago onClose={() => setModal(null)} />}
       {modal === 'cobro' && <ModalNuevoCobro onClose={() => setModal(null)} />}
       {modal === 'gasto_op' && <ModalNuevoGastoOp onClose={() => setModal(null)} perms={perms} />}
+      {detalle && <ModalDetalleMovimiento mov={detalle} onClose={() => setDetalle(null)} />}
     </div>
   );
 }
@@ -199,6 +223,7 @@ function renderEstado(m) {
 
 const btnPrimary = { padding: '9px 16px', borderRadius: 3, fontWeight: 600, fontSize: '.82rem', cursor: 'pointer', border: `1.5px solid ${T.forest}`, background: T.forest, color: 'white' };
 const btnOchre = { ...btnPrimary, background: T.ochre, borderColor: T.ochre };
+const btnExport = { padding: '8px 14px', borderRadius: 3, fontWeight: 600, fontSize: '.8rem', cursor: 'pointer', border: `1.5px solid ${T.canopy}`, background: 'white', color: T.canopy };
 const btnMini = { padding: '3px 8px', border: `1px solid ${T.rule}`, background: 'white', borderRadius: 3, cursor: 'pointer', fontSize: '.72rem', fontWeight: 600, color: T.forest };
 const btnMiniOk = { ...btnMini, borderColor: T.canopy, color: T.canopy };
 const selectStyle = { padding: '6px 10px', border: `1px solid ${T.rule}`, borderRadius: 3, fontSize: '.82rem', background: 'white' };
