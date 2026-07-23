@@ -26,6 +26,27 @@ PnL, FEL, Walmart, Importadores) que sigue **INTACTO**. En el menú aparecen los
 
 ---
 
+## Fase 6 — Navegación por áreas + Ventas por XML/FEL (2026-07-23)
+
+**Navegación (3 áreas):** Ricardo no quería un sidebar largo con divisor, sino pantalla de entrada
+con botones grandes. `AreaSelector.jsx` (/areas): 3 botones — Administración, Operación, Cumplimiento.
+`areas.js` config (AREAS + SECTION_AREA). `Layout.jsx` deriva el área activa de la ruta y filtra el
+menú a esa área + switcher de 3 iconos arriba. Login y / → /areas.
+
+**Ventas por FEL (XML):** `FinanzasVentas.jsx` (nav "Ventas (FEL)", perm cargar_cobros). Sube XML de
+facturas EMITIDAS → auto-matchea cliente por NIT (o nombre como fallback), lo crea si no existe →
+guarda como despacho en `cuentasClientes` (CxC). `felParser.js` = parser FEL compartido.
+Revisado por guardian-datos, fixes aplicados:
+- **Idempotencia**: id del despacho = `fel_<uuid>` (setDoc) → re-subir el mismo XML NO duplica.
+- Bloquea carga mientras clientes/cxCli.loading (si no, dedup vacío duplicaba todo).
+- Consumidor Final (sin NIT) → un solo cliente, no uno por factura.
+- Match por nombre como fallback (clientes sin RTU).
+- Crea cliente solo con `rtu` (sin campo `nit` fantasma, homologado al schema de Admin).
+Walmart (isalidas) queda como su propio flujo, NO se toca (decisión de Ricardo).
+Venta manual (ModalRegistrar → Venta) sigue como respaldo.
+
+---
+
 ## Fase 5 — Estados de cuenta embebidos (2026-07-23)
 
 Cierra la pregunta de Ricardo "¿dónde veré los estados de cuenta?": ahora se ven DENTRO del hub.
