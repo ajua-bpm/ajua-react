@@ -69,6 +69,7 @@ const FinanzasMovimientos   = lazy(() => import('./modules/finanzas/FinanzasMovi
 const FinanzasPlaceholder   = lazy(() => import('./modules/finanzas/FinanzasPlaceholder'));
 const FinanzasUsuarios      = lazy(() => import('./modules/finanzas/FinanzasUsuarios'));
 const FinanzasResultados    = lazy(() => import('./modules/finanzas/FinanzasResultados'));
+const FinanzasEmpleados     = lazy(() => import('./modules/finanzas/FinanzasEmpleados'));
 const CotizadorRapido       = lazy(() => import('./modules/cotizador/CotizadorRapido'));
 const CotizadorLista        = lazy(() => import('./modules/cotizador/CotizadorLista'));
 const CotizadorNuevo        = lazy(() => import('./modules/cotizador/CotizadorNuevo'));
@@ -169,7 +170,7 @@ export default function App() {
           <Route path="finanzas-nuevo"         element={<FinanzasNuevoLayout />}>
             <Route index                          element={<FinanzasDashboard />} />
             <Route path="movimientos"             element={<FinanzasMovimientos />} />
-            <Route path="empleados"               element={<FinanzasPlaceholder titulo="Empleados" subtitulo="Traer empleados de Control Acceso y Lavado" icono="👥" />} />
+            <Route path="empleados"               element={<FinanzasEmpleados />} />
             <Route path="grupos"                  element={<FinanzasPlaceholder titulo="Grupos importación" subtitulo="Agrupar gastos por contenedor para rentabilidad" icono="📦" />} />
             <Route path="resultados"              element={<FinanzasResultados />} />
             <Route path="usuarios"                element={<FinanzasUsuarios />} />
