@@ -12,15 +12,16 @@ const T = {
 };
 
 const ITEMS = [
-  { to: '/finanzas-nuevo',              perm: 'ver_dashboard',   icon: '📊', label: 'Dashboard',       end: true },
-  { to: '/finanzas-nuevo/movimientos',  perm: 'ver_movimientos', icon: '💸', label: 'Movimientos' },
-  { to: '/finanzas-nuevo/ventas',       perm: 'cargar_cobros',   icon: '🧾', label: 'Ventas (FEL)' },
-  { to: '/finanzas-nuevo/proveedores',  perm: 'ver_movimientos', icon: '🏪', label: 'Cta. Proveedores' },
-  { to: '/finanzas-nuevo/clientes',     perm: 'ver_movimientos', icon: '🛒', label: 'Cta. Clientes' },
-  { to: '/finanzas-nuevo/empleados',    perm: 'ver_empleados',   icon: '👥', label: 'Empleados' },
-  { to: '/finanzas-nuevo/grupos',       perm: 'ver_grupos',      icon: '📦', label: 'Grupos importación' },
-  { to: '/finanzas-nuevo/resultados',   perm: 'ver_resultados',  icon: '📈', label: 'Estado resultados' },
-  { to: '/finanzas-nuevo/usuarios',     perm: 'admin_usuarios_finanzas', icon: '🔐', label: 'Usuarios y permisos' },
+  { to: '/finanzas',              perm: 'ver_dashboard',   icon: '📊', label: 'Dashboard',       end: true },
+  { to: '/finanzas/movimientos',  perm: 'ver_movimientos', icon: '💸', label: 'Movimientos' },
+  { to: '/finanzas/ventas',       perm: 'cargar_cobros',   icon: '🧾', label: 'Ventas (FEL)' },
+  { to: '/finanzas/proveedores',  perm: 'ver_movimientos', icon: '🏪', label: 'Cta. Proveedores' },
+  { to: '/finanzas/clientes',     perm: 'ver_movimientos', icon: '🛒', label: 'Cta. Clientes' },
+  { to: '/finanzas/empleados',    perm: 'ver_empleados',   icon: '👥', label: 'Empleados' },
+  { to: '/finanzas/grupos',       perm: 'ver_grupos',      icon: '📦', label: 'Grupos importación' },
+  { to: '/finanzas/resultados',   perm: 'ver_resultados',  icon: '📈', label: 'Estado resultados' },
+  { to: '/finanzas/bancos',       perm: 'ver_resultados',  icon: '🏦', label: 'Bancos y P&L' },
+  { to: '/finanzas/usuarios',     perm: 'admin_usuarios_finanzas', icon: '🔐', label: 'Usuarios y permisos' },
 ];
 
 export default function FinanzasLayout() {

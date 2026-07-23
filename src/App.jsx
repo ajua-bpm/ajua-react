@@ -1,5 +1,11 @@
 import { lazy, Suspense, Component } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+
+// Redirect que preserva la sub-ruta: /finanzas-nuevo/x → /finanzas/x
+function RedirectFinanzasNuevo() {
+  const loc = useLocation();
+  return <Navigate to={loc.pathname.replace('/finanzas-nuevo', '/finanzas') + loc.search} replace />;
+}
 
 class ErrorBoundary extends Component {
   state = { error: null };
@@ -172,12 +178,9 @@ export default function App() {
           <Route path="ventas/int"             element={<VentasInt />} />
           <Route path="walmart"                element={<Walmart />} />
 
-          {/* Finanzas */}
+          {/* Finanzas — hub unificado (absorbe el módulo viejo como sub-página "bancos") */}
           <Route path="proyeccion-semanal"     element={<ProyeccionSemanal />} />
-          <Route path="finanzas"               element={<FinanzasModule />} />
-
-          {/* Finanzas nuevo (unificado) — en paralelo, aún en pruebas */}
-          <Route path="finanzas-nuevo"         element={<FinanzasNuevoLayout />}>
+          <Route path="finanzas"               element={<FinanzasNuevoLayout />}>
             <Route index                          element={<FinanzasDashboard />} />
             <Route path="movimientos"             element={<FinanzasMovimientos />} />
             <Route path="ventas"                  element={<FinanzasVentas />} />
@@ -186,8 +189,12 @@ export default function App() {
             <Route path="empleados"               element={<FinanzasEmpleados />} />
             <Route path="grupos"                  element={<FinanzasGrupos />} />
             <Route path="resultados"              element={<FinanzasResultados />} />
+            <Route path="bancos"                  element={<FinanzasModule />} />
             <Route path="usuarios"                element={<FinanzasUsuarios />} />
           </Route>
+          {/* Redirects de las rutas viejas → hub unificado (preserva sub-ruta) */}
+          <Route path="finanzas-nuevo"         element={<Navigate to="/finanzas" replace />} />
+          <Route path="finanzas-nuevo/*"       element={<RedirectFinanzasNuevo />} />
           <Route path="gastos"                 element={<GastosUnificado />} />
           <Route path="gastos/semanales"       element={<Navigate to="/gastos" replace />} />
           <Route path="maquila"                element={<Navigate to="/gastos" replace />} />

@@ -12,13 +12,12 @@ const NAV = [
 
   // ═══ ADMINISTRACIÓN — dinero, cuentas, personal ═══
   { section: 'Finanzas' },
-  { to: '/finanzas-nuevo',         mod: 'finanzas',          icon: '✨', label: 'Finanzas' },
+  { to: '/finanzas',               mod: 'finanzas',          icon: '✨', label: 'Finanzas' },
   { to: '/cuentas-proveedores',    mod: 'cuentas-proveedores', icon: '🏪', label: 'Cuentas Proveedores' },
   { to: '/cuentas-clientes',       mod: 'cuentas-clientes',    icon: '🛒', label: 'Cuentas Clientes' },
   { to: '/gastos',                 mod: 'gastos',            icon: '💸', label: 'Gastos' },
   { to: '/anticipos',              mod: 'anticipos',         icon: '💵', label: 'Anticipos MX' },
   { to: '/personal',               mod: 'personal',          icon: '👥', label: 'Personal / Nómina' },
-  { to: '/finanzas',               mod: 'finanzas',          icon: '🏦', label: 'Bancos y P&L' },
 
   { section: 'Comercial' },
   { to: '/proyeccion-semanal',     mod: 'proyeccion-semanal', icon: '📊', label: 'Proyección Semanal' },

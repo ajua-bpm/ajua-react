@@ -26,6 +26,22 @@ PnL, FEL, Walmart, Importadores) que sigue **INTACTO**. En el menú aparecen los
 
 ---
 
+## Fase B — Absorción del módulo viejo + un solo Finanzas (2026-07-23)
+
+El `/finanzas` viejo (Clasificador banco, PnL, FEL, Walmart, Importadores) se **absorbe dentro del hub**
+reusando el componente tal cual (no se reescribe):
+- Ruta hub renombrada: `/finanzas-nuevo` → **`/finanzas`** (un solo Finanzas). Sub-rutas: movimientos,
+  ventas, proveedores, clientes, empleados, grupos, resultados, **bancos**, usuarios.
+- El módulo viejo (`Finanzas.jsx` = `FinanzasModule`) se monta en `/finanzas/bancos`, nav "🏦 Bancos y P&L".
+- Menú principal: se quita el item duplicado "Bancos y P&L"; "✨ Finanzas" apunta a `/finanzas`.
+- Redirects: `/finanzas-nuevo` y `/finanzas-nuevo/*` → `/finanzas` (preserva sub-ruta con `RedirectFinanzasNuevo`).
+- "Bancos y P&L" gateado por `ver_resultados` (muestra utilidad/P&L, misma sensibilidad que Estado de resultados).
+  Nota: el módulo viejo NO respeta los permisos granulares internamente (muestra P&L a quien llega); si se
+  necesita, agregar flag `ver_bancos` dedicado más adelante.
+Revisado por code-reviewer: APROBADO, sin bloqueantes/mayores. areaForPath resuelve `/finanzas/*` → admin sin falso-match.
+
+---
+
 ## Fase 6 — Navegación por áreas + Ventas por XML/FEL (2026-07-23)
 
 **Navegación (3 áreas):** Ricardo no quería un sidebar largo con divisor, sino pantalla de entrada
