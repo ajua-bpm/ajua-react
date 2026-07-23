@@ -21,6 +21,54 @@ PnL, FEL, Walmart, Importadores) que sigue **INTACTO**. En el menú aparecen los
 | `f6ec4de` | 2B | Empleados — CxP personal desde AL |
 | `fa7e26d` | 2C | Grupos importación — rentabilidad por contenedor |
 | `6c2f32a` | 3  | CRUD completo (ver/editar/anular) + export Excel |
+| `(fase 4)` | 4  | **Ruteo a estados de cuenta reales + pantalla única de registro** |
+
+---
+
+## Fase 4 — Ruteo a estados de cuenta (2026-07-23) ⭐ CAMBIO IMPORTANTE
+
+Ricardo pidió: **una sola pantalla** donde el que ayuda registra pagos/cobros/ventas, y que cada
+cosa caiga en el **estado de cuenta REAL que ya existe** (no una lista plana duplicada). Un pago a
+proveedor debe salir en Cuentas Proveedores; empleados con pago/abono; separar todo de BPM.
+
+### Mapa de ruteo (ModalRegistrar.jsx → colección real)
+| Registrás | Colección destino | Schema clave | Estado de cuenta que alimenta |
+|-----------|-------------------|--------------|-------------------------------|
+| Pago proveedor | `cuentasProveedores` | `{tipo:'pago', proveedorId, monto, metodoPago, descripcion}` | baja saldo del proveedor |
+| Pago/anticipo empleado | `perAnticipo` | `{empleado:NOMBRE, monto, fecha, concepto, estado:'pendiente'}` | anticipo pendiente, se descuenta en nómina |
+| Cobro cliente (CxC) | `cuentasClientes` | `{tipo:'pago', clienteId, monto, metodoPago}` | baja lo que debe el cliente |
+| Venta | `cuentasClientes` | `{tipo:'despacho', clienteId, totalVenta}` | sube CxC |
+| Gasto suelto (servicio/renta/impuesto/importación/otro) | `movimientos_finanzas` | `{tipo:'pago', categoria, concepto, monto}` | ledger propio de Finanzas |
+
+Empleado se matchea **por nombre** (así lo hace la nómina en `Personal.jsx`, no por id). Verificado
+por guardian-datos: schemas coinciden exacto, escrituras 100% aditivas (addDoc), cero riesgo de datos.
+
+### Piezas nuevas
+- `useMovimientosUnificados.js` — LEE 6 colecciones (movimientos_finanzas, cuentasProveedores,
+  cuentasClientes, perAnticipo, proveedores, clientes) y las normaliza a UN feed. Cada movimiento:
+  `{id, _col, _origen, fecha, flujo:'entra'|'sale', caja:bool, tipoLabel, entidad, concepto, monto, estado}`.
+  **`caja`** = movió dinero real (cobro/pago/gasto/anticipo). `caja:false` = devengado (venta a crédito,
+  nota crédito) → NO cuenta en totales de caja, se muestra aparte como "Ventas (a cobrar)".
+- `modals/ModalRegistrar.jsx` — pantalla ÚNICA: elegís tipo (Pago/Cobro/Venta) → si pago, a quién
+  (Proveedor/Empleado/Gasto) → campos → guarda ruteando. Muestra a dónde va cada registro.
+- `FinanzasMovimientos` / `Dashboard` / `Resultados` reworkeados para consumir el feed unificado.
+  Dashboard: "¿en qué se fue la plata?" desglose por tipo. Resultados: base caja (cobrado − pagado),
+  ventas facturadas aparte.
+- Anular movimiento: botón ✕ por fila (perms.anular) borra de la colección correcta (`m._col`).
+
+### Revisión de agentes (aplicada)
+guardian-datos: **SEGURO** (schemas OK, aditivo). code-reviewer: 5 mayores + 4 menores, TODOS los de
+cálculo de plata corregidos: gasto pendiente_aprobacion ya no cuenta como caja; división por base
+falsa → muestra '—'; notas de crédito ahora netean ventas; limits subidos a 100k (sin truncar meses);
+anular reconectado; badges de estado completos; fallback proveedor. Modales viejos huérfanos eliminados.
+
+### Pendiente de esta fase (para retomar)
+- Editar un movimiento (hoy solo anular). Editar cruza 4 colecciones → decidir alcance.
+- Venta muestra estado 'pendiente' fijo; no se cruza con sus cobros parciales para mostrar saldo real por venta.
+- Grupos importación sigue leyendo solo `movimientos_finanzas`; los pagos a proveedor (ahora en
+  cuentasProveedores) no son agrupables aún. Revisar si Grupos debe leer el feed unificado.
+- Reglas de seguridad Firestore de las 4 colecciones (no revisadas) antes de exponer en prod.
+- Migración futura: `perAnticipo.empleado` de nombre → empleadoId (riesgo si se renombra empleado).
 
 ---
 
