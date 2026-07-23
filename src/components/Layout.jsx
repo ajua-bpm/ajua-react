@@ -6,12 +6,45 @@ import { useCollection } from '../hooks/useFirestore';
 import IngieMari from './asistente/IngieMari';
 
 const NAV = [
-  { section: 'General' },
+  { section: 'Inicio' },
   { to: '/dashboard',              mod: 'dashboard',         icon: '📊', label: 'Dashboard' },
-  { section: 'BPM · Transporte' },
+
+  // ═══ ADMINISTRACIÓN — dinero, cuentas, personal ═══
+  { section: 'Finanzas' },
+  { to: '/finanzas-nuevo',         mod: 'finanzas',          icon: '✨', label: 'Finanzas' },
+  { to: '/cuentas-proveedores',    mod: 'cuentas-proveedores', icon: '🏪', label: 'Cuentas Proveedores' },
+  { to: '/cuentas-clientes',       mod: 'cuentas-clientes',    icon: '🛒', label: 'Cuentas Clientes' },
+  { to: '/gastos',                 mod: 'gastos',            icon: '💸', label: 'Gastos' },
+  { to: '/anticipos',              mod: 'anticipos',         icon: '💵', label: 'Anticipos MX' },
+  { to: '/personal',               mod: 'personal',          icon: '👥', label: 'Personal / Nómina' },
+  { to: '/finanzas',               mod: 'finanzas',          icon: '🏦', label: 'Bancos y P&L' },
+
+  { section: 'Comercial' },
+  { to: '/proyeccion-semanal',     mod: 'proyeccion-semanal', icon: '📊', label: 'Proyección Semanal' },
+  { to: '/cotizador/rapido',       mod: 'cotizador-rapido',  icon: '💼', label: 'Cotizador Rápido' },
+  { to: '/cotizador',              mod: 'cotizador',         icon: '🚢', label: 'Cotizador Contenedor' },
+  { to: '/cotizador-import-lista', mod: 'cotizador-import',  icon: '📋', label: 'Cotizaciones Importación' },
+  { to: '/cotizador-importacion',  mod: 'cotizador-import',  icon: '🇲🇽', label: 'Cotizador Importación (Nuevo)', external: true },
+  { to: '/actividad-proveedores',  mod: 'cotizador-import',  icon: '🔎', label: 'Actividad Proveedores' },
+  { to: '/precios',                mod: 'precios',           icon: '💲', label: 'Lista de Precios' },
+
+  { section: 'Inventario y Ventas' },
+  { to: '/stock',                  mod: 'stock',             icon: '📦', label: 'Stock en Vivo' },
+  { to: '/inventario/entrada',     mod: 'entrada',           icon: '📥', label: 'Ingresos / Recepción' },
+  { to: '/walmart',                mod: 'walmart',           icon: '🏪', label: 'Pedidos Walmart' },
+  { to: '/inventario/salida',      mod: 'salida',            icon: '💰', label: 'Ventas Walmart' },
+  { to: '/ventas/gt',              mod: 'ventas-gt',         icon: '🇬🇹', label: 'Despachos GT' },
+  { to: '/ventas/int',             mod: 'ventas-int',        icon: '✈️', label: 'Exportación' },
+
+  { section: 'Equipo' },
+  { to: '/pendientes',             mod: 'pendientes',        icon: '✅', label: 'Pendientes Equipo' },
+
+  // ═══ CUMPLIMIENTO — BPM, inocuidad, sanitario (separado de lo administrativo) ═══
+  { divider: 'Cumplimiento · BPM' },
+  { section: 'Transporte' },
   { to: '/bpm/tl',                 mod: 'tl',                icon: '🚛', label: 'Limpieza Transporte' },
   { to: '/bpm/dt',                 mod: 'dt',                icon: '📋', label: 'Despacho' },
-  { section: 'BPM · Bodega' },
+  { section: 'Bodega' },
   { to: '/bpm/al',                 mod: 'al',                icon: '🙌', label: 'Acceso y Lavado' },
   { to: '/bpm/bas',                mod: 'bas',               icon: '⚖️', label: 'Básculas' },
   { to: '/bpm/rod',                mod: 'rod',               icon: '🐀', label: 'Roedores' },
@@ -19,7 +52,7 @@ const NAV = [
   { to: '/bpm/vyp',                mod: 'vyp',               icon: '🔍', label: 'Vidrio y Plástico' },
   { to: '/bpm/fumigacion',         mod: 'fumigacion',        icon: '🧪', label: 'Fumigación' },
   { to: '/bpm/croquis',            mod: 'croquis',           icon: '🗺️', label: 'Croquis Bodega' },
-  { section: 'BPM · Higiene' },
+  { section: 'Higiene' },
   // Lavado Producto (legacy) — reemplazado por Control de Lavado por Producto. Ruta sigue activa para registros históricos.
   { to: '/bpm/capacitacion',       mod: 'capacitacion',      icon: '🎓', label: 'Capacitación' },
   { to: '/bpm/enfermos',           mod: 'enfermos',          icon: '🏥', label: 'Empleados Enfermos' },
@@ -29,34 +62,7 @@ const NAV = [
   { to: '/bpm/temperatura',        mod: 'temperatura',       icon: '🌡️', label: 'Temperatura' },
   { to: '/bpm/inspecciones',       mod: 'inspecciones',      icon: '📝', label: 'Inspecciones + CAPA' },
   { to: '/bpm/cloro-producto',     mod: 'cloro-producto',    icon: '💧', label: 'Control de Lavado' },
-  { section: 'Inventario' },
-  { to: '/stock',                  mod: 'stock',             icon: '📦', label: 'Stock en Vivo' },
-  { to: '/inventario/entrada',     mod: 'entrada',           icon: '📥', label: 'Ingresos / Recepción' },
-  { section: 'Walmart' },
-  { to: '/walmart',                mod: 'walmart',           icon: '🏪', label: 'Pedidos Walmart' },
-  { to: '/inventario/salida',      mod: 'salida',            icon: '💰', label: 'Ventas Walmart' },
-  { section: 'Ventas' },
-  { to: '/ventas/gt',              mod: 'ventas-gt',         icon: '🇬🇹', label: 'Despachos GT' },
-  { to: '/ventas/int',             mod: 'ventas-int',        icon: '✈️', label: 'Exportación' },
-  { section: 'Finanzas' },
-  { to: '/proyeccion-semanal',     mod: 'proyeccion-semanal', icon: '📊', label: 'Proyección Semanal' },
-  { to: '/finanzas',               mod: 'finanzas',          icon: '💰', label: 'Finanzas' },
-  { to: '/finanzas-nuevo',         mod: 'finanzas',          icon: '✨', label: 'Finanzas (nuevo)' },
-  { to: '/gastos',                 mod: 'gastos',            icon: '💸', label: 'Gastos' },
-  { to: '/cuentas-proveedores',    mod: 'cuentas-proveedores', icon: '🏪', label: 'Cuentas Proveedores' },
-  { to: '/cuentas-clientes',       mod: 'cuentas-clientes',    icon: '🛒', label: 'Cuentas Clientes' },
-  { to: '/anticipos',              mod: 'anticipos',         icon: '💵', label: 'Anticipos MX' },
-  { to: '/cotizador/rapido',       mod: 'cotizador-rapido',  icon: '💼', label: 'Cotizador Rápido' },
-  { to: '/cotizador',              mod: 'cotizador',         icon: '🚢', label: 'Cotizador Contenedor' },
-  { to: '/cotizador-import-lista', mod: 'cotizador-import',  icon: '📋', label: 'Cotizaciones Importación' },
-  { to: '/cotizador-importacion',  mod: 'cotizador-import',  icon: '🇲🇽', label: 'Cotizador Importación (Nuevo)', external: true },
-  { to: '/actividad-proveedores',  mod: 'cotizador-import',  icon: '🔎', label: 'Actividad Proveedores' },
-  { section: 'Precios' },
-  { to: '/precios',                mod: 'precios',           icon: '💲', label: 'Lista de Precios' },
-  { section: 'Equipo' },
-  { to: '/pendientes',             mod: 'pendientes',        icon: '✅', label: 'Pendientes Equipo' },
-  { section: 'Personal' },
-  { to: '/personal',               mod: 'personal',          icon: '👥', label: 'Personal' },
+
   { section: 'Sistema' },
   { to: '/admin',                  mod: '_admin',            icon: '⚙️', label: 'Administración' },
 ];
@@ -157,6 +163,31 @@ export default function Layout() {
         {/* Nav items */}
         <div style={{ flex: 1, padding: '8px 0 16px' }}>
           {NAV.map((item, i) => {
+            if (item.divider) {
+              // Visible solo si hay algún item navegable después (hasta el próximo divisor)
+              const rest = NAV.slice(i + 1);
+              const nd = rest.findIndex(n => n.divider);
+              const block = nd === -1 ? rest : rest.slice(0, nd);
+              if (!block.some(n => n.to && canSee(user, n.mod))) return null;
+              return (
+                <div key={i} style={{
+                  margin: '18px 20px 4px',
+                  paddingTop: 14,
+                  borderTop: '1px solid rgba(255,255,255,.10)',
+                  fontSize: '9.5px',
+                  fontWeight: 700,
+                  color: 'rgba(168,131,90,.95)',
+                  letterSpacing: '.16em',
+                  textTransform: 'uppercase',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 7,
+                }}>
+                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'rgba(168,131,90,.9)', flexShrink: 0 }} />
+                  {item.divider}
+                </div>
+              );
+            }
             if (item.section) {
               const nextSection = NAV.slice(i + 1).findIndex(n => n.section);
               const sectionItems = nextSection === -1 ? NAV.slice(i + 1) : NAV.slice(i + 1, i + 1 + nextSection);
