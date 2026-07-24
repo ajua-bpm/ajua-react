@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback, Fragment } from 'react';
 import { useCollection, useWrite } from '../../hooks/useFirestore';
 import { useMainData, useProductosCatalogo } from '../../hooks/useMainData';
 import { useToast } from '../../components/Toast';
@@ -26,6 +26,7 @@ const shadow  = '0 1px 3px rgba(0,0,0,.10)';
 const card    = { background: WHITE, borderRadius: 8, boxShadow: shadow, padding: 20, marginBottom: 20 };
 const thSt    = { color: WHITE, padding: '10px 14px', fontSize: '.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em', textAlign: 'left', whiteSpace: 'nowrap' };
 const tdSt    = { padding: '9px 14px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0', color: T.textDark };
+const groupHeadTd = { background: 'linear-gradient(90deg, rgba(27,94,32,.10), rgba(27,94,32,.02))', borderBottom: '2px solid #1B5E20', borderTop: '1px solid rgba(27,94,32,.15)', padding: '9px 14px' };
 const LS      = { display: 'flex', flexDirection: 'column', gap: 4, fontSize: '.72rem', fontWeight: 600, textTransform: 'uppercase', color: T.textMid, letterSpacing: '.06em' };
 const IS      = { padding: '9px 12px', border: `1.5px solid ${T.border}`, borderRadius: 6, fontSize: '.88rem', outline: 'none', fontFamily: 'inherit', width: '100%', boxSizing: 'border-box' };
 
@@ -678,6 +679,42 @@ function TabPedidos({ data, loading, add, update, remove, saving, productos }) {
     return rows;
   }, [data, filterTab, search]);
 
+  // Cajas totales de un pedido (suma de rubros o el total guardado)
+  const cajasDe = (r) => r.totalCajas || (r.rubros?.reduce((s, x) => s + (x.cajas ?? x.cajasPedidas ?? 0), 0)) || 0;
+  // Clave de fecha de un pedido (misma en ordenar, agrupar y mostrar)
+  const fechaKey = (r) => r.fechaEntrega || r.fecha || 'Sin fecha';
+
+  // Ordenar por fecha de entrega para agrupar (mismas fechas quedan consecutivas)
+  const pedidosOrdenados = useMemo(() => {
+    return [...filtered.slice(0, 150)].sort((a, b) => {
+      const fa = fechaKey(a), fb = fechaKey(b);
+      if (fa !== fb) return fa < fb ? -1 : 1; // ascendente: entrega más próxima primero
+      const ha = a.horaEntrega || '', hb = b.horaEntrega || '';
+      return ha === hb ? 0 : (ha < hb ? -1 : 1);
+    });
+  }, [filtered]);
+
+  // Totales por día (para el encabezado de grupo)
+  const dayTotals = useMemo(() => {
+    const m = {};
+    for (const r of pedidosOrdenados) {
+      const k = fechaKey(r);
+      if (!m[k]) m[k] = { count: 0, totalCajas: 0, horas: new Set() };
+      m[k].count += 1;
+      m[k].totalCajas += cajasDe(r);
+      if (r.horaEntrega) m[k].horas.add(r.horaEntrega);
+    }
+    return m;
+  }, [pedidosOrdenados]);
+
+  // "2026-07-24" → "viernes, 24 de julio"
+  const fechaLabel = (f) => {
+    if (!f || f === 'Sin fecha') return 'Sin fecha de entrega';
+    const d = new Date(f + 'T00:00:00');
+    if (isNaN(d.getTime())) return f;
+    return d.toLocaleDateString('es-GT', { weekday: 'long', day: 'numeric', month: 'long' });
+  };
+
   return (
     <div>
       {/* Modal importar correo */}
@@ -873,19 +910,40 @@ function TabPedidos({ data, loading, add, update, remove, saving, productos }) {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: T.primary }}>
-                  {['Fecha entrega', 'OC', 'Atlas/SAP', 'Descripción', 'Cajas', 'Rampa', 'Estado', 'Acciones'].map(h => (
+                  {['Hora', 'OC', 'Atlas/SAP', 'Descripción', 'Cajas', 'Rampa', 'Estado', 'Acciones'].map(h => (
                     <th key={h} style={thSt}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {filtered.slice(0, 150).map((r, i) => (
-                  <>
-                    <tr key={r.id} style={{ background: i % 2 === 1 ? '#F9FBF9' : WHITE }}>
+                {pedidosOrdenados.map((r, i) => {
+                  const fecha = fechaKey(r);
+                  const prevFecha = i > 0 ? fechaKey(pedidosOrdenados[i - 1]) : null;
+                  const showHeader = fecha !== prevFecha;
+                  const dt = dayTotals[fecha] || { count: 0, totalCajas: 0, horas: new Set() };
+                  const horaUnica = dt.horas.size === 1 ? [...dt.horas][0] : null;
+                  return (
+                  <Fragment key={r.id}>
+                    {showHeader && (
+                      <tr>
+                        <td colSpan={8} style={groupHeadTd}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
+                            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+                              <span style={{ fontWeight: 800, color: T.primary, fontSize: '.9rem', textTransform: 'capitalize' }}>📅 {fechaLabel(fecha)}</span>
+                              {horaUnica && <span style={{ fontSize: '.74rem', fontWeight: 700, color: T.secondary }}>{horaUnica}</span>}
+                            </div>
+                            <span style={{ fontSize: '.72rem', color: T.textMid, fontWeight: 600 }}>
+                              <b style={{ color: T.textDark }}>{dt.count}</b> pedido{dt.count !== 1 ? 's' : ''} · <b style={{ color: T.textDark }}>{dt.totalCajas}</b> cajas
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    <tr style={{ background: i % 2 === 1 ? '#F9FBF9' : WHITE }}>
                       <td style={{ ...tdSt, fontWeight: 600 }}>
-                        <div>{r.fechaEntrega || r.fecha || '—'}</div>
-                        {r.horaEntrega && <div style={{ fontSize:'.72rem', color:T.secondary, fontWeight:700 }}>{r.horaEntrega}</div>}
-                        {r.notaImportante && <div style={{ fontSize:'.7rem', color:T.info, marginTop:1 }}>📅 {r.notaImportante}</div>}
+                        {r.horaEntrega
+                          ? <span style={{ fontSize: '.78rem', color: T.secondary, fontWeight: 700 }}>{r.horaEntrega}</span>
+                          : <span style={{ color: T.textMid }}>—</span>}
                       </td>
                       <td style={{ ...tdSt, fontSize: '.8rem', fontFamily: 'monospace' }}>
                         {r.numOC || '—'}
@@ -894,22 +952,44 @@ function TabPedidos({ data, loading, add, update, remove, saving, productos }) {
                         )}
                       </td>
                       <td style={{ ...tdSt, fontSize: '.78rem', color: T.textMid }}>{r.numAtlas || '—'}</td>
-                      <td style={{ ...tdSt, maxWidth: 240 }}>
-                        {r.rubros?.length > 0 ? (
-                          <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
+                      <td style={{ ...tdSt, maxWidth: 260 }}>
+                        {r.rubros?.length > 1 ? (
+                          /* Varios productos agregados: rail verde + contador + cantidades alineadas */
+                          <div style={{ borderLeft: `3px solid ${T.secondary}`, background: 'rgba(46,125,50,.05)', borderRadius: '0 4px 4px 0', padding: '5px 6px 5px 9px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            <div style={{ fontSize: '.62rem', fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase', color: T.secondary, display: 'flex', alignItems: 'center', gap: 5 }}>
+                              <span style={{ background: T.secondary, color: WHITE, borderRadius: 9, padding: '1px 7px', fontSize: '.6rem' }}>{r.rubros.length}</span> productos agregados
+                            </div>
                             {r.rubros.map((rb, ri) => (
-                              <div key={ri} style={{ fontSize:'.76rem', lineHeight:1.3 }}>
-                                {rb.item && <span style={{ fontFamily:'monospace', fontSize:'.68rem', color:T.textMid, marginRight:5 }}>{rb.item}</span>}
-                                <span style={{ color:T.textDark }}>{rb.descripcion || '—'}</span>
-                                <span style={{ fontWeight:700, color:T.secondary, marginLeft:5 }}>({rb.cajas ?? rb.cajasPedidas ?? 0})</span>
+                              <div key={ri} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline', fontSize: '.76rem', lineHeight: 1.3 }}>
+                                <span style={{ flex: 1 }}>
+                                  {rb.item && <span style={{ fontFamily: 'monospace', fontSize: '.68rem', color: T.textMid, marginRight: 5 }}>{rb.item}</span>}
+                                  <span style={{ color: T.textDark }}>{rb.descripcion || '—'}</span>
+                                </span>
+                                <span style={{ fontWeight: 700, color: T.secondary, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{rb.cajas ?? rb.cajasPedidas ?? 0}</span>
                               </div>
                             ))}
                           </div>
+                        ) : r.rubros?.length === 1 ? (
+                          /* Un solo producto: limpio */
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline', fontSize: '.78rem', lineHeight: 1.3 }}>
+                            <span style={{ flex: 1 }}>
+                              {r.rubros[0].item && <span style={{ fontFamily: 'monospace', fontSize: '.68rem', color: T.textMid, marginRight: 5 }}>{r.rubros[0].item}</span>}
+                              <span style={{ color: T.textDark }}>{r.rubros[0].descripcion || '—'}</span>
+                            </span>
+                            <span style={{ fontWeight: 700, color: T.secondary, fontVariantNumeric: 'tabular-nums' }}>{r.rubros[0].cajas ?? r.rubros[0].cajasPedidas ?? 0}</span>
+                          </div>
                         ) : (
-                          <div style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:'.82rem' }}>{r.descripcion || '—'}</div>
+                          <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '.82rem' }}>{r.descripcion || '—'}</div>
                         )}
                       </td>
-                      <td style={{ ...tdSt, fontWeight: 600 }}>{r.totalCajas || r.rubros?.reduce((s,x)=>s+(x.cajas??x.cajasPedidas??0),0) || '—'}</td>
+                      <td style={{ ...tdSt, fontWeight: 600 }}>
+                        <div style={{ fontSize: r.rubros?.length > 1 ? '.95rem' : 'inherit', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{cajasDe(r) || '—'}</div>
+                        {r.rubros?.length > 1 && (
+                          <div style={{ fontSize: '.66rem', color: T.textMid, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
+                            {r.rubros.map(x => x.cajas ?? x.cajasPedidas ?? 0).join(' + ')}
+                          </div>
+                        )}
+                      </td>
                       <td style={tdSt}>{r.rampa || '—'}</td>
                       <td style={tdSt}>
                         <Badge cfg={ESTADO_CFG} value={r.estado} />
@@ -1059,8 +1139,9 @@ function TabPedidos({ data, loading, add, update, remove, saving, productos }) {
                         </td>
                       </tr>
                     )}
-                  </>
-                ))}
+                  </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
