@@ -81,6 +81,7 @@ const FinanzasGrupos        = lazy(() => import('./modules/finanzas/FinanzasGrup
 const FinanzasProveedores   = lazy(() => import('./modules/finanzas/FinanzasProveedores'));
 const FinanzasClientes      = lazy(() => import('./modules/finanzas/FinanzasClientes'));
 const FinanzasVentas        = lazy(() => import('./modules/finanzas/FinanzasVentas'));
+const FinanzasCxP           = lazy(() => import('./modules/finanzas/FinanzasCxP'));
 const CotizadorRapido       = lazy(() => import('./modules/cotizador/CotizadorRapido'));
 const CotizadorLista        = lazy(() => import('./modules/cotizador/CotizadorLista'));
 const CotizadorNuevo        = lazy(() => import('./modules/cotizador/CotizadorNuevo'));
@@ -183,6 +184,7 @@ export default function App() {
           <Route path="finanzas"               element={<FinanzasNuevoLayout />}>
             <Route index                          element={<FinanzasDashboard />} />
             <Route path="movimientos"             element={<FinanzasMovimientos />} />
+            <Route path="cxp"                     element={<FinanzasCxP />} />
             <Route path="ventas"                  element={<FinanzasVentas />} />
             <Route path="proveedores"             element={<FinanzasProveedores />} />
             <Route path="clientes"                element={<FinanzasClientes />} />

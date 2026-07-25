@@ -26,6 +26,39 @@ PnL, FEL, Walmart, Importadores) que sigue **INTACTO**. En el menú aparecen los
 
 ---
 
+## Fase C — Cuentas por Pagar consolidado (2026-07-24/25)
+
+El corazón del módulo según Ricardo: **UN solo lugar con todos los gastos CxP para registro y
+control de pago**. `FinanzasCxP.jsx` (nav "💳 Cuentas por Pagar", perm ver_movimientos) consolida 3 fuentes:
+- **Proveedores** con saldo pendiente (agrupa `cuentasProveedores`, saldo vía `saldoProveedor()`)
+- **Empleados** = nómina de la semana actual (días de AL × salario − anticipos), no pagada
+- **Gastos** pendientes (`movimientos_finanzas` estado pendiente/pendiente_aprobacion)
+
+Cada fila tiene botón **Pagar** → modal que registra en el ledger correcto:
+- proveedor → `cuentasProveedores` {tipo:'pago'} (permite abono parcial)
+- empleado → `perPagos` (schema igual a Personal.jsx) + marca anticipos `descontado`
+- gasto → `movimientos_finanzas` estado='pagado'
+
+`cxpHelpers.js` replica (sin tocar) weekOf/weekEnd/matchEmpNombre/diasSemana (de Personal) y
+saldoProveedor (de useCuentaProveedor) — para no acoplar ni romper los módulos que funcionan.
+
+### Revisión guardian-datos: PRECAUCIÓN → fixes aplicados
+- **Guard anti-doble-pago robusto**: cuenta empleado "ya pagado esta semana" si hay perPagos con
+  semana===actual O fecha dentro del rango lunes→domingo (el `semana` viejo es texto editable).
+- **Gate de aprobación**: gastos `pendiente_aprobacion` solo se pagan con `aprobar_pendientes` y
+  monto ≤ `aprobar_hasta` (si no, un usuario básico aprobaría sobre-tope de supervisor).
+- Schema perPagos coincide con Personal; saldoProveedor replica fiel (mismos números que Cta. Proveedores).
+
+### ⚠️ Riesgo residual (documentado, NO ir a producción sin resolver)
+- **Carrera concurrente**: perPagos/perAnticipo se escriben con addDoc + updateDoc secuencial, SIN
+  runTransaction. Dos personas pagando al mismo empleado a la vez (o desde Personal.jsx y CxP)
+  pueden doble-pagar o descontar un anticipo dos veces. Es el MISMO riesgo que ya tiene Personal.jsx,
+  ahora con 2 puntos de entrada. Mitigación real pendiente: runTransaction/writeBatch + re-lectura.
+  **Mientras tanto: que pague una sola persona a la vez.** OK para staging/pruebas.
+- Match empleado por nombre (sensible a rename); anticipo no incluye horas extra en el neto (igual que Personal).
+
+---
+
 ## Fase B — Absorción del módulo viejo + un solo Finanzas (2026-07-23)
 
 El `/finanzas` viejo (Clasificador banco, PnL, FEL, Walmart, Importadores) se **absorbe dentro del hub**

@@ -13,6 +13,7 @@ const T = {
 
 const ITEMS = [
   { to: '/finanzas',              perm: 'ver_dashboard',   icon: '📊', label: 'Dashboard',       end: true },
+  { to: '/finanzas/cxp',          perm: 'ver_movimientos', icon: '💳', label: 'Cuentas por Pagar' },
   { to: '/finanzas/movimientos',  perm: 'ver_movimientos', icon: '💸', label: 'Movimientos' },
   { to: '/finanzas/ventas',       perm: 'cargar_cobros',   icon: '🧾', label: 'Ventas (FEL)' },
   { to: '/finanzas/proveedores',  perm: 'ver_movimientos', icon: '🏪', label: 'Cta. Proveedores' },
