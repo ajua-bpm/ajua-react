@@ -29,3 +29,7 @@ dist-ssr
 *.sw?
 
 .vercel
+
+# Claude Code local tooling (no pertenece al repo)
+.claude/
+skills-lock.json
