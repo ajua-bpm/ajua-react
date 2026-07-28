@@ -78,8 +78,6 @@ const FinanzasUsuarios      = lazy(() => import('./modules/finanzas/FinanzasUsua
 const FinanzasResultados    = lazy(() => import('./modules/finanzas/FinanzasResultados'));
 const FinanzasEmpleados     = lazy(() => import('./modules/finanzas/FinanzasEmpleados'));
 const FinanzasGrupos        = lazy(() => import('./modules/finanzas/FinanzasGrupos'));
-const FinanzasProveedores   = lazy(() => import('./modules/finanzas/FinanzasProveedores'));
-const FinanzasClientes      = lazy(() => import('./modules/finanzas/FinanzasClientes'));
 const FinanzasVentas        = lazy(() => import('./modules/finanzas/FinanzasVentas'));
 const FinanzasCxP           = lazy(() => import('./modules/finanzas/FinanzasCxP'));
 const CotizadorRapido       = lazy(() => import('./modules/cotizador/CotizadorRapido'));
@@ -186,8 +184,10 @@ export default function App() {
             <Route path="movimientos"             element={<FinanzasMovimientos />} />
             <Route path="cxp"                     element={<FinanzasCxP />} />
             <Route path="ventas"                  element={<FinanzasVentas />} />
-            <Route path="proveedores"             element={<FinanzasProveedores />} />
-            <Route path="clientes"                element={<FinanzasClientes />} />
+            {/* Cta. Proveedores/Clientes: se reusa el módulo COMPLETO (mismo que el menú),
+                así son idénticos y traen el botón de agregar pago/rechazo. */}
+            <Route path="proveedores"             element={<CuentasProveedores />} />
+            <Route path="clientes"                element={<CuentasClientes />} />
             <Route path="empleados"               element={<FinanzasEmpleados />} />
             <Route path="grupos"                  element={<FinanzasGrupos />} />
             <Route path="resultados"              element={<FinanzasResultados />} />

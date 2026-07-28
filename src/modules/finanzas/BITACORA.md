@@ -73,6 +73,14 @@ reusando el componente tal cual (no se reescribe):
   necesita, agregar flag `ver_bancos` dedicado más adelante.
 Revisado por code-reviewer: APROBADO, sin bloqueantes/mayores. areaForPath resuelve `/finanzas/*` → admin sin falso-match.
 
+### Corrección (2026-07-27): Cta. Proveedores/Clientes ahora reusan el módulo COMPLETO
+Ricardo notó que Finanzas → Cta. Proveedores y el menú Cuentas Proveedores mostraban distinto y sin
+botón de agregar pago/rechazo. Causa: `FinanzasProveedores.jsx`/`FinanzasClientes.jsx` eran páginas
+propias de SOLO LECTURA (render distinto, sin acciones). **Fix**: se eliminaron esos duplicados y las
+rutas `/finanzas/proveedores` y `/finanzas/clientes` ahora montan el módulo completo (`CuentasProveedores`,
+`CuentasClientes`) — el MISMO que el menú → idénticos, con botón de agregar pago/rechazo, filtros, liquidación.
+Mismo principio que Bancos y P&L: reusar, no duplicar.
+
 ---
 
 ## Fase 6 — Navegación por áreas + Ventas por XML/FEL (2026-07-23)
