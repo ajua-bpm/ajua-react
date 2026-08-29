@@ -1043,6 +1043,7 @@ function TabBalancePagos() {
 
   const filas = useMemo(() => {
     const enRango = (f) => (!desde || f >= desde) && (!hasta || f <= hasta);
+    const esTodo = !desde && !hasta; // el ajuste de corte de saldo inicial solo cuenta en "Todo"
     const out = activos.map(emp => {
       const sd  = emp.salarioDia || (emp.salario ? emp.salario/30 : 0);
       const tHE = emp.tarifaHoraExtra || (sd > 0 ? (sd/8)*1.5 : 0);
@@ -1062,7 +1063,9 @@ function TabBalancePagos() {
       const totalHE = Object.values(heMap).reduce((s,h)=>s+h,0);
       const devengado = dias*sd + totalHE*tHE;
       const empNorm = (emp.nombre||'').toLowerCase().trim();
-      const pagos   = (pagosData||[]).filter(p => (p.empleado||'').toLowerCase().trim()===empNorm && enRango(p.semana || p.fecha || ''));
+      const pagos   = (pagosData||[]).filter(p => (p.empleado||'').toLowerCase().trim()===empNorm
+        && enRango(p.semana || p.fecha || '')
+        && (esTodo || p.origen !== 'saldo_inicial')); // el corte de saldo inicial no ensucia los períodos
       const pagado  = pagos.reduce((s,p)=>s+(p.monto||0),0);
       // Anticipos entregados en el rango (todos cuentan como plata dada; los pendientes se descuentan al pagar)
       const anticips = (anticData||[]).filter(a => (a.empleado||'').toLowerCase().trim()===empNorm && enRango(a.fecha||''));
