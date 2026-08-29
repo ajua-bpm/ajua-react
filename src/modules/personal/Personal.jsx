@@ -21,7 +21,7 @@ const LS   = { display:'flex', flexDirection:'column', gap:5, fontSize:'.72rem',
 const IS   = { padding:'9px 12px', border:`1.5px solid ${T.border}`, borderRadius:6, fontSize:'.85rem', outline:'none', fontFamily:'inherit', width:'100%', marginTop:2, color:T.textDark, background:T.white };
 
 const today  = () => new Date().toISOString().slice(0, 10);
-const fmtQ   = n => Number(n||0).toLocaleString('es-GT', { minimumFractionDigits:2 });
+const fmtQ   = n => Number(n||0).toLocaleString('es-GT', { minimumFractionDigits:2, maximumFractionDigits:2 });
 
 // Devuelve todos los nombres que identifican a un empleado (nombre + aliases)
 function nombresEmp(emp) {
@@ -1028,6 +1028,7 @@ function TabBalancePagos() {
   const [preset, setPreset] = useState('todo');
   const [sel, setSel]       = useState(() => new Set());
   const [pagando, setPagando] = useState(false);
+  const [pagarModal, setPagarModal] = useState(null); // fila que se está pagando con monto elegido
 
   const aplicarPreset = (p) => {
     setPreset(p);
@@ -1071,6 +1072,7 @@ function TabBalancePagos() {
       const pendiente = Math.max(0, saldo);
       let estado;
       if (dias > 0 && sd <= 0) estado = 'sinsalario';
+      else if (saldo < -0.5) estado = 'afavor';       // pagado de más
       else if (pendiente <= 0.5) estado = 'pagado';
       else if (pagado > 0 || antTotal > 0) estado = 'parcial';
       else estado = 'pendiente';
@@ -1086,8 +1088,11 @@ function TabBalancePagos() {
   const totalSel = seleccionadas.reduce((s,f)=>s+f.pendiente,0);
 
   const tot = useMemo(() => filas.reduce((a,f)=>({
-    devengado: a.devengado + f.devengado, pagado: a.pagado + f.pagado, pendiente: a.pendiente + f.pendiente,
-  }), { devengado:0, pagado:0, pendiente:0 }), [filas]);
+    devengado: a.devengado + f.devengado,
+    pagado:    a.pagado + f.pagado,
+    porPagar:  a.porPagar + Math.max(0, f.saldo),   // solo los que faltan
+    aFavor:    a.aFavor + Math.max(0, -f.saldo),     // sobrepagados
+  }), { devengado:0, pagado:0, porPagar:0, aFavor:0 }), [filas]);
 
   const toggle = (key) => setSel(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
   const toggleTodos = () => setSel(prev => prev.size === pagables.length ? new Set() : new Set(pagables.map(f=>f.key)));
@@ -1130,6 +1135,31 @@ function TabBalancePagos() {
     setPagando(false);
   };
 
+  // Pago de UN empleado con monto elegido (completo o parcial) desde el modal
+  const pagarUno = async (fila, monto, forma, fecha) => {
+    const m = Number(monto);
+    if (!(m > 0)) { toast('Monto inválido', 'error'); return; }
+    setPagando(true);
+    try {
+      const esCompleto = m >= fila.pendiente - 0.5;
+      const antPendTotal = fila.antPend.reduce((s,a)=>s+(a.monto||0),0);
+      const batch = writeBatch(db);
+      const pagoRef = doc(collection(db, 'perPagos'));
+      batch.set(pagoRef, {
+        empleado: fila.emp.nombre, fecha, semana: desde || weekOf(fecha), monto: Number(m.toFixed(2)),
+        tipo: 'semanal', diasAL: fila.dias, fechasTrabajadas: fila.fechas, salarioDia: fila.sd,
+        anticDescontados: esCompleto ? antPendTotal : 0, estado: 'pagado', formaPago: forma,
+        observaciones: esCompleto ? 'Pago de saldo' : 'Pago parcial', origen: 'saldos', creadoEn: new Date().toISOString(),
+      });
+      // solo al pagar completo se marcan los anticipos como descontados
+      if (esCompleto) for (const a of fila.antPend) batch.update(doc(db, 'perAnticipo', a.id), { estado: 'descontado' });
+      await batch.commit();
+      setPagarModal(null);
+      toast(`✓ Pago registrado: Q ${fmtQ(m)}`);
+    } catch (e) { toast('Error: ' + e.message, 'error'); }
+    setPagando(false);
+  };
+
   if (lEmp || lAL || lPag || lAnt) return <Skeleton rows={6} />;
 
   const rangoLabel = preset === 'todo' ? 'todo el historial' : `${desde||'inicio'} → ${hasta||'hoy'}`;
@@ -1138,6 +1168,7 @@ function TabBalancePagos() {
       pagado:     { bg:'rgba(46,125,50,.15)', c:T.secondary, t:'✓ Pagado' },
       parcial:    { bg:'rgba(230,81,0,.14)',  c:T.warn,      t:'◑ Parcial' },
       pendiente:  { bg:'rgba(230,81,0,.14)',  c:T.warn,      t:'⏳ Pendiente' },
+      afavor:     { bg:'rgba(198,40,40,.10)', c:T.danger,    t:'↑ Sobrepago' },
       sinsalario: { bg:'rgba(198,40,40,.10)', c:T.danger,    t:'⚠ Sin salario' },
     }[estado] || { bg:'#eee', c:T.textMid, t:estado };
     return <span style={{ padding:'3px 9px', borderRadius:100, fontSize:'.64rem', fontWeight:700, textTransform:'uppercase', background:cfg.bg, color:cfg.c, whiteSpace:'nowrap' }}>{cfg.t}</span>;
@@ -1162,14 +1193,16 @@ function TabBalancePagos() {
       </div>
 
       {/* KPIs */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))', gap:12, marginBottom:16 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))', gap:12, marginBottom:8 }}>
         <Kpi label="Se debe (devengado)" val={`Q ${fmtQ(tot.devengado)}`} color={T.primary} />
         <Kpi label="Pagado" val={`Q ${fmtQ(tot.pagado)}`} color={T.secondary} />
-        <Kpi label="Pendiente" val={`Q ${fmtQ(tot.pendiente)}`} color={tot.pendiente>0.5?T.warn:T.secondary} />
+        <Kpi label="Por pagar" val={`Q ${fmtQ(tot.porPagar)}`} color={tot.porPagar>0.5?T.warn:T.secondary} />
+        {tot.aFavor > 0.5 && <Kpi label="Pagado de más" val={`Q ${fmtQ(tot.aFavor)}`} color={T.danger} />}
       </div>
 
-      <div style={{ fontSize:'.78rem', color:T.textMid, marginBottom:8 }}>
-        Balance de <b style={{color:T.textDark}}>{rangoLabel}</b>. Se debe = días de AL × salario. Pagado = pagos reales (perPagos). Saldo = lo que falta.
+      <div style={{ fontSize:'.78rem', color:T.textMid, marginBottom:12 }}>
+        Balance de <b style={{color:T.textDark}}>{rangoLabel}</b> · Se debe − Pagado = <b style={{color:T.textDark}}>Q {fmtQ(tot.devengado - tot.pagado)}</b> neto.
+        {tot.aFavor > 0.5 && <> ⚠ Hay <b style={{color:T.danger}}>Q {fmtQ(tot.aFavor)}</b> pagado de más en {filas.filter(f=>f.estado==='afavor').length} empleado(s) — revisá si faltan cargar días en AL o si hubo sobrepago.</>}
       </div>
 
       <div style={{ overflowX:'auto', ...card, padding:0 }}>
@@ -1200,11 +1233,16 @@ function TabBalancePagos() {
                   <td style={{ ...TD_S(false), textAlign:'center', fontVariantNumeric:'tabular-nums' }}>{f.dias}{f.totalHE>0 && <span style={{ fontSize:'.68rem', color:T.textMid }}> +{f.totalHE}HE</span>}</td>
                   <td style={{ ...TD_S(false), textAlign:'right', fontFamily:'monospace', fontVariantNumeric:'tabular-nums' }}>Q {fmtQ(f.devengado)}</td>
                   <td style={{ ...TD_S(false), textAlign:'right', fontFamily:'monospace', color:T.secondary, fontVariantNumeric:'tabular-nums' }}>{f.pagado>0 ? `Q ${fmtQ(f.pagado)}` : '—'}</td>
-                  <td style={{ ...TD_S(false), textAlign:'right', fontFamily:'monospace', fontWeight:700, color: f.pendiente>0.5 ? T.warn : T.textMid, fontVariantNumeric:'tabular-nums' }}>Q {fmtQ(f.pendiente)}</td>
+                  <td style={{ ...TD_S(false), textAlign:'right', fontFamily:'monospace', fontWeight:700, fontVariantNumeric:'tabular-nums',
+                    color: f.saldo > 0.5 ? T.warn : f.saldo < -0.5 ? T.danger : T.textMid }}>
+                    {f.saldo < -0.5
+                      ? <>Q {fmtQ(Math.abs(f.saldo))}<div style={{ fontSize:'.62rem', fontWeight:600 }}>de más</div></>
+                      : `Q ${fmtQ(f.pendiente)}`}
+                  </td>
                   <td style={{ ...TD_S(false), textAlign:'center' }}>{badge(f.estado)}</td>
                   <td style={TD_S(false)}>
                     {puede
-                      ? <button onClick={()=>registrarPagos([f])} disabled={pagando} style={{ padding:'6px 14px', background:T.secondary, color:T.white, border:'none', borderRadius:5, fontWeight:700, fontSize:'.74rem', cursor:'pointer' }}>Pagar saldo</button>
+                      ? <button onClick={()=>setPagarModal(f)} disabled={pagando} style={{ padding:'6px 14px', background:T.secondary, color:T.white, border:'none', borderRadius:5, fontWeight:700, fontSize:'.74rem', cursor:'pointer' }}>Pagar</button>
                       : f.estado==='sinsalario'
                         ? <span style={{ fontSize:'.72rem', color:T.danger }}>Configurar salario</span>
                         : <span style={{ fontSize:'.72rem', color:T.textMid }}>—</span>}
@@ -1227,8 +1265,83 @@ function TabBalancePagos() {
           </button>
         </div>
       )}
+
+      {pagarModal && (
+        <ModalPagarSaldo fila={pagarModal} saving={pagando} onClose={()=>setPagarModal(null)} onConfirm={pagarUno} />
+      )}
     </div>
   );
+}
+
+// Modal de pago: elegir completo o parcial + monto + forma + fecha
+function ModalPagarSaldo({ fila, saving, onClose, onConfirm }) {
+  const pend = Math.max(0, fila.pendiente);
+  const [modo, setModo]   = useState('completo'); // 'completo' | 'parcial'
+  const [monto, setMonto] = useState(String(pend.toFixed(2)));
+  const [forma, setForma] = useState('Transferencia');
+  const [fecha, setFecha] = useState(today());
+
+  const setModoSafe = (m) => { setModo(m); if (m === 'completo') setMonto(String(pend.toFixed(2))); };
+
+  return (
+    <div onClick={e => e.target === e.currentTarget && onClose()} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.45)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:100, padding:16 }}>
+      <div style={{ background:'#fff', borderRadius:10, width:'100%', maxWidth:430, boxShadow:'0 8px 32px rgba(0,0,0,.2)', overflow:'hidden' }}>
+        <div style={{ background:T.primary, color:'#fff', padding:'15px 20px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+          <div style={{ fontWeight:700 }}>Registrar pago</div>
+          <button onClick={onClose} style={{ background:'none', border:'none', color:'#fff', fontSize:'1.3rem', cursor:'pointer', opacity:.8 }}>×</button>
+        </div>
+        <div style={{ padding:'18px 20px' }}>
+          <div style={{ fontWeight:700, color:T.primary, fontSize:'1.05rem' }}>{fila.emp.nombre}</div>
+          <div style={{ fontSize:'.78rem', color:T.textMid, marginBottom:14 }}>{fila.emp.area || fila.emp.cargo || '—'}</div>
+
+          <div style={{ background:T.bgLight, borderRadius:8, padding:'10px 14px', marginBottom:14, fontSize:'.83rem' }}>
+            <Riga k="Se debe (devengado)" v={`Q ${fmtQ(fila.devengado)}`} />
+            <Riga k="Ya pagado" v={`Q ${fmtQ(fila.pagado)}`} c={T.secondary} />
+            <div style={{ borderTop:`1px solid ${T.border}`, marginTop:6, paddingTop:6, display:'flex', justifyContent:'space-between', fontWeight:700 }}>
+              <span>Saldo pendiente</span><span style={{ fontFamily:'monospace', color:T.warn }}>Q {fmtQ(pend)}</span>
+            </div>
+          </div>
+
+          <div style={{ display:'flex', gap:8, marginBottom:12 }}>
+            {[['completo',`Saldo completo (Q ${fmtQ(pend)})`],['parcial','Pago parcial']].map(([k,l]) => (
+              <button key={k} onClick={()=>setModoSafe(k)} style={{
+                flex:1, padding:'9px 8px', borderRadius:6, cursor:'pointer', fontWeight:700, fontSize:'.78rem',
+                border:`1.5px solid ${modo===k?T.primary:T.border}`, background: modo===k?'rgba(27,94,32,.08)':'#fff', color:T.primary,
+              }}>{l}</button>
+            ))}
+          </div>
+
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:12 }}>
+            <label style={LS}>Monto a pagar (Q)
+              <input type="number" step="0.01" value={monto} onChange={e=>setMonto(e.target.value)} disabled={modo==='completo'}
+                style={{ ...IS, background: modo==='completo' ? T.bgLight : '#fff' }} />
+            </label>
+            <label style={LS}>Fecha de pago<input type="date" value={fecha} onChange={e=>setFecha(e.target.value)} style={IS} /></label>
+          </div>
+          <label style={{ ...LS, marginBottom:4 }}>Forma de pago
+            <div style={{ display:'flex', gap:8, marginTop:2 }}>
+              {['Transferencia','Efectivo'].map(f => (
+                <button key={f} onClick={()=>setForma(f)} style={{
+                  flex:1, padding:'8px', borderRadius:6, cursor:'pointer', fontWeight:600, fontSize:'.8rem',
+                  border:`1.5px solid ${forma===f?T.primary:T.border}`, background: forma===f?'rgba(27,94,32,.08)':'#fff', color:T.primary,
+                }}>{f}</button>
+              ))}
+            </div>
+          </label>
+        </div>
+        <div style={{ padding:'14px 20px', borderTop:`1px solid ${T.border}`, display:'flex', gap:8, justifyContent:'flex-end' }}>
+          <button onClick={onClose} style={{ padding:'9px 16px', background:'#fff', border:`1px solid ${T.border}`, borderRadius:6, fontWeight:600, fontSize:'.83rem', cursor:'pointer', color:T.textMid }}>Cancelar</button>
+          <button onClick={()=>onConfirm(fila, monto, forma, fecha)} disabled={saving} style={{ padding:'9px 20px', background:T.secondary, color:'#fff', border:'none', borderRadius:6, fontWeight:700, fontSize:'.83rem', cursor:'pointer', opacity:saving?.5:1 }}>
+            {saving ? 'Guardando…' : 'Registrar pago'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Riga({ k, v, c }) {
+  return <div style={{ display:'flex', justifyContent:'space-between', marginBottom:3 }}><span style={{ color:T.textMid }}>{k}</span><span style={{ fontFamily:'monospace', fontWeight:600, color:c||T.textDark }}>{v}</span></div>;
 }
 
 function Kpi({ label, val, color }) {
