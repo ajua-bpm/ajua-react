@@ -1023,33 +1023,18 @@ function TabBalancePagos() {
   const AM_HORAS = ['10:00','12:00'];
   const PM_HORAS = ['14:00','16:00'];
 
-  const [desde, setDesde]   = useState('');
-  const [hasta, setHasta]   = useState('');
-  const [preset, setPreset] = useState('todo');
   const [sel, setSel]       = useState(() => new Set());
   const [pagando, setPagando] = useState(false);
   const [pagarModal, setPagarModal] = useState(null); // fila que se está pagando con monto elegido
 
-  const aplicarPreset = (p) => {
-    setPreset(p);
-    const hoy = new Date();
-    const iso = d => d.toISOString().slice(0,10);
-    if (p === 'todo')          { setDesde(''); setHasta(''); }
-    else if (p === 'semana')   { const lun = weekOf(iso(hoy)); setDesde(lun); setHasta(weekEnd(lun)); }
-    else if (p === 'mes')      { const y=hoy.getFullYear(), m=hoy.getMonth(); setDesde(iso(new Date(y,m,1))); setHasta(iso(new Date(y,m+1,0))); }
-    else if (p === 'mespasado'){ const y=hoy.getFullYear(), m=hoy.getMonth(); setDesde(iso(new Date(y,m-1,1))); setHasta(iso(new Date(y,m,0))); }
-  };
-  const onFecha = (setter) => (e) => { setter(e.target.value); setPreset('custom'); };
-
+  // Saldo = suma y resta ACUMULADA: todo lo que se ganó − todo lo pagado. Sin filtro de fecha
+  // (un saldo no es de un período; no importa cuándo se pagó).
   const filas = useMemo(() => {
-    const enRango = (f) => (!desde || f >= desde) && (!hasta || f <= hasta);
-    const esTodo = !desde && !hasta; // el ajuste de corte de saldo inicial solo cuenta en "Todo"
     const out = activos.map(emp => {
       const sd  = emp.salarioDia || (emp.salario ? emp.salario/30 : 0);
       const tHE = emp.tarifaHoraExtra || (sd > 0 ? (sd/8)*1.5 : 0);
       const diasMap = {}, heMap = {};
       for (const r of (alData||[])) {
-        if (!enRango(r.fecha)) continue;
         for (const row of (r.checks||[])) {
           if (!matchEmpNombre(row.nombre, emp)) continue;
           const hasAM = AM_HORAS.some(h => row.horas && row.horas[h]);
@@ -1063,12 +1048,10 @@ function TabBalancePagos() {
       const totalHE = Object.values(heMap).reduce((s,h)=>s+h,0);
       const devengado = dias*sd + totalHE*tHE;
       const empNorm = (emp.nombre||'').toLowerCase().trim();
-      const pagos   = (pagosData||[]).filter(p => (p.empleado||'').toLowerCase().trim()===empNorm
-        && enRango(p.semana || p.fecha || '')
-        && (esTodo || p.origen !== 'saldo_inicial')); // el corte de saldo inicial no ensucia los períodos
+      const pagos   = (pagosData||[]).filter(p => (p.empleado||'').toLowerCase().trim()===empNorm);
       const pagado  = pagos.reduce((s,p)=>s+(p.monto||0),0);
-      // Anticipos entregados en el rango (todos cuentan como plata dada; los pendientes se descuentan al pagar)
-      const anticips = (anticData||[]).filter(a => (a.empleado||'').toLowerCase().trim()===empNorm && enRango(a.fecha||''));
+      // Anticipos entregados (todos cuentan como plata dada; los pendientes se descuentan al pagar)
+      const anticips = (anticData||[]).filter(a => (a.empleado||'').toLowerCase().trim()===empNorm);
       const antTotal = anticips.reduce((s,a)=>s+(a.monto||0),0);
       const antPend  = anticips.filter(a => a.estado === 'pendiente');
       const saldo    = devengado - pagado - antTotal;
@@ -1084,7 +1067,7 @@ function TabBalancePagos() {
     .filter(f => f.dias > 0 || f.pagado > 0)
     .sort((a,b) => (b.pendiente - a.pendiente) || a.emp.nombre.localeCompare(b.emp.nombre));
     return out;
-  }, [activos, alData, pagosData, anticData, desde, hasta]);
+  }, [activos, alData, pagosData, anticData]);
 
   const pagables = filas.filter(f => f.pendiente > 0.5 && f.sd > 0);
   const seleccionadas = pagables.filter(f => sel.has(f.key));
@@ -1105,7 +1088,7 @@ function TabBalancePagos() {
     const validas = filasPagar.filter(f => f.pendiente > 0.5 && f.sd > 0);
     if (!validas.length) { toast('No hay saldo pendiente para pagar', 'error'); return; }
     const totalPagar = validas.reduce((s,f)=>s+f.pendiente,0);
-    if (!window.confirm(`¿Registrar ${validas.length} pago(s) por Q ${fmtQ(totalPagar)} total?\n\nSe paga el SALDO pendiente de cada uno${desde||hasta ? ` (rango ${desde||'inicio'} → ${hasta||'hoy'})` : ' (todo el historial)'}.`)) return;
+    if (!window.confirm(`¿Registrar ${validas.length} pago(s) por Q ${fmtQ(totalPagar)} total?\n\nSe paga el saldo pendiente de cada uno.`)) return;
     setPagando(true);
     try {
       const batch = writeBatch(db);
@@ -1116,7 +1099,7 @@ function TabBalancePagos() {
         batch.set(pagoRef, {
           empleado: f.emp.nombre,
           fecha:    hoy,
-          semana:   desde || weekOf(hoy),
+          semana:   weekOf(hoy),
           monto:    Number(f.pendiente.toFixed(2)),
           tipo:     'semanal',
           diasAL:   f.dias,
@@ -1124,7 +1107,7 @@ function TabBalancePagos() {
           salarioDia: f.sd,
           anticDescontados: antPendTotal,
           estado:   'pagado',
-          observaciones: `Pago de saldo${desde||hasta ? ` ${desde||''}→${hasta||''}` : ' (balance total)'}`,
+          observaciones: 'Pago de saldo',
           origen:   'saldos',
           creadoEn: new Date().toISOString(),
         });
@@ -1149,7 +1132,7 @@ function TabBalancePagos() {
       const batch = writeBatch(db);
       const pagoRef = doc(collection(db, 'perPagos'));
       batch.set(pagoRef, {
-        empleado: fila.emp.nombre, fecha, semana: desde || weekOf(fecha), monto: Number(m.toFixed(2)),
+        empleado: fila.emp.nombre, fecha, semana: weekOf(fecha), monto: Number(m.toFixed(2)),
         tipo: 'semanal', diasAL: fila.dias, fechasTrabajadas: fila.fechas, salarioDia: fila.sd,
         anticDescontados: esCompleto ? antPendTotal : 0, estado: 'pagado', formaPago: forma,
         observaciones: esCompleto ? 'Pago de saldo' : 'Pago parcial', origen: 'saldos', creadoEn: new Date().toISOString(),
@@ -1165,7 +1148,6 @@ function TabBalancePagos() {
 
   if (lEmp || lAL || lPag || lAnt) return <Skeleton rows={6} />;
 
-  const rangoLabel = preset === 'todo' ? 'todo el historial' : `${desde||'inicio'} → ${hasta||'hoy'}`;
   const badge = (estado) => {
     const cfg = {
       pagado:     { bg:'rgba(46,125,50,.15)', c:T.secondary, t:'✓ Pagado' },
@@ -1177,36 +1159,25 @@ function TabBalancePagos() {
     return <span style={{ padding:'3px 9px', borderRadius:100, fontSize:'.64rem', fontWeight:700, textTransform:'uppercase', background:cfg.bg, color:cfg.c, whiteSpace:'nowrap' }}>{cfg.t}</span>;
   };
 
-  const PRESETS = [['todo','Todo'],['semana','Esta semana'],['mes','Este mes'],['mespasado','Mes pasado']];
-
   return (
     <div style={{ paddingBottom: seleccionadas.length ? 70 : 0 }}>
-      {/* Filtro de fecha */}
-      <div style={{ ...card, padding:'14px 18px', display:'flex', gap:14, alignItems:'flex-end', flexWrap:'wrap' }}>
-        <label style={LS}>Desde<input type="date" value={desde} onChange={onFecha(setDesde)} style={{...IS, width:150}} /></label>
-        <label style={LS}>Hasta<input type="date" value={hasta} onChange={onFecha(setHasta)} style={{...IS, width:150}} /></label>
-        <div style={{ display:'flex', gap:5, flexWrap:'wrap', marginLeft:'auto' }}>
-          {PRESETS.map(([k,l]) => (
-            <button key={k} onClick={()=>aplicarPreset(k)} style={{
-              padding:'7px 13px', borderRadius:100, fontSize:'.76rem', fontWeight:600, cursor:'pointer',
-              border:`1.5px solid ${preset===k ? T.primary : T.border}`, background: preset===k ? T.primary : T.white, color: preset===k ? T.white : T.textDark,
-            }}>{l}</button>
-          ))}
-        </div>
+      <div style={{ fontSize:'.82rem', color:T.textMid, marginBottom:14 }}>
+        Lo que se debe (días de AL × salario) menos lo pagado = saldo. <b style={{color:T.textDark}}>Acumulado — no importa cuándo se pagó.</b>
       </div>
 
       {/* KPIs */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))', gap:12, marginBottom:8 }}>
-        <Kpi label="Se debe (devengado)" val={`Q ${fmtQ(tot.devengado)}`} color={T.primary} />
-        <Kpi label="Pagado" val={`Q ${fmtQ(tot.pagado)}`} color={T.secondary} />
-        <Kpi label="Por pagar" val={`Q ${fmtQ(tot.porPagar)}`} color={tot.porPagar>0.5?T.warn:T.secondary} />
+        <Kpi label="Se debe (total)" val={`Q ${fmtQ(tot.devengado)}`} color={T.primary} />
+        <Kpi label="Pagado (total)" val={`Q ${fmtQ(tot.pagado)}`} color={T.secondary} />
+        <Kpi label="Falta pagar" val={`Q ${fmtQ(tot.porPagar)}`} color={tot.porPagar>0.5?T.warn:T.secondary} />
         {tot.aFavor > 0.5 && <Kpi label="Pagado de más" val={`Q ${fmtQ(tot.aFavor)}`} color={T.danger} />}
       </div>
 
-      <div style={{ fontSize:'.78rem', color:T.textMid, marginBottom:12 }}>
-        Balance de <b style={{color:T.textDark}}>{rangoLabel}</b> · Se debe − Pagado = <b style={{color:T.textDark}}>Q {fmtQ(tot.devengado - tot.pagado)}</b> neto.
-        {tot.aFavor > 0.5 && <> ⚠ Hay <b style={{color:T.danger}}>Q {fmtQ(tot.aFavor)}</b> pagado de más en {filas.filter(f=>f.estado==='afavor').length} empleado(s) — revisá si faltan cargar días en AL o si hubo sobrepago.</>}
-      </div>
+      {tot.aFavor > 0.5 && (
+        <div style={{ fontSize:'.76rem', color:T.textMid, marginBottom:12 }}>
+          ⚠ Hay <b style={{color:T.danger}}>Q {fmtQ(tot.aFavor)}</b> pagado de más en {filas.filter(f=>f.estado==='afavor').length} empleado(s) — revisá su salario o días en AL.
+        </div>
+      )}
 
       <div style={{ overflowX:'auto', ...card, padding:0 }}>
         <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'.83rem', minWidth:820 }}>
@@ -1221,7 +1192,7 @@ function TabBalancePagos() {
             <th style={TH_S}>Acción</th>
           </tr></thead>
           <tbody>
-            {filas.length === 0 && <tr><td colSpan={8} style={{ textAlign:'center', padding:34, color:T.textMid }}>Sin actividad en {rangoLabel}.</td></tr>}
+            {filas.length === 0 && <tr><td colSpan={8} style={{ textAlign:'center', padding:34, color:T.textMid }}>Sin empleados con actividad.</td></tr>}
             {filas.map((f, i) => {
               const puede = f.pendiente > 0.5 && f.sd > 0;
               return (
