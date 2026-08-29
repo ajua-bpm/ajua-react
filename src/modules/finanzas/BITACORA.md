@@ -26,6 +26,32 @@ PnL, FEL, Walmart, Importadores) que sigue **INTACTO**. En el menú aparecen los
 
 ---
 
+## Fase D — Nómina unificada: se debe vs pagado (2026-07-29)
+
+Ricardo: 3 pantallas de pago de personal no cuadraban (Finanzas→Empleados mensual, Finanzas→CxP
+semanal, Personal→Pagos). Cada una calculaba distinto y ninguna miraba lo pagado. Fix: **unificar**.
+- **Finanzas → Empleados** ahora monta el **módulo Personal completo** (se elimina `FinanzasEmpleados.jsx`
+  duplicado). Menú y Finanzas muestran lo mismo. Igual que Proveedores/Clientes/Bancos.
+- Nueva pestaña **"💰 Saldos y pago"** (default) en `Personal.jsx` (`TabBalancePagos`): todos los empleados
+  con **devengado (AL) − pagado (perPagos) − anticipos = saldo**. Balance total, no por semana (el punto de
+  Ricardo: "semana a semana no cuadra, el balance total sí").
+  - Filtro de fecha real: Desde/Hasta + presets (Todo/Esta semana/Este mes/Mes pasado). Default: Todo.
+  - **Pago múltiple**: checkbox por empleado + barra fija → `writeBatch` atómico registra el saldo pendiente
+    de varios a la vez (perPagos estado 'pagado' + marca anticipos descontados). También pago de a uno.
+  - Reusa la lógica de AL/salario/anticipos de TabNomina/TabEstadoCuenta (misma fuente perPagos).
+
+### Revisión guardian-datos: SEGURO CON AJUSTES (nada bloqueante hoy, anticipos en Q0)
+Riesgos residuales documentados (NO ir a producción sin resolver / o pagar de a una persona):
+- **Concurrencia [ALTO]**: sin runTransaction, dos sesiones pagando al mismo empleado a la vez pueden
+  duplicar el pago. confirm()+disabled mitiga el doble-clic en una sesión. Mismo riesgo que la nómina vieja.
+  Mitigación real pendiente: runTransaction con re-lectura server-side. **Mientras: que pague una sola persona.**
+- **Fórmula de saldo [dormido, Q0]**: mi `devengado − pagado − anticiposTotal` (robusta) difiere de
+  `TabEstadoCuenta` (`bruto − antPend − pagado`, frágil tras reconciliar). Unificar antes de usar anticipos reales.
+- **estado perPagos [MEDIO]**: ningún lector filtra por estado; TabNomina graba 'pendiente' pero cuenta como
+  pagado en todos lados. Decidir semántica pagado/pendiente. (Mi tab consistente con las demás, sin regresión.)
+
+---
+
 ## Fase C — Cuentas por Pagar consolidado (2026-07-24/25)
 
 El corazón del módulo según Ricardo: **UN solo lugar con todos los gastos CxP para registro y

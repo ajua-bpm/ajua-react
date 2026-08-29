@@ -5,6 +5,7 @@ import { useEmpleados } from '../../hooks/useMainData';
 import { useToast } from '../../components/Toast';
 import Skeleton from '../../components/Skeleton';
 import * as XLSX from 'xlsx';
+import { db, collection, doc, writeBatch } from '../../firebase';
 
 const T = {
   primary:  '#1B5E20', secondary: '#2E7D32',
@@ -1009,8 +1010,239 @@ function TabEstadoCuenta() {
   );
 }
 
+// ─── TAB: Saldos y pago (todos los empleados, balance devengado − pagado) ──────
+// Vista unificada: conecta lo que se DEBE (calculado de AL) con lo que se PAGÓ
+// (perPagos, misma fuente que las otras pestañas). Balance total, no por semana.
+function TabBalancePagos() {
+  const toast = useToast();
+  const { activos, loading: lEmp } = useEmpActivos();
+  const { data: alData,    loading: lAL  } = useCollection('al',          { orderField:'fecha', orderDir:'desc', limit:100000 });
+  const { data: anticData, loading: lAnt } = useCollection('perAnticipo', { orderField:'fecha', orderDir:'desc', limit:100000 });
+  const { data: pagosData, loading: lPag } = useCollection('perPagos',    { orderField:'fecha', orderDir:'desc', limit:100000 });
+
+  const AM_HORAS = ['10:00','12:00'];
+  const PM_HORAS = ['14:00','16:00'];
+
+  const [desde, setDesde]   = useState('');
+  const [hasta, setHasta]   = useState('');
+  const [preset, setPreset] = useState('todo');
+  const [sel, setSel]       = useState(() => new Set());
+  const [pagando, setPagando] = useState(false);
+
+  const aplicarPreset = (p) => {
+    setPreset(p);
+    const hoy = new Date();
+    const iso = d => d.toISOString().slice(0,10);
+    if (p === 'todo')          { setDesde(''); setHasta(''); }
+    else if (p === 'semana')   { const lun = weekOf(iso(hoy)); setDesde(lun); setHasta(weekEnd(lun)); }
+    else if (p === 'mes')      { const y=hoy.getFullYear(), m=hoy.getMonth(); setDesde(iso(new Date(y,m,1))); setHasta(iso(new Date(y,m+1,0))); }
+    else if (p === 'mespasado'){ const y=hoy.getFullYear(), m=hoy.getMonth(); setDesde(iso(new Date(y,m-1,1))); setHasta(iso(new Date(y,m,0))); }
+  };
+  const onFecha = (setter) => (e) => { setter(e.target.value); setPreset('custom'); };
+
+  const filas = useMemo(() => {
+    const enRango = (f) => (!desde || f >= desde) && (!hasta || f <= hasta);
+    const out = activos.map(emp => {
+      const sd  = emp.salarioDia || (emp.salario ? emp.salario/30 : 0);
+      const tHE = emp.tarifaHoraExtra || (sd > 0 ? (sd/8)*1.5 : 0);
+      const diasMap = {}, heMap = {};
+      for (const r of (alData||[])) {
+        if (!enRango(r.fecha)) continue;
+        for (const row of (r.checks||[])) {
+          if (!matchEmpNombre(row.nombre, emp)) continue;
+          const hasAM = AM_HORAS.some(h => row.horas && row.horas[h]);
+          const hasPM = PM_HORAS.some(h => row.horas && row.horas[h]);
+          if (!hasAM && !hasPM) continue;
+          diasMap[r.fecha] = Math.max(diasMap[r.fecha] || 0, (hasAM && hasPM) ? 1 : 0.5);
+          if ((row.horasExtras||0) > 0) heMap[r.fecha] = (heMap[r.fecha]||0) + row.horasExtras;
+        }
+      }
+      const dias    = Object.values(diasMap).reduce((s,v)=>s+v,0);
+      const totalHE = Object.values(heMap).reduce((s,h)=>s+h,0);
+      const devengado = dias*sd + totalHE*tHE;
+      const empNorm = (emp.nombre||'').toLowerCase().trim();
+      const pagos   = (pagosData||[]).filter(p => (p.empleado||'').toLowerCase().trim()===empNorm && enRango(p.semana || p.fecha || ''));
+      const pagado  = pagos.reduce((s,p)=>s+(p.monto||0),0);
+      // Anticipos entregados en el rango (todos cuentan como plata dada; los pendientes se descuentan al pagar)
+      const anticips = (anticData||[]).filter(a => (a.empleado||'').toLowerCase().trim()===empNorm && enRango(a.fecha||''));
+      const antTotal = anticips.reduce((s,a)=>s+(a.monto||0),0);
+      const antPend  = anticips.filter(a => a.estado === 'pendiente');
+      const saldo    = devengado - pagado - antTotal;
+      const pendiente = Math.max(0, saldo);
+      let estado;
+      if (dias > 0 && sd <= 0) estado = 'sinsalario';
+      else if (pendiente <= 0.5) estado = 'pagado';
+      else if (pagado > 0 || antTotal > 0) estado = 'parcial';
+      else estado = 'pendiente';
+      return { emp, key: emp.id || emp.nombre, dias, totalHE, sd, devengado, pagado, antTotal, antPend, saldo, pendiente, estado, fechas: Object.keys(diasMap).sort() };
+    })
+    .filter(f => f.dias > 0 || f.pagado > 0)
+    .sort((a,b) => (b.pendiente - a.pendiente) || a.emp.nombre.localeCompare(b.emp.nombre));
+    return out;
+  }, [activos, alData, pagosData, anticData, desde, hasta]);
+
+  const pagables = filas.filter(f => f.pendiente > 0.5 && f.sd > 0);
+  const seleccionadas = pagables.filter(f => sel.has(f.key));
+  const totalSel = seleccionadas.reduce((s,f)=>s+f.pendiente,0);
+
+  const tot = useMemo(() => filas.reduce((a,f)=>({
+    devengado: a.devengado + f.devengado, pagado: a.pagado + f.pagado, pendiente: a.pendiente + f.pendiente,
+  }), { devengado:0, pagado:0, pendiente:0 }), [filas]);
+
+  const toggle = (key) => setSel(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
+  const toggleTodos = () => setSel(prev => prev.size === pagables.length ? new Set() : new Set(pagables.map(f=>f.key)));
+
+  // Registra el pago del saldo pendiente de varios empleados, en un solo batch atómico
+  const registrarPagos = async (filasPagar) => {
+    const validas = filasPagar.filter(f => f.pendiente > 0.5 && f.sd > 0);
+    if (!validas.length) { toast('No hay saldo pendiente para pagar', 'error'); return; }
+    const totalPagar = validas.reduce((s,f)=>s+f.pendiente,0);
+    if (!window.confirm(`¿Registrar ${validas.length} pago(s) por Q ${fmtQ(totalPagar)} total?\n\nSe paga el SALDO pendiente de cada uno${desde||hasta ? ` (rango ${desde||'inicio'} → ${hasta||'hoy'})` : ' (todo el historial)'}.`)) return;
+    setPagando(true);
+    try {
+      const batch = writeBatch(db);
+      const hoy = today();
+      for (const f of validas) {
+        const pagoRef = doc(collection(db, 'perPagos'));
+        const antPendTotal = f.antPend.reduce((s,a)=>s+(a.monto||0),0);
+        batch.set(pagoRef, {
+          empleado: f.emp.nombre,
+          fecha:    hoy,
+          semana:   desde || weekOf(hoy),
+          monto:    Number(f.pendiente.toFixed(2)),
+          tipo:     'semanal',
+          diasAL:   f.dias,
+          fechasTrabajadas: f.fechas,
+          salarioDia: f.sd,
+          anticDescontados: antPendTotal,
+          estado:   'pagado',
+          observaciones: `Pago de saldo${desde||hasta ? ` ${desde||''}→${hasta||''}` : ' (balance total)'}`,
+          origen:   'saldos',
+          creadoEn: new Date().toISOString(),
+        });
+        // marcar anticipos pendientes como descontados (bookkeeping; el saldo ya los descontó)
+        for (const a of f.antPend) batch.update(doc(db, 'perAnticipo', a.id), { estado: 'descontado' });
+      }
+      await batch.commit();
+      setSel(new Set());
+      toast(`✓ ${validas.length} pago(s) registrados por Q ${fmtQ(totalPagar)}`);
+    } catch (e) { toast('Error: ' + e.message, 'error'); }
+    setPagando(false);
+  };
+
+  if (lEmp || lAL || lPag || lAnt) return <Skeleton rows={6} />;
+
+  const rangoLabel = preset === 'todo' ? 'todo el historial' : `${desde||'inicio'} → ${hasta||'hoy'}`;
+  const badge = (estado) => {
+    const cfg = {
+      pagado:     { bg:'rgba(46,125,50,.15)', c:T.secondary, t:'✓ Pagado' },
+      parcial:    { bg:'rgba(230,81,0,.14)',  c:T.warn,      t:'◑ Parcial' },
+      pendiente:  { bg:'rgba(230,81,0,.14)',  c:T.warn,      t:'⏳ Pendiente' },
+      sinsalario: { bg:'rgba(198,40,40,.10)', c:T.danger,    t:'⚠ Sin salario' },
+    }[estado] || { bg:'#eee', c:T.textMid, t:estado };
+    return <span style={{ padding:'3px 9px', borderRadius:100, fontSize:'.64rem', fontWeight:700, textTransform:'uppercase', background:cfg.bg, color:cfg.c, whiteSpace:'nowrap' }}>{cfg.t}</span>;
+  };
+
+  const PRESETS = [['todo','Todo'],['semana','Esta semana'],['mes','Este mes'],['mespasado','Mes pasado']];
+
+  return (
+    <div style={{ paddingBottom: seleccionadas.length ? 70 : 0 }}>
+      {/* Filtro de fecha */}
+      <div style={{ ...card, padding:'14px 18px', display:'flex', gap:14, alignItems:'flex-end', flexWrap:'wrap' }}>
+        <label style={LS}>Desde<input type="date" value={desde} onChange={onFecha(setDesde)} style={{...IS, width:150}} /></label>
+        <label style={LS}>Hasta<input type="date" value={hasta} onChange={onFecha(setHasta)} style={{...IS, width:150}} /></label>
+        <div style={{ display:'flex', gap:5, flexWrap:'wrap', marginLeft:'auto' }}>
+          {PRESETS.map(([k,l]) => (
+            <button key={k} onClick={()=>aplicarPreset(k)} style={{
+              padding:'7px 13px', borderRadius:100, fontSize:'.76rem', fontWeight:600, cursor:'pointer',
+              border:`1.5px solid ${preset===k ? T.primary : T.border}`, background: preset===k ? T.primary : T.white, color: preset===k ? T.white : T.textDark,
+            }}>{l}</button>
+          ))}
+        </div>
+      </div>
+
+      {/* KPIs */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))', gap:12, marginBottom:16 }}>
+        <Kpi label="Se debe (devengado)" val={`Q ${fmtQ(tot.devengado)}`} color={T.primary} />
+        <Kpi label="Pagado" val={`Q ${fmtQ(tot.pagado)}`} color={T.secondary} />
+        <Kpi label="Pendiente" val={`Q ${fmtQ(tot.pendiente)}`} color={tot.pendiente>0.5?T.warn:T.secondary} />
+      </div>
+
+      <div style={{ fontSize:'.78rem', color:T.textMid, marginBottom:8 }}>
+        Balance de <b style={{color:T.textDark}}>{rangoLabel}</b>. Se debe = días de AL × salario. Pagado = pagos reales (perPagos). Saldo = lo que falta.
+      </div>
+
+      <div style={{ overflowX:'auto', ...card, padding:0 }}>
+        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'.83rem', minWidth:820 }}>
+          <thead><tr>
+            <th style={{...TH_S, width:34}}><input type="checkbox" checked={pagables.length>0 && sel.size===pagables.length} onChange={toggleTodos} style={{ width:16, height:16, accentColor:T.primary, cursor:'pointer' }} /></th>
+            <th style={TH_S}>Empleado</th>
+            <th style={{...TH_S, textAlign:'center'}}>Días</th>
+            <th style={{...TH_S, textAlign:'right'}}>Se debe</th>
+            <th style={{...TH_S, textAlign:'right'}}>Pagado</th>
+            <th style={{...TH_S, textAlign:'right'}}>Saldo</th>
+            <th style={{...TH_S, textAlign:'center'}}>Estado</th>
+            <th style={TH_S}>Acción</th>
+          </tr></thead>
+          <tbody>
+            {filas.length === 0 && <tr><td colSpan={8} style={{ textAlign:'center', padding:34, color:T.textMid }}>Sin actividad en {rangoLabel}.</td></tr>}
+            {filas.map((f, i) => {
+              const puede = f.pendiente > 0.5 && f.sd > 0;
+              return (
+                <tr key={f.key} style={{ background: sel.has(f.key) ? '#EEF6EE' : (i%2 ? '#F9FBF9' : '#fff') }}>
+                  <td style={{ ...TD_S(false), textAlign:'center' }}>
+                    {puede && <input type="checkbox" checked={sel.has(f.key)} onChange={()=>toggle(f.key)} style={{ width:16, height:16, accentColor:T.primary, cursor:'pointer' }} />}
+                  </td>
+                  <td style={TD_S(false)}>
+                    <div style={{ fontWeight:600, color:T.primary }}>{f.emp.nombre}</div>
+                    <div style={{ fontSize:'.72rem', color:T.textMid }}>{f.emp.area || f.emp.cargo || '—'}</div>
+                  </td>
+                  <td style={{ ...TD_S(false), textAlign:'center', fontVariantNumeric:'tabular-nums' }}>{f.dias}{f.totalHE>0 && <span style={{ fontSize:'.68rem', color:T.textMid }}> +{f.totalHE}HE</span>}</td>
+                  <td style={{ ...TD_S(false), textAlign:'right', fontFamily:'monospace', fontVariantNumeric:'tabular-nums' }}>Q {fmtQ(f.devengado)}</td>
+                  <td style={{ ...TD_S(false), textAlign:'right', fontFamily:'monospace', color:T.secondary, fontVariantNumeric:'tabular-nums' }}>{f.pagado>0 ? `Q ${fmtQ(f.pagado)}` : '—'}</td>
+                  <td style={{ ...TD_S(false), textAlign:'right', fontFamily:'monospace', fontWeight:700, color: f.pendiente>0.5 ? T.warn : T.textMid, fontVariantNumeric:'tabular-nums' }}>Q {fmtQ(f.pendiente)}</td>
+                  <td style={{ ...TD_S(false), textAlign:'center' }}>{badge(f.estado)}</td>
+                  <td style={TD_S(false)}>
+                    {puede
+                      ? <button onClick={()=>registrarPagos([f])} disabled={pagando} style={{ padding:'6px 14px', background:T.secondary, color:T.white, border:'none', borderRadius:5, fontWeight:700, fontSize:'.74rem', cursor:'pointer' }}>Pagar saldo</button>
+                      : f.estado==='sinsalario'
+                        ? <span style={{ fontSize:'.72rem', color:T.danger }}>Configurar salario</span>
+                        : <span style={{ fontSize:'.72rem', color:T.textMid }}>—</span>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Barra fija de pago múltiple */}
+      {seleccionadas.length > 0 && (
+        <div style={{ position:'fixed', left:0, right:0, bottom:0, background:T.primary, color:'#fff', padding:'13px clamp(16px,4vw,40px)', display:'flex', alignItems:'center', gap:14, boxShadow:'0 -4px 16px rgba(0,0,0,.18)', zIndex:50 }}>
+          <span style={{ fontSize:'.92rem' }}><b>{seleccionadas.length}</b> seleccionados · total <b style={{ fontVariantNumeric:'tabular-nums' }}>Q {fmtQ(totalSel)}</b></span>
+          <span style={{ flex:1 }} />
+          <button onClick={()=>setSel(new Set())} style={{ background:'transparent', border:'1px solid rgba(255,255,255,.4)', color:'#fff', padding:'9px 16px', borderRadius:5, fontWeight:600, fontSize:'.82rem', cursor:'pointer' }}>Quitar selección</button>
+          <button onClick={()=>registrarPagos(seleccionadas)} disabled={pagando} style={{ background:'#fff', color:T.primary, border:'none', padding:'10px 20px', borderRadius:5, fontWeight:700, fontSize:'.85rem', cursor:'pointer', opacity:pagando?.5:1 }}>
+            {pagando ? 'Registrando…' : `Pagar ${seleccionadas.length} →`}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Kpi({ label, val, color }) {
+  return (
+    <div style={{ ...card, marginBottom:0, padding:'13px 16px', borderTop:`3px solid ${color}` }}>
+      <div style={{ fontSize:'.64rem', fontWeight:700, textTransform:'uppercase', letterSpacing:'.08em', color:T.textMid }}>{label}</div>
+      <div style={{ fontSize:'1.4rem', fontWeight:800, marginTop:2, color, fontVariantNumeric:'tabular-nums' }}>{val}</div>
+    </div>
+  );
+}
+
 // ─── MAIN ─────────────────────────────────────────────────────────────────────
 const TABS = [
+  { id:'balance',         label:'💰 Saldos y pago',   Component:TabBalancePagos   },
   { id:'empleados',       label:'👥 Empleados',      Component:TabEmpleados      },
   { id:'anticipos',       label:'💵 Anticipos',       Component:TabAnticipos      },
   { id:'pagos-semanales', label:'💳 Pagos',           Component:TabPagosSemanales },
@@ -1019,7 +1251,7 @@ const TABS = [
 ];
 
 export default function Personal() {
-  const [tab, setTab] = useState('pagos-semanales');
+  const [tab, setTab] = useState('balance');
   const Active = TABS.find(t => t.id === tab).Component;
 
   return (

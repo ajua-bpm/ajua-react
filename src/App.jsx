@@ -76,7 +76,6 @@ const FinanzasMovimientos   = lazy(() => import('./modules/finanzas/FinanzasMovi
 const FinanzasPlaceholder   = lazy(() => import('./modules/finanzas/FinanzasPlaceholder'));
 const FinanzasUsuarios      = lazy(() => import('./modules/finanzas/FinanzasUsuarios'));
 const FinanzasResultados    = lazy(() => import('./modules/finanzas/FinanzasResultados'));
-const FinanzasEmpleados     = lazy(() => import('./modules/finanzas/FinanzasEmpleados'));
 const FinanzasGrupos        = lazy(() => import('./modules/finanzas/FinanzasGrupos'));
 const FinanzasVentas        = lazy(() => import('./modules/finanzas/FinanzasVentas'));
 const FinanzasCxP           = lazy(() => import('./modules/finanzas/FinanzasCxP'));
@@ -188,7 +187,9 @@ export default function App() {
                 así son idénticos y traen el botón de agregar pago/rechazo. */}
             <Route path="proveedores"             element={<CuentasProveedores />} />
             <Route path="clientes"                element={<CuentasClientes />} />
-            <Route path="empleados"               element={<FinanzasEmpleados />} />
+            {/* Empleados: se reusa el módulo Personal COMPLETO (mismo que el menú),
+                con Saldos y pago (balance devengado − pagado), no un duplicado. */}
+            <Route path="empleados"               element={<Personal />} />
             <Route path="grupos"                  element={<FinanzasGrupos />} />
             <Route path="resultados"              element={<FinanzasResultados />} />
             <Route path="bancos"                  element={<FinanzasModule />} />
