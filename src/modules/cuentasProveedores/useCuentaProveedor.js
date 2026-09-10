@@ -60,9 +60,11 @@ export function useCuentaProveedor(proveedorId) {
           if (fa !== fb) return fa > fb ? 1 : -1;
           return (a.creadoEn || '') > (b.creadoEn || '') ? 1 : -1;
         });
-        // Aplicar filtros de fecha (solo a raíces — los hijos siguen a su padre)
-        if (filtros.desde) docs = docs.filter(m => m.recepcionId || (m.fecha || '') >= filtros.desde);
-        if (filtros.hasta) docs = docs.filter(m => m.recepcionId || (m.fecha || '') <= filtros.hasta);
+        // Aplicar filtros de fecha. Solo los HIJOS (rechazos vinculados a una recepción)
+        // se eximen para seguir a su padre; los pagos vinculados SÍ se filtran por fecha.
+        const esHijo = (m) => m.tipo === 'rechazo' && m.recepcionId;
+        if (filtros.desde) docs = docs.filter(m => esHijo(m) || (m.fecha || '') >= filtros.desde);
+        if (filtros.hasta) docs = docs.filter(m => esHijo(m) || (m.fecha || '') <= filtros.hasta);
         // Reagrupar: hijos inmediatamente después de su padre
         docs = reorderWithChildren(docs);
         setMovimientos(docs);
