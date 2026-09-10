@@ -256,12 +256,31 @@ export default function EstadoCuenta({ proveedor, movimientos, desde, hasta, tit
 
   function abrirVentana() {
     const html = buildHTML({ proveedor, movimientos, desde, hasta, titulo });
-    const w = window.open('', '_blank', 'width=900,height=700');
-    if (!w) { alert('Permite ventanas emergentes para imprimir.'); return; }
-    w.document.write(html);
-    w.document.close();
-    w.focus();
-    setTimeout(() => w.print(), 600);
+    // Imprimir con un iframe oculto — no lo bloquea el popup blocker (a diferencia de window.open).
+    const prev = document.getElementById('__ec_print_frame');
+    if (prev) prev.remove();
+    const iframe = document.createElement('iframe');
+    iframe.id = '__ec_print_frame';
+    Object.assign(iframe.style, { position: 'fixed', left: '-9999px', top: '0', width: '0', height: '0', border: '0' });
+    document.body.appendChild(iframe);
+    const idoc = iframe.contentWindow.document;
+    idoc.open(); idoc.write(html); idoc.close();
+    const imprimir = () => {
+      try {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+        setTimeout(() => iframe.remove(), 3000);
+      } catch (e) {
+        // Respaldo: ventana nueva (por si el iframe falla en algún navegador)
+        iframe.remove();
+        const w = window.open('', '_blank');
+        if (!w) { alert('No se pudo abrir la impresión. Permití ventanas emergentes e intentá de nuevo.'); return; }
+        w.document.open(); w.document.write(html); w.document.close();
+        w.focus(); setTimeout(() => { try { w.print(); } catch (_) {} }, 500);
+      }
+    };
+    // dar tiempo a que el iframe cargue el contenido antes de imprimir
+    setTimeout(imprimir, 450);
   }
 
   /* preview en pantalla (no se usa para imprimir) */
