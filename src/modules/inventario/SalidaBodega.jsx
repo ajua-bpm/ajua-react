@@ -158,13 +158,36 @@ export default function SalidaBodega() {
     return m;
   }, [presData]);
 
-  // LBS de una línea: usa el guardado; si quedó en 0 (import XML que no matcheó
-  // presentación con peso), lo recalcula por presentación. Los productos por unidad van 0.
+  // Peso por caja según NOMBRE de presentación — fallback para salidas viejas (import XML)
+  // que no quedaron enlazadas por presentacionId pero cuyo producto sí tiene peso configurado.
+  const normNom = (s) => (s || '').toString().toUpperCase().replace(/\s+/g, ' ').trim();
+  const pesoPorNombrePres = useMemo(() => {
+    const m = {};
+    for (const p of presData) {
+      const peso = Number(p.totalLbsCaja) || Number(p.lbsUnidad) || 0;
+      if (!peso) continue;
+      // nombre/descripcion (específicos) primero; producto (genérico) solo si no está
+      for (const campo of [p.nombre, p.descripcion, p.producto]) {
+        const k = normNom(campo);
+        if (k && !m[k]) m[k] = peso;
+      }
+    }
+    return m;
+  }, [presData]);
+
+  // LBS de una línea: usa el guardado; si quedó en 0 lo recalcula por presentación
+  // (por id, y si no, por nombre del producto). Los productos por unidad van 0.
   const lbsDeLinea = (l) => {
     if (l.tipoContenido === 'unidades') return 0;
     const cajas   = Number(l.cajas) || Number(l.cajasEnviadas) || Number(l.bultos) || 0;
     const pres    = l.presentacionId ? presById[l.presentacionId] : null;
-    const lbsCaja = Number(l.lbsCaja) || (pres ? (Number(pres.totalLbsCaja) || Number(pres.lbsUnidad) || 0) : 0);
+    let lbsCaja   = Number(l.lbsCaja) || (pres ? (Number(pres.totalLbsCaja) || Number(pres.lbsUnidad) || 0) : 0);
+    if (!lbsCaja) {
+      for (const campo of [l.descripcion, l.nombre, l.producto]) {
+        const k = normNom(campo);
+        if (k && pesoPorNombrePres[k]) { lbsCaja = pesoPorNombrePres[k]; break; }
+      }
+    }
     return Number(l.totalLbs) || Number(l.lbs) || (lbsCaja * cajas) || 0;
   };
 
