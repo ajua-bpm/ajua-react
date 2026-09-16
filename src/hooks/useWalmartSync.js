@@ -7,6 +7,20 @@ import { db, doc, getDoc, updateDoc, collection, getDocs, addDoc } from '../fire
 const today = () => new Date().toISOString().slice(0, 10);
 const cajasDe = (rubros) => (rubros || []).reduce((s, r) => s + (r.cajas || 0), 0);
 
+// La cola de Gmail guarda los rubros con nombres cortos (desc/n/prodId); la app usa
+// descripcion/item/productoId (como el alta manual). Se normaliza al importar para que
+// los pedidos del correo se vean igual que los manuales.
+const normRubros = (rubros) => (rubros || []).map(r => ({
+  descripcion:     r.descripcion || r.desc || '',
+  item:            r.item || r.n || '',
+  productoId:      r.productoId || r.prodId || '',
+  productoNombre:  r.productoNombre || '',
+  cajas:           Number(r.cajas) || 0,
+  estado:          r.estado || 'pendiente',
+  cajasAceptadas:  r.cajasAceptadas ?? null,
+  cajasRechazadas: r.cajasRechazadas ?? null,
+}));
+
 export function useWalmartSync({ enabled = true, intervalMs = 3 * 60 * 1000, onNuevo } = {}) {
   const running = useRef(false);
 
@@ -44,7 +58,7 @@ export function useWalmartSync({ enabled = true, intervalMs = 3 * 60 * 1000, onN
           fecha: p.fechaEntrega || today(), fechaEntrega: p.fechaEntrega || today(), cliente: 'Walmart',
           correlativo: p.correlativo || '', walmartQueueId: p.id || '', numOC: '', numAtlas: '',
           rampa: p.rampa || '', horaEntrega: p.horaEntrega || '16:00', descripcion: p.emailAsunto || p.nota || '',
-          rubros: p.rubros || [], productos: [], totalCajas, total: 0, estado: 'pendiente', fuente: 'gmail',
+          rubros: normRubros(p.rubros), productos: [], totalCajas, total: 0, estado: 'pendiente', fuente: 'gmail',
           solicitante: p.solicitante || '', numFel: '', montoFactura: 0, fechaFactura: '', estadoCobro: 'pendiente',
           gmailData: { subject: p.emailAsunto || '', from: p.solicitanteEmail || '', date: p.emailFecha || '' },
           obs: '', creadoEn: new Date().toISOString(),

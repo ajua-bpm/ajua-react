@@ -691,15 +691,19 @@ function TabPedidos({ data, loading, add, update, remove, saving, productos }) {
             Productos agregados
           </div>
         )}
-        {rubros.map((rb, ri) => (
+        {rubros.map((rb, ri) => {
+          const item = rb.item || rb.n;             // cola de Gmail usa 'n'
+          const desc = rb.descripcion || rb.desc;   // cola de Gmail usa 'desc'
+          return (
           <div key={ri} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'baseline', fontSize: '.85rem', lineHeight: 1.35 }}>
             <span style={{ flex: 1 }}>
-              {rb.item && <span style={{ fontFamily: 'monospace', fontSize: '.68rem', color: T.textMid, marginRight: 5 }}>{rb.item}</span>}
-              <span style={{ color: T.textDark }}>{rb.descripcion || '—'}</span>
+              {item && <span style={{ fontFamily: 'monospace', fontSize: '.68rem', color: T.textMid, marginRight: 5 }}>{item}</span>}
+              <span style={{ color: T.textDark }}>{desc || '—'}</span>
             </span>
             <span style={{ fontWeight: 800, color: T.secondary, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{rb.cajas ?? rb.cajasPedidas ?? 0}</span>
           </div>
-        ))}
+          );
+        })}
       </div>
     );
   };
@@ -729,7 +733,7 @@ function TabPedidos({ data, loading, add, update, remove, saving, productos }) {
                 const tipo = frm.tipoEntrega || 'aceptado_total';
                 return (
                   <tr key={ri} style={{ background: ri % 2 === 0 ? WHITE : '#F9FBF9' }}>
-                    <td style={{ padding: '5px 8px', fontSize: '.78rem' }}>{rb.descripcion || '—'}</td>
+                    <td style={{ padding: '5px 8px', fontSize: '.78rem' }}>{rb.descripcion || rb.desc || '—'}</td>
                     <td style={{ padding: '5px 8px', fontWeight: 700, color: T.secondary, textAlign: 'center' }}>{rb.cajas ?? rb.cajasPedidas ?? 0}</td>
                     <td style={{ padding: '5px 8px' }}>
                       <input type="number" min="0" value={frm.cajasEntregadas ?? ''} onChange={e => setFrm('cajasEntregadas', e.target.value)}
