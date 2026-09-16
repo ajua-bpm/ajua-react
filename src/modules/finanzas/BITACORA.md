@@ -271,6 +271,23 @@ si nadie la abría, la cola no se vaciaba hacia `pedidosWalmart` → sensación 
 **Pendiente de validar por Ricardo:** dejar la app abierta un rato y confirmar que entran solos
 + que llega la notificación. Si el navegador no pide permiso de notificación, aceptarlo una vez.
 
+## 2026-09-15 — Pedidos Walmart: tablero simple + quitar Gmail (commit `320209d`, staging)
+
+Pedido de Ricardo: la vista de Pedidos es "solo notificaciones de operación" — quiere saber
+qué viene, qué ya se entregó y el total; nada de tantas pestañas ni opciones. Y "quiero automático",
+no la pestaña Gmail con "Revisar ahora". Mockup aprobado antes de construir (productos siempre en
+lista; FEL lo maneja él aparte).
+
+- `TabPedidos` pasó de tabla-workspace a **tablero de estado**: dos secciones **Por entregar** /
+  **Entregados** (histórico últimos 20 días), agrupadas por fecha (fecha una vez por día + total del día).
+  Tarjeta por pedido: hora, rampa, productos en lista con cantidad, total en cajas, botón único
+  **Marcar entregado**. Se quitaron columnas vacías (OC/Atlas), las 5 pestañas de filtro y el FEL de fila.
+- KPIs de 4 → 3: Por entregar / Entregados hoy / Cajas de hoy.
+- **Pestaña Gmail eliminada** (con su `TabGmail`): la importación ya es automática y global (ver arriba).
+  Quedan Pedidos / Facturación / Calendario.
+- Limpieza: borrado `WalmartCard.jsx` (huérfano), `groupHeadTd` e imports sin uso. Bundle 65.7→49.6 kB.
+- Revisado por code-reviewer (APROBADO, 0 bloqueantes). El flujo de entrega por-rubro/simple intacto.
+
 ---
 
 ## Roadmap pendiente
