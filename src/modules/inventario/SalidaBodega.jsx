@@ -151,6 +151,29 @@ export default function SalidaBodega() {
     return m;
   }, [presData, prodMap]);
 
+  // Map presentacionId → presentación (para recalcular LBS del historial)
+  const presById = useMemo(() => {
+    const m = {};
+    for (const p of presData) m[p.id] = p;
+    return m;
+  }, [presData]);
+
+  // LBS de una línea: usa el guardado; si quedó en 0 (import XML que no matcheó
+  // presentación con peso), lo recalcula por presentación. Los productos por unidad van 0.
+  const lbsDeLinea = (l) => {
+    if (l.tipoContenido === 'unidades') return 0;
+    const cajas   = Number(l.cajas) || Number(l.cajasEnviadas) || Number(l.bultos) || 0;
+    const pres    = l.presentacionId ? presById[l.presentacionId] : null;
+    const lbsCaja = Number(l.lbsCaja) || (pres ? (Number(pres.totalLbsCaja) || Number(pres.lbsUnidad) || 0) : 0);
+    return Number(l.totalLbs) || Number(l.lbs) || (lbsCaja * cajas) || 0;
+  };
+
+  // LBS de una salida para el historial: usa el guardado; si quedó en 0, recalcula por línea.
+  const lbsDeSalida = (r) => {
+    if (Number(r.totalLbs) > 0) return Number(r.totalLbs);
+    return (r.lineas || r.productos || []).reduce((s, l) => s + lbsDeLinea(l), 0);
+  };
+
   // ── Line operations ───────────────────────────────────────────
   const addLinea    = () => setLineas(ls => [...ls, BLANK_LINEA()]);
   const removeLinea = key => setLineas(ls => ls.filter(l => l._key !== key));
@@ -499,7 +522,7 @@ export default function SalidaBodega() {
           for (const l of lineas) {
             rows.push([d.id, r.fecha||'', r.cliente||'', r.numOC||'', r.authSAT||'',
               l.producto||l.descripcion||'', l.cajas||0, l.tipoContenido||'',
-              l.totalLbs||0, l.totalUnidades||0, r.conIva||0, r.aCobrar||0]);
+              lbsDeLinea(l), l.totalUnidades||0, r.conIva||0, r.aCobrar||0]);
           }
         }
       }
@@ -906,7 +929,7 @@ export default function SalidaBodega() {
                         <td style={{ ...tdSt, fontSize:'.74rem', color:T.textMid, maxWidth:200, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                           {prodList || `${(r.lineas||r.productos||[]).length} línea(s)`}
                         </td>
-                        <td style={{ ...tdSt, textAlign:'right', fontWeight:600 }}>{(r.totalLbs||0).toLocaleString('es-GT',{maximumFractionDigits:1})}</td>
+                        <td style={{ ...tdSt, textAlign:'right', fontWeight:600 }}>{lbsDeSalida(r).toLocaleString('es-GT',{maximumFractionDigits:1})}</td>
                         <td style={{ ...tdSt, textAlign:'right', whiteSpace:'nowrap' }}>{fmtQ(r.neto)}</td>
                         <td style={{ ...tdSt, textAlign:'right', fontWeight:600, whiteSpace:'nowrap' }}>{fmtQ(r.conIva)}</td>
                         <td style={{ ...tdSt, textAlign:'right', fontWeight:800, color:T.info, whiteSpace:'nowrap' }}>{fmtQ(r.aCobrar)}</td>

@@ -56,6 +56,18 @@ export default function StockVivo() {
   const { data: mainData,    loading: loadM } = useMainData();
   const { productos: catalogItems, loading: loadC } = useProductosCatalogo();
   const [filtProd, setFiltProd] = useState('');
+  // Colchón de inventario: cada salida descuenta solo este % del stock (100 = sin colchón).
+  // Persistido en localStorage. Ver StockVivo — pedido de Ricardo: "que no jale el 100%".
+  const [factorSalida, setFactorSalida] = useState(() => {
+    const v = parseFloat(localStorage.getItem('ajua_stock_factor_salida'));
+    return Number.isFinite(v) && v > 0 && v <= 100 ? v : 100;
+  });
+  const setFactor = (v) => {
+    const p = parseFloat(v);
+    const n = Math.max(1, Math.min(100, Number.isFinite(p) ? p : 100));
+    setFactorSalida(n);
+    try { localStorage.setItem('ajua_stock_factor_salida', String(n)); } catch { /* */ }
+  };
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   useEffect(() => {
     const h = () => setIsMobile(window.innerWidth < 768);
@@ -212,22 +224,27 @@ export default function StockVivo() {
     return m;
   }, [entradas, salidas, prodById, resolve, cantPorCajaMap, lbsPerCajaByCanon, presById]);
 
-  const productos = useMemo(() =>
-    Object.entries(stockMap)
-      .map(([canonId, v]) => ({
-        canonId,
-        nombre: v.nombre,
-        esPorUnidad: v.esPorUnidad,
-        entQ: v.esPorUnidad ? v.entUnid : v.entLbs,
-        salQ: v.esPorUnidad ? v.salUnid : v.salLbs,
-        stock: v.esPorUnidad ? (v.entUnid - v.salUnid) : (v.entLbs - v.salLbs),
-        lastDuca: v.lastDuca,
-        lastDucaLbs: v.lastDucaLbs,
-      }))
+  const productos = useMemo(() => {
+    const f = factorSalida / 100;
+    return Object.entries(stockMap)
+      .map(([canonId, v]) => {
+        const entQ = v.esPorUnidad ? v.entUnid : v.entLbs;
+        const salQ = v.esPorUnidad ? v.salUnid : v.salLbs;
+        return {
+          canonId,
+          nombre: v.nombre,
+          esPorUnidad: v.esPorUnidad,
+          entQ,
+          salQ,
+          stock: entQ - salQ * f,   // con colchón: si f<1, cada salida descuenta menos
+          stockReal: entQ - salQ,   // sin colchón (100%)
+          lastDuca: v.lastDuca,
+          lastDucaLbs: v.lastDucaLbs,
+        };
+      })
       .filter(p => p.entQ > 0 || p.salQ > 0)
-      .sort((a, b) => a.nombre.localeCompare(b.nombre)),
-    [stockMap]
-  );
+      .sort((a, b) => a.nombre.localeCompare(b.nombre));
+  }, [stockMap, factorSalida]);
 
   // ── Movement history (per-line, resolved to canonical product) ─
   const movements = useMemo(() => {
@@ -339,8 +356,22 @@ export default function StockVivo() {
 
       {/* Product summary cards */}
       <div style={card}>
-        <div style={{ fontWeight: 700, fontSize: '.9rem', color: T.primary, marginBottom: 16 }}>
-          Existencias en Bodega por Producto
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
+          <div style={{ fontWeight: 700, fontSize: '.9rem', color: T.primary }}>
+            Existencias en Bodega por Producto
+          </div>
+          <label title="Cada salida descuenta solo este % del stock, para mantener un colchón de inventario"
+            style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '.74rem', color: T.textMid, fontWeight: 600 }}>
+            Descontar salidas al
+            <input type="number" min="1" max="100" value={factorSalida} onChange={e => setFactor(e.target.value)}
+              style={{ width: 60, padding: '5px 8px', border: `1.5px solid ${T.border}`, borderRadius: 6, fontSize: '.8rem', textAlign: 'right', outline: 'none' }} />
+            %
+            {factorSalida < 100 && (
+              <span style={{ padding: '2px 8px', background: '#FFF3E0', color: T.warn, borderRadius: 10, fontSize: '.66rem', fontWeight: 700 }}>
+                colchón {100 - factorSalida}%
+              </span>
+            )}
+          </label>
         </div>
         {productos.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '40px 0', color: T.textMid, fontSize: '.88rem' }}>
@@ -373,9 +404,14 @@ export default function StockVivo() {
                   <div style={{ fontSize: '2rem', fontWeight: 800, color: sColor, lineHeight: 1 }}>
                     {fmtN(p.stock, 0)}
                   </div>
-                  <div style={{ fontSize: '.72rem', color: T.textMid, marginTop: 2, marginBottom: 10 }}>
+                  <div style={{ fontSize: '.72rem', color: T.textMid, marginTop: 2, marginBottom: factorSalida < 100 ? 4 : 10 }}>
                     {unit} en bodega{!p.esPorUnidad ? ` · ${lbsToKg(p.stock)} kg` : ''}
                   </div>
+                  {factorSalida < 100 && (
+                    <div style={{ fontSize: '.66rem', color: T.textMid, marginBottom: 10 }}>
+                      real sin colchón: <b>{fmtN(p.stockReal, 0)}</b> {unit}
+                    </div>
+                  )}
 
                   <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 10 }}>
                     <span style={{ padding: '2px 7px', background: '#E8F5E9', color: T.secondary, borderRadius: 10, fontSize: '.68rem', fontWeight: 700 }}>

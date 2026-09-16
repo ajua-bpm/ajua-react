@@ -632,8 +632,8 @@ function TabPedidos({ data, loading, add, update, remove, saving, productos }) {
   const cajasDe = (r) => r.totalCajas || (r.rubros?.reduce((s, x) => s + (x.cajas ?? x.cajasPedidas ?? 0), 0)) || 0;
   // Clave de fecha de un pedido (misma en ordenar, agrupar y mostrar)
   const fechaKey = (r) => r.fechaEntrega || r.fecha || 'Sin fecha';
-  // Un pedido está "cerrado" (ya pasó) si fue entregado o cancelado
-  const esCerrado = (r) => r.estado === 'entregado' || r.estado === 'cancelado';
+  // Un pedido está "cerrado" (ya pasó) si fue entregado, cancelado o (legacy) cerrado
+  const esCerrado = (r) => r.estado === 'entregado' || r.estado === 'cancelado' || r.estado === 'cerrado';
 
   const matchSearch = (r) => {
     const q = search.trim().toLowerCase();
