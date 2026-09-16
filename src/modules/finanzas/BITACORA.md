@@ -271,6 +271,24 @@ si nadie la abría, la cola no se vaciaba hacia `pedidosWalmart` → sensación 
 **Pendiente de validar por Ricardo:** dejar la app abierta un rato y confirmar que entran solos
 + que llega la notificación. Si el navegador no pide permiso de notificación, aceptarlo una vez.
 
+## 2026-09-15 — Inventario: LBS del historial + colchón de stock + limpieza backlog (commit `499f0ea`, staging)
+
+Fuera del módulo Finanzas pero misma sesión/repo. Tres cosas:
+
+1. **Limpieza de backlog Walmart** (dato, no código): 116 pedidos abiertos con fecha < hoy
+   (2026-03-02 → 2026-09-12, casi todos "preparando") ensuciaban "Por entregar". Se marcaron
+   `estado:'entregado'` con marca reversible `cerradoEnLimpieza:'2026-09-15'` + `tipoEntrega:'cierre_masivo'`.
+   Respaldo previo: `scratchpad/pedidosWalmart_backup_20260915.json` (155 docs). Quedaron los 6 futuros (15–18 sep).
+2. **Salida de Bodega — LBS=0**: causa = salidas de peso importadas por XML sin match de presentación con peso.
+   Fix display: helpers `lbsDeLinea`/`lbsDeSalida` recalculan por presentación cuando el guardado es 0 (tabla + export XLSX);
+   por-unidad quedan 0. Diagnóstico real: de 96 salidas, 57 ok, 22 por-unidad (0 correcto), 1 recuperada, **16 granel
+   sin dato** (ZANAHORIA, CEBOLLA) → pendiente cargar "lbs por caja" en su presentación y backfillear. Hay basura
+   ("PAGO POR SERVICIOS DE IT", "(sin nombre)").
+3. **StockVivo — colchón**: control "Descontar salidas al __%" (default 100 = sin cambio, localStorage).
+   `stock = entradas − salidas × factor`; cada tarjeta muestra "real sin colchón". Pedido de Ricardo: "que no jale el 100%".
+
+Todo revisado por code-reviewer (APROBADO). Pendiente Ricardo: pesos de zanahoria/cebolla para cerrar el LBS.
+
 ## 2026-09-15 — Pedidos Walmart: tablero simple + quitar Gmail (commit `320209d`, staging)
 
 Pedido de Ricardo: la vista de Pedidos es "solo notificaciones de operación" — quiere saber
