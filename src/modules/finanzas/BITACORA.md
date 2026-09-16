@@ -248,6 +248,31 @@ elegido → `setDoc(doc, {...prev, usuarios: nuevos})`. Preserva TODO el resto d
 
 ---
 
+## 2026-09-15 — Fix correos Walmart: sync global de la cola (commit `f770cdc`, staging)
+
+**Problema reportado:** los pedidos de Walmart "aparecen leídos pero no llegan al sistema",
+sin notificaciones, y todo se carga a mano.
+
+**Diagnóstico (verificado con data real):** el correo SÍ llega. El Apps Script de Google
+lee Gmail y llena `ajua_bpm/walmart_queue` correctamente (31 items en cola, 122 ya importados,
+nada perdido). El problema era que el import **solo corría dentro de la pestaña Gmail** de Walmart:
+si nadie la abría, la cola no se vaciaba hacia `pedidosWalmart` → sensación de "no llegan".
+
+**Fix:**
+- Nuevo hook `src/hooks/useWalmartSync.js` — corre en TODA la app (cableado en `Layout.jsx`,
+  activo si el usuario ve Walmart), cada 3 min lee la cola y crea los pedidos automáticamente,
+  con notificación del navegador + toast cuando entra uno nuevo.
+- Dedup por `id de cola` / `correlativo` / (respaldo) `día+rampa+cantidad de rubros`.
+  Se probó una variante con "total de cajas" pero un item real (2026-09-08, rampa 5002) no
+  matcheaba → habría duplicado. Se dejó el dedup por cantidad de rubros: **verificado contra los
+  31 items reales = 0 duplicados**.
+- Mismo dedup replicado en `Walmart.jsx` (`TabGmail.checkQueue`) para que ambos coincidan.
+
+**Pendiente de validar por Ricardo:** dejar la app abierta un rato y confirmar que entran solos
++ que llega la notificación. Si el navegador no pide permiso de notificación, aceptarlo una vez.
+
+---
+
 ## Roadmap pendiente
 
 ### 🔴 Paso grande (solo cuando el nuevo esté validado con data real)
