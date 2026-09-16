@@ -3,6 +3,8 @@ import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useNotifications } from '../hooks/useNotifications';
 import { useCollection } from '../hooks/useFirestore';
+import { useToast } from '../components/Toast';
+import { useWalmartSync } from '../hooks/useWalmartSync';
 import { SECTION_AREA, areaById } from '../areas';
 import IngieMari from './asistente/IngieMari';
 
@@ -113,6 +115,14 @@ export default function Layout() {
   const area = areaById(activeArea);
   const navItems = navForArea(activeArea);
   const { permission, supported, requestPermission } = useNotifications();
+  const toast = useToast();
+
+  // Sync GLOBAL de pedidos Walmart desde la cola de Gmail — corre en toda la app
+  // (no solo en la pestaña Gmail), cada 3 min, con notificación cuando entra uno nuevo.
+  useWalmartSync({
+    enabled: canSee(user, 'walmart'),
+    onNuevo: (n) => toast(`📦 ${n} pedido${n > 1 ? 's' : ''} nuevo${n > 1 ? 's' : ''} de Walmart`),
+  });
 
   // Badge: pedidos Walmart pendientes de esta semana en adelante
   const { data: wmData } = useCollection('pedidosWalmart', { orderField: 'fechaEntrega', orderDir: 'asc', limit: 200 });

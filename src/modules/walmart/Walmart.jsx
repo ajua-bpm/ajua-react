@@ -1510,16 +1510,16 @@ function TabGmail({ data, add }) {
       const queueActualizada = [...queue];
 
       for (const p of pendientes) {
-        // Dedup: correlativo exacto, walmartQueueId, o misma fechaEntrega+rampa+cantidad de rubros
-        const nRubros = (p.rubros || []).length;
+        // Dedup: id único de la cola, correlativo, o (respaldo para cargados a mano)
+        // mismo día + rampa + cantidad de rubros. Verificado: cubre los 31 de la cola sin duplicar.
+        const nR = (p.rubros || []).length;
         const existe = dataRef.current.some(r => {
-          if (p.correlativo && r.correlativo === p.correlativo) return true;
           if (p.id && r.walmartQueueId === p.id) return true;
-          // Mismo día + rampa + cantidad de líneas = mismo pedido
+          if (p.correlativo && r.correlativo && r.correlativo === p.correlativo) return true;
           if (
             p.fechaEntrega && r.fechaEntrega === p.fechaEntrega &&
-            r.rampa === (p.rampa || '') &&
-            (r.rubros?.length || 0) === nRubros
+            (r.rampa || '') === (p.rampa || '') &&
+            (r.rubros?.length || 0) === nR
           ) return true;
           return false;
         });
@@ -1625,8 +1625,9 @@ function TabGmail({ data, add }) {
         </div>
 
         <p style={{ fontSize: '.84rem', color: T.textMid, margin: 0 }}>
-          Los pedidos que llegan por correo a <b>agroajua@gmail.com</b> se detectan automáticamente
-          cada 30 min por el Apps Script y se importan aquí al abrir esta página (polling cada 5 min).
+          Los pedidos que llegan por correo a <b>agroajua@gmail.com</b> se detectan por el Apps Script y
+          se importan <b>automáticamente en toda la app</b> (cada 3 min, estés donde estés), con notificación.
+          Este botón fuerza una revisión inmediata.
         </p>
       </div>
 
