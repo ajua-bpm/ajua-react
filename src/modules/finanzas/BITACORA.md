@@ -271,6 +271,20 @@ si nadie la abría, la cola no se vaciaba hacia `pedidosWalmart` → sensación 
 **Pendiente de validar por Ricardo:** dejar la app abierta un rato y confirmar que entran solos
 + que llega la notificación. Si el navegador no pide permiso de notificación, aceptarlo una vez.
 
+## 2026-09-30 — Walmart: dedup por firma de productos (agregados) + nombres desc/n (commits `a6c9db4`, `740896c`, staging)
+
+Dos bugs del sync de correos Walmart:
+
+1. **Nombres "—"** (`a6c9db4`): la cola de Gmail guarda rubros con campos cortos `desc/n/prodId`; la app
+   lee `descripcion/item/productoId`. Los pedidos por correo salían sin nombre. Fix: `normRubros` al importar
+   (useWalmartSync) + fallback de display `desc/n` en el tablero. Los manuales ya usaban los nombres largos.
+2. **Agregados perdidos** (`740896c`): cuando ya había pedido para una fecha/rampa y Walmart mandaba un
+   "agregado" (otro producto), el dedup lo tomaba como duplicado (matcheaba por fecha+rampa+CANTIDAD de rubros,
+   ambos con 1). Además el correlativo se REUTILIZA entre pedidos (WM-2026-001 ×5), así que no sirve para dedup.
+   Fix: dedup por **firma de productos** (item+descripción+cajas) + fecha + rampa. Agregado con otro producto entra;
+   reenvío idéntico se ignora. Verificado con datos reales. Recuperado a mano el agregado perdido ZANAHORIA
+   2026-09-30 rampa 5010 100cj (era de hoy).
+
 ## 2026-09-15 — Inventario: LBS del historial + colchón de stock + limpieza backlog (commit `499f0ea`, staging)
 
 Fuera del módulo Finanzas pero misma sesión/repo. Tres cosas:
