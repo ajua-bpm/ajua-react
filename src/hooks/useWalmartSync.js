@@ -36,15 +36,18 @@ export function useWalmartSync({ enabled = true, intervalMs = 3 * 60 * 1000, onN
 
       const peds = (await getDocs(collection(db, 'pedidosWalmart'))).docs.map(d => ({ id: d.id, ...d.data() }));
 
-      // Dedup: id único de la cola, correlativo, o (respaldo para cargados a mano)
-      // mismo día + rampa + cantidad de rubros. Verificado: cubre los 31 de la cola sin duplicar.
+      // Dedup por CONTENIDO: mismo día + rampa + misma firma de productos (item+descripción+cajas).
+      // Así un "agregado" (otro producto el mismo día/rampa) SÍ entra, y un reenvío idéntico se ignora.
+      // NO se usa el correlativo: Walmart lo reutiliza entre pedidos distintos (mergearía pedidos reales).
+      const firma = (rubros) => (rubros || [])
+        .map(r => `${(r.item || r.n || '').toString().trim()}~${(r.descripcion || r.desc || '').toString().trim().toUpperCase()}~${Number(r.cajas) || 0}`)
+        .sort().join('|');
       const existe = (p) => {
-        const nR = (p.rubros || []).length;
+        if (p.id && peds.some(r => r.walmartQueueId === p.id)) return true;
+        const fp = firma(p.rubros);
+        if (!fp) return false; // sin productos: no se puede deduplicar con seguridad → importar
         return peds.some(r =>
-          (p.id && r.walmartQueueId === p.id) ||
-          (p.correlativo && r.correlativo && r.correlativo === p.correlativo) ||
-          (p.fechaEntrega && r.fechaEntrega === p.fechaEntrega && (r.rampa || '') === (p.rampa || '') &&
-            (r.rubros?.length || 0) === nR)
+          r.fechaEntrega === p.fechaEntrega && (r.rampa || '') === (p.rampa || '') && firma(r.rubros) === fp
         );
       };
 
