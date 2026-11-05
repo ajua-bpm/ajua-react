@@ -167,9 +167,9 @@ export default function LIMP() {
   const { data: blData,    loading: blLoad }    = useCollection('bl',   { orderField: 'fecha', orderDir: 'desc', limit: 200 });
   const { data: parqData,  loading: parqLoad }  = useCollection('parq', { orderField: 'fecha', orderDir: 'desc', limit: 200 });
 
-  const { add: addLimp, saving: savingLimp } = useWrite('limp');
+  const { add: addLimp, saving: savingLimp, remove: removeLimp } = useWrite('limp');
   const { add: addBl,   saving: savingBl, remove: removeBl } = useWrite('bl');
-  const { add: addParq, saving: savingParq } = useWrite('parq');
+  const { add: addParq, saving: savingParq, remove: removeParq } = useWrite('parq');
 
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   useEffect(() => {
@@ -227,6 +227,9 @@ export default function LIMP() {
       toast('Error al guardar: ' + e.message, 'error');
     }
   };
+
+  const [expLimp, setExpLimp] = useState(null);
+  const toggleLimpExpand = (id) => setExpLimp(prev => prev === id ? null : id);
 
   // Registro de 1 toque (Áreas de Proceso): crea el registro de HOY con todas las áreas en cumple,
   // Agua+cloro 10%, tomando el último responsable usado. Para marcar la limpieza diaria al momento.
@@ -316,6 +319,25 @@ export default function LIMP() {
 
   const parqOk  = PARQ_CHECKS.filter(p => parqChecks[p.key] === 'si').length;
   const parqRes = parqOk === PARQ_CHECKS.length ? 'cumple' : 'no_cumple';
+
+  const [expParq, setExpParq] = useState(null);
+  const toggleParqExpand = (id) => setExpParq(prev => prev === id ? null : id);
+  const [quickParq, setQuickParq] = useState(false);
+  const handleQuickParq = async () => {
+    const r = parqResp || parqData?.[0]?.responsable || empleados?.[0]?.nombre || '';
+    if (!r) { toast('Elegí un responsable primero', 'error'); return; }
+    setQuickParq(true);
+    try {
+      await addParq({
+        fecha: today(), hora: nowHM(), responsable: r,
+        checks: Object.fromEntries(PARQ_CHECKS.map(p => [p.key, 'si'])),
+        resultado: 'cumple', obs: '', creadoEn: new Date().toISOString(),
+      });
+      toast(`Parqueo de hoy registrado — ${r}`);
+    } catch (e) {
+      toast('Error al guardar: ' + e.message, 'error');
+    } finally { setQuickParq(false); }
+  };
 
   const handleSaveParq = async () => {
     if (!parqFecha || !parqResp) { toast('Complete fecha y responsable', 'error'); return; }
@@ -494,8 +516,8 @@ export default function LIMP() {
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr style={{ background: T.primary }}>
-                      {['Fecha', 'Hora', 'Responsable', 'Cumple', 'No Cumple', 'Resultado', 'Foto', 'Obs'].map(h => (
-                        <th key={h} style={{ padding: '9px 12px', textAlign: 'left', color: T.white, fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
+                      {['Fecha', 'Hora', 'Responsable', 'Cumple', 'No Cumple', 'Resultado', '', ''].map((h, hi) => (
+                        <th key={hi} style={{ padding: '9px 12px', textAlign: 'left', color: T.white, fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -504,25 +526,59 @@ export default function LIMP() {
                       const allC = ['cooler1', 'cooler2', 'precarga', 'bodega'].flatMap(k => r[k]?.checks || []);
                       const si = allC.filter(c => c === 'si').length;
                       const no = allC.filter(c => c === 'no').length;
-                      const foto = r.cooler1?.fotoUrl || r.cooler2?.fotoUrl || r.precarga?.fotoUrl || '';
+                      const isExp = expLimp === r.id;
                       return (
-                        <tr key={r.id} style={{ background: i % 2 === 0 ? T.white : '#F9FBF9' }}>
-                          <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0', fontWeight: 600 }}>{r.fecha || '—'}</td>
-                          <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0' }}>{r.hora || '—'}</td>
-                          <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0' }}>
-                            <div>{r.responsable || '—'}</div>
-                            <div style={{ fontSize: '.68rem', color: T.secondary, fontWeight: 700, marginTop: 2, whiteSpace: 'nowrap' }}>🧴 {r.solucion || SOLUCION_LIMPIEZA}</div>
-                          </td>
-                          <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0', color: T.secondary }}>{si}</td>
-                          <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0', color: T.danger }}>{no}</td>
-                          <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }}><Badge ok={r.resultado === 'cumple'} /></td>
-                          <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }}>
-                            {foto ? <img src={foto} alt="f" style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 4 }} /> : '—'}
-                          </td>
-                          <td style={{ padding: '8px 12px', fontSize: '.75rem', borderBottom: '1px solid #F0F0F0', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {r.cooler1?.obs || r.cooler2?.obs || r.precarga?.obs || r.bodega?.obs || '—'}
-                          </td>
-                        </tr>
+                        <Fragment key={r.id}>
+                          <tr style={{ background: isExp ? '#F1F8E9' : i % 2 === 0 ? T.white : '#F9FBF9', cursor: 'pointer' }} onClick={() => toggleLimpExpand(r.id)}>
+                            <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0', fontWeight: 600 }}>{r.fecha || '—'}</td>
+                            <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0' }}>{r.hora || '—'}</td>
+                            <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0' }}>{r.responsable || '—'}</td>
+                            <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0', color: T.secondary, fontWeight: 700 }}>{si}</td>
+                            <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0', color: T.danger }}>{no}</td>
+                            <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }}><Badge ok={r.resultado === 'cumple'} /></td>
+                            <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0', textAlign: 'center', color: T.secondary, fontWeight: 700, fontSize: '.8rem' }}>{isExp ? '▲' : '▼'}</td>
+                            <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }} onClick={e => e.stopPropagation()}>
+                              <button onClick={() => { if (window.confirm('¿Eliminar este registro?')) removeLimp(r.id); }}
+                                style={{ padding: '3px 10px', borderRadius: 5, border: `1.5px solid ${T.danger}`, background: '#fff', color: T.danger, cursor: 'pointer', fontSize: '.75rem', fontWeight: 700, fontFamily: 'inherit' }}>✕</button>
+                            </td>
+                          </tr>
+                          {isExp && (
+                            <tr>
+                              <td colSpan={8} style={{ padding: 0, borderBottom: '2px solid #A5D6A7' }}>
+                                <div style={{ padding: '14px 18px', background: '#F9FEF9', borderLeft: '4px solid #2E7D32' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                                    <span style={{ fontSize: '1.05rem' }}>🧴</span>
+                                    <span style={{ fontSize: '.8rem', fontWeight: 700, color: T.secondary }}>Solución: {r.solucion || SOLUCION_LIMPIEZA}</span>
+                                  </div>
+                                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(230px,1fr))', gap: 14 }}>
+                                    {AREAS.map(area => (
+                                      <div key={area.key}>
+                                        <div style={{ fontWeight: 700, fontSize: '.7rem', color: T.secondary, textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 6 }}>{area.icon} {area.label}</div>
+                                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.78rem' }}>
+                                          <tbody>
+                                            {area.checks.map((label, ci) => {
+                                              const v = r[area.key]?.checks?.[ci];
+                                              return (
+                                                <tr key={ci} style={{ background: ci % 2 === 0 ? '#fff' : '#F4FAF4' }}>
+                                                  <td style={{ padding: '4px 8px', color: T.textDark }}>{label}</td>
+                                                  <td style={{ padding: '4px 8px', textAlign: 'right', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                                                    {v === 'si' ? <span style={{ color: T.accent }}>✓</span> : v === 'no' ? <span style={{ color: T.danger }}>✗</span> : <span style={{ color: T.textMid }}>N/A</span>}
+                                                  </td>
+                                                </tr>
+                                              );
+                                            })}
+                                          </tbody>
+                                        </table>
+                                        {r[area.key]?.obs && <div style={{ fontSize: '.72rem', color: T.textMid, marginTop: 4 }}>📝 {r[area.key].obs}</div>}
+                                        {r[area.key]?.fotoUrl && <img src={r[area.key].fotoUrl} alt="foto" style={{ width: 54, height: 54, objectFit: 'cover', borderRadius: 5, marginTop: 6 }} />}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
                       );
                     })}
                   </tbody>
@@ -763,6 +819,25 @@ export default function LIMP() {
             </div>
           )}
 
+          {/* Registro de 1 toque — marca el parqueo de HOY al momento */}
+          <Card style={{ background: T.bgGreen, borderColor: '#A5D6A7' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+              <div style={{ flex: '1 1 200px', minWidth: 0 }}>
+                <div style={{ fontWeight: 800, fontSize: '.95rem', color: T.primary }}>✓ Registrar parqueo de hoy</div>
+                <div style={{ fontSize: '.78rem', color: T.textMid, marginTop: 2 }}>1 toque: los 4 puntos en cumple, con fecha y hora de ahora.</div>
+              </div>
+              <select value={parqResp} onChange={e => setParqResp(e.target.value)}
+                style={{ ...inputStyle, width: 'auto', minWidth: 170, flex: '0 1 auto', cursor: 'pointer' }}>
+                <option value="">— Responsable{parqData?.[0]?.responsable ? ` (${parqData[0].responsable})` : ''} —</option>
+                {empleados.map(e => <option key={e.id} value={e.nombre}>{e.nombre}</option>)}
+              </select>
+              <button onClick={handleQuickParq} disabled={quickParq}
+                style={{ padding: '12px 24px', background: quickParq ? '#BDBDBD' : T.primary, color: T.white, border: 'none', borderRadius: 8, fontWeight: 800, fontSize: '.92rem', cursor: quickParq ? 'not-allowed' : 'pointer', fontFamily: 'inherit', minHeight: 48, whiteSpace: 'nowrap' }}>
+                {quickParq ? 'Guardando…' : '✓ Registrar hoy'}
+              </button>
+            </div>
+          </Card>
+
           <Card>
             <SectionTitle>Limpieza de Parqueo</SectionTitle>
             <p style={{ fontSize: '.7rem', color: T.textMid, marginBottom: 14 }}>Lunes, Miércoles y Viernes — 3 veces por semana</p>
@@ -841,23 +916,55 @@ export default function LIMP() {
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr style={{ background: T.primary }}>
-                      {['Fecha', 'Hora', 'Responsable', 'Checks OK', 'Resultado', 'Obs'].map(h => (
-                        <th key={h} style={{ padding: '9px 12px', textAlign: 'left', color: T.white, fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
+                      {['Fecha', 'Hora', 'Responsable', 'Checks OK', 'Resultado', '', ''].map((h, hi) => (
+                        <th key={hi} style={{ padding: '9px 12px', textAlign: 'left', color: T.white, fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {(parqData || []).slice(0, 100).map((r, i) => {
                       const ok = PARQ_CHECKS.filter(p => (r.checks || {})[p.key] === 'si').length;
+                      const isExp = expParq === r.id;
                       return (
-                        <tr key={r.id} style={{ background: i % 2 === 0 ? T.white : '#F9FBF9' }}>
-                          <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0', fontWeight: 600 }}>{r.fecha || '—'}</td>
-                          <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0' }}>{r.hora || '—'}</td>
-                          <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0' }}>{r.responsable || '—'}</td>
-                          <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0', fontWeight: 700, color: ok === PARQ_CHECKS.length ? T.secondary : T.warn }}>{ok}/{PARQ_CHECKS.length}</td>
-                          <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }}><Badge ok={r.resultado === 'cumple'} /></td>
-                          <td style={{ padding: '8px 12px', fontSize: '.75rem', borderBottom: '1px solid #F0F0F0', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.obs || '—'}</td>
-                        </tr>
+                        <Fragment key={r.id}>
+                          <tr style={{ background: isExp ? '#F1F8E9' : i % 2 === 0 ? T.white : '#F9FBF9', cursor: 'pointer' }} onClick={() => toggleParqExpand(r.id)}>
+                            <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0', fontWeight: 600 }}>{r.fecha || '—'}</td>
+                            <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0' }}>{r.hora || '—'}</td>
+                            <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0' }}>{r.responsable || '—'}</td>
+                            <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0', fontWeight: 700, color: ok === PARQ_CHECKS.length ? T.secondary : T.warn }}>{ok}/{PARQ_CHECKS.length}</td>
+                            <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }}><Badge ok={r.resultado === 'cumple'} /></td>
+                            <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0', textAlign: 'center', color: T.secondary, fontWeight: 700, fontSize: '.8rem' }}>{isExp ? '▲' : '▼'}</td>
+                            <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }} onClick={e => e.stopPropagation()}>
+                              <button onClick={() => { if (window.confirm('¿Eliminar este registro?')) removeParq(r.id); }}
+                                style={{ padding: '3px 10px', borderRadius: 5, border: `1.5px solid ${T.danger}`, background: '#fff', color: T.danger, cursor: 'pointer', fontSize: '.75rem', fontWeight: 700, fontFamily: 'inherit' }}>✕</button>
+                            </td>
+                          </tr>
+                          {isExp && (
+                            <tr>
+                              <td colSpan={7} style={{ padding: 0, borderBottom: '2px solid #A5D6A7' }}>
+                                <div style={{ padding: '14px 18px', background: '#F9FEF9', borderLeft: '4px solid #2E7D32' }}>
+                                  <div style={{ fontWeight: 700, fontSize: '.7rem', color: T.secondary, textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>Detalle del parqueo</div>
+                                  <table style={{ borderCollapse: 'collapse', fontSize: '.8rem' }}>
+                                    <tbody>
+                                      {PARQ_CHECKS.map((p, pi) => {
+                                        const v = (r.checks || {})[p.key];
+                                        return (
+                                          <tr key={p.key} style={{ background: pi % 2 === 0 ? '#fff' : '#F4FAF4' }}>
+                                            <td style={{ padding: '4px 24px 4px 10px', color: T.textDark, whiteSpace: 'nowrap' }}>{p.label}</td>
+                                            <td style={{ padding: '4px 14px', textAlign: 'center', fontWeight: 700 }}>
+                                              {v === 'si' ? <span style={{ color: T.accent }}>✓</span> : v === 'no' ? <span style={{ color: T.danger }}>✗</span> : <span style={{ color: T.textMid }}>N/A</span>}
+                                            </td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                  {r.obs && <div style={{ marginTop: 10, fontSize: '.78rem', color: T.textMid }}>📝 {r.obs}</div>}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
                       );
                     })}
                   </tbody>
