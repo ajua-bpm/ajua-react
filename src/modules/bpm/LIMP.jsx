@@ -218,7 +218,7 @@ export default function LIMP() {
         cooler2:  buildArea(AREAS[1]),
         precarga: buildArea(AREAS[2]),
         bodega:   buildArea(AREAS[3]),
-        pct, resultado,
+        pct, resultado, solucion: SOLUCION_LIMPIEZA,
         creadoEn: new Date().toISOString(),
       });
       toast('Registro de limpieza diaria guardado');
@@ -226,6 +226,28 @@ export default function LIMP() {
     } catch (e) {
       toast('Error al guardar: ' + e.message, 'error');
     }
+  };
+
+  // Registro de 1 toque (Áreas de Proceso): crea el registro de HOY con todas las áreas en cumple,
+  // Agua+cloro 10%, tomando el último responsable usado. Para marcar la limpieza diaria al momento.
+  const [quickLimp, setQuickLimp] = useState(false);
+  const handleQuickLimp = async () => {
+    const r = resp || limpData?.[0]?.responsable || empleados?.[0]?.nombre || '';
+    if (!r) { toast('Elegí un responsable primero', 'error'); return; }
+    const areaSi = (a) => ({ checks: a.checks.map(() => 'si'), obs: '', fotoUrl: '' });
+    setQuickLimp(true);
+    try {
+      await addLimp({
+        fecha: today(), hora: nowHM(), responsable: r,
+        cooler1: areaSi(AREAS[0]), cooler2: areaSi(AREAS[1]),
+        precarga: areaSi(AREAS[2]), bodega: areaSi(AREAS[3]),
+        pct: 100, resultado: 'cumple', solucion: SOLUCION_LIMPIEZA,
+        creadoEn: new Date().toISOString(),
+      });
+      toast(`Limpieza de hoy registrada — ${r}`);
+    } catch (e) {
+      toast('Error al guardar: ' + e.message, 'error');
+    } finally { setQuickLimp(false); }
   };
 
   // ── Tab 2: Bodega Limpieza ─────────────────────────────────────────────────
@@ -260,6 +282,27 @@ export default function LIMP() {
     } catch (e) {
       toast('Error al guardar: ' + e.message, 'error');
     }
+  };
+
+  // Registro de 1 toque: crea el registro de HOY con el estándar (todo cumple, Agua+cloro 10%),
+  // tomando el último responsable/área usados. Pensado para marcar la limpieza al momento, sin llenar el formulario.
+  const [quickBl, setQuickBl] = useState(false);
+  const handleQuickBl = async () => {
+    const resp = blResp || blData?.[0]?.responsable || empleados?.[0]?.nombre || '';
+    const area = blArea || blData?.[0]?.area || BL_AREAS[0];
+    if (!resp) { toast('Elegí un responsable primero', 'error'); return; }
+    setQuickBl(true);
+    try {
+      await addBl({
+        fecha: today(), hora: nowHM(), responsable: resp, area,
+        checks: Object.fromEntries(BL_CHECKS.map(p => [p.key, 'si'])),
+        pct: 100, resultado: 'Realizado', obs: '',
+        solucion: SOLUCION_LIMPIEZA, creadoEn: new Date().toISOString(),
+      });
+      toast(`Limpieza de hoy registrada — ${resp}`);
+    } catch (e) {
+      toast('Error al guardar: ' + e.message, 'error');
+    } finally { setQuickBl(false); }
   };
 
   // ── Tab 3: Parqueo ─────────────────────────────────────────────────────────
@@ -330,6 +373,27 @@ export default function LIMP() {
       {/* ── Tab 1: Áreas de Proceso ── */}
       {tab === 'limp' && (
         <>
+          {/* Registro de 1 toque — marca la limpieza diaria de HOY al momento */}
+          <Card style={{ background: T.bgGreen, borderColor: '#A5D6A7' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+              <div style={{ flex: '1 1 200px', minWidth: 0 }}>
+                <div style={{ fontWeight: 800, fontSize: '.95rem', color: T.primary }}>✓ Registrar limpieza de hoy</div>
+                <div style={{ fontSize: '.78rem', color: T.textMid, marginTop: 2 }}>
+                  1 toque: las 4 áreas en cumple con <b>{SOLUCION_LIMPIEZA}</b>, fecha y hora de ahora.
+                </div>
+              </div>
+              <select value={resp} onChange={e => setResp(e.target.value)}
+                style={{ ...inputStyle, width: 'auto', minWidth: 170, flex: '0 1 auto', cursor: 'pointer' }}>
+                <option value="">— Responsable{limpData?.[0]?.responsable ? ` (${limpData[0].responsable})` : ''} —</option>
+                {empleados.map(e => <option key={e.id} value={e.nombre}>{e.nombre}</option>)}
+              </select>
+              <button onClick={handleQuickLimp} disabled={quickLimp}
+                style={{ padding: '12px 24px', background: quickLimp ? '#BDBDBD' : T.primary, color: T.white, border: 'none', borderRadius: 8, fontWeight: 800, fontSize: '.92rem', cursor: quickLimp ? 'not-allowed' : 'pointer', fontFamily: 'inherit', minHeight: 48, whiteSpace: 'nowrap' }}>
+                {quickLimp ? 'Guardando…' : '✓ Registrar hoy'}
+              </button>
+            </div>
+          </Card>
+
           <Card>
             <SectionTitle>Nuevo Registro</SectionTitle>
 
@@ -413,7 +477,8 @@ export default function LIMP() {
                         </div>
                         <Badge ok={r.resultado === 'cumple'} />
                       </div>
-                      <div style={{ fontSize: 14, fontWeight: 600, color: T.textDark, marginBottom: 6 }}>👤 {r.responsable || '—'}</div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: T.textDark, marginBottom: 4 }}>👤 {r.responsable || '—'}</div>
+                      <div style={{ fontSize: 12, color: T.secondary, fontWeight: 700, marginBottom: 6 }}>🧴 {r.solucion || SOLUCION_LIMPIEZA}</div>
                       <div style={{ display: 'flex', gap: 16, fontSize: 13, marginBottom: foto || obs ? 6 : 0 }}>
                         <span><b>Cumple:</b> <span style={{ color: T.secondary, fontWeight: 700 }}>{si}</span></span>
                         <span><b>No cumple:</b> <span style={{ color: T.danger, fontWeight: 700 }}>{no}</span></span>
@@ -444,7 +509,10 @@ export default function LIMP() {
                         <tr key={r.id} style={{ background: i % 2 === 0 ? T.white : '#F9FBF9' }}>
                           <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0', fontWeight: 600 }}>{r.fecha || '—'}</td>
                           <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0' }}>{r.hora || '—'}</td>
-                          <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0' }}>{r.responsable || '—'}</td>
+                          <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0' }}>
+                            <div>{r.responsable || '—'}</div>
+                            <div style={{ fontSize: '.68rem', color: T.secondary, fontWeight: 700, marginTop: 2, whiteSpace: 'nowrap' }}>🧴 {r.solucion || SOLUCION_LIMPIEZA}</div>
+                          </td>
                           <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0', color: T.secondary }}>{si}</td>
                           <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0', color: T.danger }}>{no}</td>
                           <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }}><Badge ok={r.resultado === 'cumple'} /></td>
@@ -468,6 +536,27 @@ export default function LIMP() {
       {/* ── Tab 2: Bodega Limpieza ── */}
       {tab === 'bl' && (
         <>
+          {/* Registro de 1 toque — marca la limpieza de HOY al momento */}
+          <Card style={{ background: T.bgGreen, borderColor: '#A5D6A7' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+              <div style={{ flex: '1 1 200px', minWidth: 0 }}>
+                <div style={{ fontWeight: 800, fontSize: '.95rem', color: T.primary }}>✓ Registrar limpieza de hoy</div>
+                <div style={{ fontSize: '.78rem', color: T.textMid, marginTop: 2 }}>
+                  1 toque: deja todo en cumple con <b>{SOLUCION_LIMPIEZA}</b>, con la fecha y hora de ahora.
+                </div>
+              </div>
+              <select value={blResp} onChange={e => setBlResp(e.target.value)}
+                style={{ ...inputStyle, width: 'auto', minWidth: 170, flex: '0 1 auto', cursor: 'pointer' }}>
+                <option value="">— Responsable{blData?.[0]?.responsable ? ` (${blData[0].responsable})` : ''} —</option>
+                {empleados.map(e => <option key={e.id} value={e.nombre}>{e.nombre}</option>)}
+              </select>
+              <button onClick={handleQuickBl} disabled={quickBl}
+                style={{ padding: '12px 24px', background: quickBl ? '#BDBDBD' : T.primary, color: T.white, border: 'none', borderRadius: 8, fontWeight: 800, fontSize: '.92rem', cursor: quickBl ? 'not-allowed' : 'pointer', fontFamily: 'inherit', minHeight: 48, whiteSpace: 'nowrap' }}>
+                {quickBl ? 'Guardando…' : '✓ Registrar hoy'}
+              </button>
+            </div>
+          </Card>
+
           <Card>
             <SectionTitle>Nuevo Registro de Bodega</SectionTitle>
 
@@ -603,7 +692,10 @@ export default function LIMP() {
                             <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0', fontWeight: 600 }}>{r.fecha || '—'}</td>
                             <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0' }}>{r.hora || '—'}</td>
                             <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0' }}>{r.responsable || '—'}</td>
-                            <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0' }}>{r.area || '—'}</td>
+                            <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0' }}>
+                              <div>{r.area || '—'}</div>
+                              <div style={{ fontSize: '.68rem', color: T.secondary, fontWeight: 700, marginTop: 2, whiteSpace: 'nowrap' }}>🧴 {r.solucion || SOLUCION_LIMPIEZA}</div>
+                            </td>
                             <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0', fontWeight: 700, color: okN === BL_CHECKS.length ? T.secondary : T.warn }}>{okN}/{BL_CHECKS.length}</td>
                             <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }}>
                               <span style={{
