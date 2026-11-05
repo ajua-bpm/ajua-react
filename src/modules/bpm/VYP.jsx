@@ -268,6 +268,20 @@ export default function VYP() {
     } catch (e) { toast('Error: ' + e.message, 'error'); }
   };
 
+  // Registro de 1 toque: inspección de HOY con todas las áreas revisadas y sin hallazgos (LIMPIO).
+  const [quickVyp, setQuickVyp] = useState(false);
+  const handleQuickVyp = async () => {
+    const r = resp || historial?.[0]?.resp || empleados?.[0]?.nombre || '';
+    if (!r) { toast('Elegí un responsable primero', 'error'); return; }
+    const areasLimpias = Object.fromEntries(AREAS.map(a => [a, { ...blankArea(), inspeccionada: true, hallazgo: false }]));
+    setQuickVyp(true);
+    try {
+      await add({ fecha: today(), resp: r, obs: '', areas: areasLimpias, hallazgos: [], resultado: 'LIMPIO' });
+      toast(`Inspección de hoy registrada — ${r}`);
+    } catch (e) { toast('Error: ' + e.message, 'error'); }
+    finally { setQuickVyp(false); }
+  };
+
   const [filtRes, setFiltRes] = useState('');
   const [expandedInspId, setExpandedInspId] = useState(null);
   const filtHist = (historial || []).filter(r => !filtRes || r.resultado === filtRes);
@@ -357,6 +371,25 @@ export default function VYP() {
       {/* ── TAB: INSPECCIÓN ───────────────────────────────────── */}
       {tab === 'inspeccion' && (
         <>
+          {/* Registro de 1 toque */}
+          <div style={{ background: '#E8F5E9', border: '1px solid #A5D6A7', borderRadius: 8, padding: 18, marginBottom: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+              <div style={{ flex: '1 1 200px', minWidth: 0 }}>
+                <div style={{ fontWeight: 800, fontSize: '.95rem', color: T.primary }}>✓ Registrar inspección de hoy</div>
+                <div style={{ fontSize: '.78rem', color: T.textMid, marginTop: 2 }}>1 toque: todas las áreas revisadas, sin hallazgos (LIMPIO), con la fecha de hoy.</div>
+              </div>
+              <select value={resp} onChange={e => setResp(e.target.value)}
+                style={{ ...inputStyle, width: 'auto', minWidth: 170, flex: '0 1 auto', cursor: 'pointer' }}>
+                <option value="">— Responsable{historial?.[0]?.resp ? ` (${historial[0].resp})` : ''} —</option>
+                {empleados.map(e => <option key={e.id || e.nombre} value={e.nombre}>{e.nombre}</option>)}
+              </select>
+              <button onClick={handleQuickVyp} disabled={quickVyp}
+                style={{ padding: '12px 24px', background: quickVyp ? '#BDBDBD' : T.primary, color: '#fff', border: 'none', borderRadius: 8, fontWeight: 800, fontSize: '.92rem', cursor: quickVyp ? 'not-allowed' : 'pointer', fontFamily: 'inherit', minHeight: 48, whiteSpace: 'nowrap' }}>
+                {quickVyp ? 'Guardando…' : '✓ Registrar hoy'}
+              </button>
+            </div>
+          </div>
+
           {/* Form card */}
           <div style={{ background: '#fff', borderRadius: 8, boxShadow: '0 1px 3px rgba(0,0,0,.10)', padding: 22, marginBottom: 20 }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 14, marginBottom: 18 }}>
