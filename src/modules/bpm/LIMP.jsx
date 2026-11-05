@@ -1,8 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 import { useCollection, useWrite } from '../../hooks/useFirestore';
 import { useEmpleados } from '../../hooks/useMainData';
 import { useToast } from '../../components/Toast';
 import Skeleton from '../../components/Skeleton';
+
+// Solución estándar de limpieza — toda limpieza de bodega se hace con esto.
+const SOLUCION_LIMPIEZA = 'Agua + cloro al 10%';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const T = {
@@ -165,7 +168,7 @@ export default function LIMP() {
   const { data: parqData,  loading: parqLoad }  = useCollection('parq', { orderField: 'fecha', orderDir: 'desc', limit: 200 });
 
   const { add: addLimp, saving: savingLimp } = useWrite('limp');
-  const { add: addBl,   saving: savingBl }   = useWrite('bl');
+  const { add: addBl,   saving: savingBl, remove: removeBl } = useWrite('bl');
   const { add: addParq, saving: savingParq } = useWrite('parq');
 
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
@@ -233,6 +236,8 @@ export default function LIMP() {
   const [blChecks,    setBlChecks]    = useState({});
   const [blResultado, setBlResultado] = useState('Realizado');
   const [blObs,       setBlObs]       = useState('');
+  const [blExpanded,  setBlExpanded]  = useState(null);
+  const toggleBlExpand = (id) => setBlExpanded(prev => prev === id ? null : id);
 
   const setBlCheck = (key, val) => setBlChecks(prev => ({ ...prev, [key]: val }));
 
@@ -247,6 +252,7 @@ export default function LIMP() {
       await addBl({
         fecha: blFecha, hora: blHora, responsable: blResp, area: blArea,
         checks: blChecks, pct: blPct, resultado: blResultado, obs: blObs,
+        solucion: SOLUCION_LIMPIEZA,
         creadoEn: new Date().toISOString(),
       });
       toast('Registro de bodega guardado');
@@ -498,6 +504,14 @@ export default function LIMP() {
               </Lbl>
             </div>
 
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 8, marginBottom: 14, background: T.bgGreen, border: `1.5px solid #A5D6A7` }}>
+              <span style={{ fontSize: '1.1rem' }}>🧴</span>
+              <div>
+                <div style={{ fontSize: '.64rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: T.textMid }}>Solución de limpieza</div>
+                <div style={{ fontSize: '.9rem', fontWeight: 700, color: T.secondary }}>{SOLUCION_LIMPIEZA}</div>
+              </div>
+            </div>
+
             <div style={{ marginBottom: 14 }}>
               <p style={{ fontSize: '.68rem', color: T.textMid, marginBottom: 8, marginTop: 0 }}>Checklist de limpieza — marcar SI / NO / NA:</p>
               {BL_CHECKS.map(p => (
@@ -548,9 +562,21 @@ export default function LIMP() {
                         <span style={{ padding: '2px 10px', borderRadius: 100, fontSize: 12, fontWeight: 600, background: resBg, color: resC }}>{r.resultado || '—'}</span>
                       </div>
                       <div style={{ fontSize: 14, fontWeight: 600, color: T.textDark, marginBottom: 4 }}>👤 {r.responsable || '—'}</div>
-                      <div style={{ display: 'flex', gap: 16, fontSize: 13, marginBottom: r.obs ? 4 : 0 }}>
+                      <div style={{ display: 'flex', gap: 16, fontSize: 13, marginBottom: 6 }}>
                         <span><b>Área:</b> {r.area || '—'}</span>
                         <span><b>Checks OK:</b> <span style={{ color: okN === BL_CHECKS.length ? T.secondary : T.warn, fontWeight: 700 }}>{okN}/{BL_CHECKS.length}</span></span>
+                      </div>
+                      <div style={{ fontSize: 12, color: T.secondary, fontWeight: 700, marginBottom: 8 }}>🧴 {r.solucion || SOLUCION_LIMPIEZA}</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginBottom: r.obs ? 6 : 0, paddingTop: 8, borderTop: `1px solid ${T.border}` }}>
+                        {BL_CHECKS.map(p => {
+                          const v = (r.checks || {})[p.key];
+                          return (
+                            <div key={p.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12.5 }}>
+                              <span style={{ color: T.textMid }}>{p.label}</span>
+                              <span style={{ fontWeight: 700, color: v === 'si' ? T.accent : v === 'no' ? T.danger : T.textMid }}>{v === 'si' ? '✓' : v === 'no' ? '✗' : 'N/A'}</span>
+                            </div>
+                          );
+                        })}
                       </div>
                       {r.obs && <div style={{ fontSize: 12, color: T.textMid }}>📝 {r.obs}</div>}
                     </div>
@@ -562,30 +588,70 @@ export default function LIMP() {
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr style={{ background: T.primary }}>
-                      {['Fecha', 'Hora', 'Responsable', 'Área', 'Checks OK', 'Resultado', 'Obs'].map(h => (
-                        <th key={h} style={{ padding: '9px 12px', textAlign: 'left', color: T.white, fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
+                      {['Fecha', 'Hora', 'Responsable', 'Área', 'Checks OK', 'Resultado', '', ''].map((h, hi) => (
+                        <th key={hi} style={{ padding: '9px 12px', textAlign: 'left', color: T.white, fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {(blData || []).slice(0, 100).map((r, i) => {
                       const okN = BL_CHECKS.filter(p => (r.checks || {})[p.key] === 'si').length;
+                      const isExp = blExpanded === r.id;
                       return (
-                        <tr key={r.id} style={{ background: i % 2 === 0 ? T.white : '#F9FBF9' }}>
-                          <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0', fontWeight: 600 }}>{r.fecha || '—'}</td>
-                          <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0' }}>{r.hora || '—'}</td>
-                          <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0' }}>{r.responsable || '—'}</td>
-                          <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0' }}>{r.area || '—'}</td>
-                          <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0', fontWeight: 700, color: okN === BL_CHECKS.length ? T.secondary : T.warn }}>{okN}/{BL_CHECKS.length}</td>
-                          <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }}>
-                            <span style={{
-                              padding: '2px 8px', borderRadius: 100, fontSize: '.7rem', fontWeight: 600,
-                              background: r.resultado === 'Realizado' ? T.bgGreen : r.resultado === 'Pendiente' ? '#FFEBEE' : '#FFF3E0',
-                              color: r.resultado === 'Realizado' ? T.secondary : r.resultado === 'Pendiente' ? T.danger : T.warn,
-                            }}>{r.resultado || '—'}</span>
-                          </td>
-                          <td style={{ padding: '8px 12px', fontSize: '.75rem', borderBottom: '1px solid #F0F0F0', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.obs || '—'}</td>
-                        </tr>
+                        <Fragment key={r.id}>
+                          <tr style={{ background: isExp ? '#F1F8E9' : i % 2 === 0 ? T.white : '#F9FBF9', cursor: 'pointer' }} onClick={() => toggleBlExpand(r.id)}>
+                            <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0', fontWeight: 600 }}>{r.fecha || '—'}</td>
+                            <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0' }}>{r.hora || '—'}</td>
+                            <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0' }}>{r.responsable || '—'}</td>
+                            <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0' }}>{r.area || '—'}</td>
+                            <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0', fontWeight: 700, color: okN === BL_CHECKS.length ? T.secondary : T.warn }}>{okN}/{BL_CHECKS.length}</td>
+                            <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }}>
+                              <span style={{
+                                padding: '2px 8px', borderRadius: 100, fontSize: '.7rem', fontWeight: 600,
+                                background: r.resultado === 'Realizado' ? T.bgGreen : r.resultado === 'Pendiente' ? '#FFEBEE' : '#FFF3E0',
+                                color: r.resultado === 'Realizado' ? T.secondary : r.resultado === 'Pendiente' ? T.danger : T.warn,
+                              }}>{r.resultado || '—'}</span>
+                            </td>
+                            <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0', textAlign: 'center', color: T.secondary, fontWeight: 700, fontSize: '.8rem' }}>{isExp ? '▲' : '▼'}</td>
+                            <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }} onClick={e => e.stopPropagation()}>
+                              <button onClick={() => { if (window.confirm('¿Eliminar este registro?')) removeBl(r.id); }}
+                                style={{ padding: '3px 10px', borderRadius: 5, border: `1.5px solid ${T.danger}`, background: '#fff', color: T.danger, cursor: 'pointer', fontSize: '.75rem', fontWeight: 700, fontFamily: 'inherit' }}>✕</button>
+                            </td>
+                          </tr>
+                          {isExp && (
+                            <tr>
+                              <td colSpan={8} style={{ padding: 0, borderBottom: '2px solid #A5D6A7' }}>
+                                <div style={{ padding: '14px 18px', background: '#F9FEF9', borderLeft: '4px solid #2E7D32' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                                    <span style={{ fontSize: '1.05rem' }}>🧴</span>
+                                    <span style={{ fontSize: '.8rem', fontWeight: 700, color: T.secondary }}>Solución: {r.solucion || SOLUCION_LIMPIEZA}</span>
+                                  </div>
+                                  <div style={{ fontWeight: 700, fontSize: '.7rem', color: T.secondary, textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 8 }}>
+                                    Detalle de limpieza — {r.area || '—'}
+                                  </div>
+                                  <div style={{ overflowX: 'auto' }}>
+                                    <table style={{ borderCollapse: 'collapse', fontSize: '.8rem' }}>
+                                      <tbody>
+                                        {BL_CHECKS.map((p, pi) => {
+                                          const v = (r.checks || {})[p.key];
+                                          return (
+                                            <tr key={p.key} style={{ background: pi % 2 === 0 ? '#fff' : '#F4FAF4' }}>
+                                              <td style={{ padding: '5px 24px 5px 10px', color: T.textDark, whiteSpace: 'nowrap' }}>{p.label}</td>
+                                              <td style={{ padding: '5px 14px', textAlign: 'center', fontWeight: 700 }}>
+                                                {v === 'si' ? <span style={{ color: T.accent }}>✓</span> : v === 'no' ? <span style={{ color: T.danger }}>✗</span> : <span style={{ color: T.textMid }}>N/A</span>}
+                                              </td>
+                                            </tr>
+                                          );
+                                        })}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                  {r.obs && <div style={{ marginTop: 10, fontSize: '.78rem', color: T.textMid }}>📝 {r.obs}</div>}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
                       );
                     })}
                   </tbody>
