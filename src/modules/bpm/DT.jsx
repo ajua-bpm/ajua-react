@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 import { useCollection, useWrite } from '../../hooks/useFirestore';
 import { useEmpleados, useConductores, useClientes } from '../../hooks/useMainData';
 import { useToast } from '../../components/Toast';
@@ -36,7 +36,7 @@ const GRUPOS = [
 
 const ALL_IDS = GRUPOS.flatMap(g => g.items.map(i => i.id));
 const initChecks = () => Object.fromEntries(ALL_IDS.map(id => [id, 'na']));
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD en hora local (GT UTC-6)
 const nowHM = () => { const d = new Date(); return d.toTimeString().slice(0, 5); };
 
 function calcScore(checks) {
@@ -118,7 +118,7 @@ export default function DT() {
   const { conductores, loading: condLoading } = useConductores();
   const { clientes, loading: cliLoading }    = useClientes();
   const { data, loading } = useCollection('dt', { orderField: 'fecha', orderDir: 'desc', limit: 50 });
-  const { add, saving } = useWrite('dt');
+  const { add, saving, remove } = useWrite('dt');
 
   const [fecha,     setFecha]     = useState(today());
   const [hora,      setHora]      = useState(nowHM());
@@ -174,6 +174,26 @@ export default function DT() {
     }
   };
 
+  const [expDt, setExpDt] = useState(null);
+  const [quickDt, setQuickDt] = useState(false);
+  const handleQuickDt = async () => {
+    const cond = conductor || data?.[0]?.conductor || '';
+    if (!cond) { toast('Elegí un conductor primero', 'error'); return; }
+    const placaFinal = placa === 'Otro' ? (placaOtra || 'Otro') : placa;
+    const allSi = Object.fromEntries(ALL_IDS.map(id => [id, 'si']));
+    setQuickDt(true);
+    try {
+      await add({
+        fecha: today(), hora: nowHM(), placa: placaFinal, conductor: cond, cliente: cliente || '',
+        checks: allSi, pct: 100, resultado: 'aprobado', obs: '', fotoUrl: '',
+        creadoEn: new Date().toISOString(),
+      });
+      toast(`Inspección de despacho registrada — ${cond}`);
+    } catch (e) {
+      toast('Error al guardar: ' + e.message, 'error');
+    } finally { setQuickDt(false); }
+  };
+
   return (
     <div style={{ color: T.textDark, maxWidth: 1000, margin: '0 auto' }}>
 
@@ -183,6 +203,25 @@ export default function DT() {
           Inspección del vehículo antes de cada despacho — una vez por viaje
         </p>
       </div>
+
+      {/* Registro de 1 toque */}
+      <Card style={{ background: '#E8F5E9', border: '1px solid #A5D6A7' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+          <div style={{ flex: '1 1 200px', minWidth: 0 }}>
+            <div style={{ fontWeight: 800, fontSize: '.95rem', color: T.primary }}>✓ Registrar despacho de hoy</div>
+            <div style={{ fontSize: '.78rem', color: T.textMid, marginTop: 2 }}>1 toque: los 10 puntos del vehículo en cumple, con fecha y hora de ahora.</div>
+          </div>
+          <select value={conductor} onChange={e => setConductor(e.target.value)}
+            style={{ ...iStyle, width: 'auto', minWidth: 170, flex: '0 1 auto', cursor: 'pointer' }}>
+            <option value="">— Conductor{data?.[0]?.conductor ? ` (${data[0].conductor})` : ''} —</option>
+            {conductores.map(c => <option key={c.id || c.nombre} value={c.nombre}>{c.nombre}</option>)}
+          </select>
+          <button onClick={handleQuickDt} disabled={quickDt}
+            style={{ padding: '12px 24px', background: quickDt ? '#BDBDBD' : T.primary, color: '#fff', border: 'none', borderRadius: 8, fontWeight: 800, fontSize: '.92rem', cursor: quickDt ? 'not-allowed' : 'pointer', fontFamily: 'inherit', minHeight: 48, whiteSpace: 'nowrap' }}>
+            {quickDt ? 'Guardando…' : '✓ Registrar hoy'}
+          </button>
+        </div>
+      </Card>
 
       <Card>
         <SecTitle>Nueva Inspección de Despacho</SecTitle>
@@ -334,28 +373,66 @@ export default function DT() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: T.primary }}>
-                  {['Fecha', 'Hora', 'Placa', 'Conductor', 'Cliente', '%', 'Resultado', 'Obs'].map(h => (
-                    <th key={h} style={{ padding: '10px 14px', textAlign: 'left', color: '#fff', fontSize: '.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', whiteSpace: 'nowrap' }}>{h}</th>
+                  {['Fecha', 'Hora', 'Placa', 'Conductor', 'Cliente', '%', 'Resultado', '', ''].map((h, hi) => (
+                    <th key={hi} style={{ padding: '10px 14px', textAlign: 'left', color: '#fff', fontSize: '.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {(data || []).map((r, i) => (
-                  <tr key={r.id} style={{ background: i % 2 === 0 ? '#fff' : '#F9FBF9' }}>
-                    <td style={TD}>{r.fecha || '—'}</td>
-                    <td style={TD}>{r.hora || '—'}</td>
-                    <td style={TD}>
-                      <span style={{ background: '#F5F5F5', border: `1px solid ${T.border}`, borderRadius: 4, padding: '2px 8px', fontSize: '.78rem', fontWeight: 600 }}>{r.placa || '—'}</span>
-                    </td>
-                    <td style={TD}>{r.conductor || '—'}</td>
-                    <td style={{ ...TD, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.cliente || '—'}</td>
-                    <td style={{ ...TD, fontWeight: 700, color: (r.pct || 0) >= 80 ? T.secondary : (r.pct || 0) >= 60 ? T.warn : T.danger }}>
-                      {r.pct != null ? `${r.pct}%` : '—'}
-                    </td>
-                    <td style={TD}><ResultadoBadge resultado={r.resultado} /></td>
-                    <td style={{ ...TD, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', color: T.textMid, fontSize: '.78rem' }}>{r.obs || '—'}</td>
-                  </tr>
-                ))}
+                {(data || []).map((r, i) => {
+                  const isExp = expDt === r.id;
+                  return (
+                  <Fragment key={r.id}>
+                    <tr style={{ background: isExp ? '#F1F8E9' : i % 2 === 0 ? '#fff' : '#F9FBF9', cursor: 'pointer' }} onClick={() => setExpDt(isExp ? null : r.id)}>
+                      <td style={TD}>{r.fecha || '—'}</td>
+                      <td style={TD}>{r.hora || '—'}</td>
+                      <td style={TD}>
+                        <span style={{ background: '#F5F5F5', border: `1px solid ${T.border}`, borderRadius: 4, padding: '2px 8px', fontSize: '.78rem', fontWeight: 600 }}>{r.placa || '—'}</span>
+                      </td>
+                      <td style={TD}>{r.conductor || '—'}</td>
+                      <td style={{ ...TD, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.cliente || '—'}</td>
+                      <td style={{ ...TD, fontWeight: 700, color: (r.pct || 0) >= 80 ? T.secondary : (r.pct || 0) >= 60 ? T.warn : T.danger }}>
+                        {r.pct != null ? `${r.pct}%` : '—'}
+                      </td>
+                      <td style={TD}><ResultadoBadge resultado={r.resultado} /></td>
+                      <td style={{ ...TD, textAlign: 'center', color: T.secondary, fontWeight: 700 }}>{isExp ? '▲' : '▼'}</td>
+                      <td style={TD} onClick={e => e.stopPropagation()}>
+                        <button onClick={() => { if (window.confirm('¿Eliminar este registro?')) remove(r.id).then(() => toast('Eliminado')).catch(e => toast('Error: ' + e.message, 'error')); }}
+                          style={{ padding: '3px 10px', borderRadius: 5, border: `1.5px solid ${T.danger}`, background: '#fff', color: T.danger, cursor: 'pointer', fontSize: '.75rem', fontWeight: 700, fontFamily: 'inherit' }}>✕</button>
+                      </td>
+                    </tr>
+                    {isExp && (
+                      <tr>
+                        <td colSpan={9} style={{ padding: 0, borderBottom: '2px solid #A5D6A7' }}>
+                          <div style={{ padding: '14px 18px', background: '#F9FEF9', borderLeft: '4px solid #2E7D32', display: 'flex', gap: 28, flexWrap: 'wrap' }}>
+                            {GRUPOS.map(g => (
+                              <div key={g.label} style={{ minWidth: 0 }}>
+                                <div style={{ fontWeight: 700, fontSize: '.7rem', color: T.secondary, textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 6 }}>{g.label}</div>
+                                <table style={{ borderCollapse: 'collapse', fontSize: '.78rem' }}>
+                                  <tbody>
+                                    {g.items.map(it => {
+                                      const v = (r.checks || {})[it.id];
+                                      return (
+                                        <tr key={it.id}>
+                                          <td style={{ padding: '3px 16px 3px 0', color: T.textDark }}>{it.text}</td>
+                                          <td style={{ padding: '3px 0', textAlign: 'right', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                                            {v === 'si' ? <span style={{ color: T.secondary }}>✓</span> : v === 'no' ? <span style={{ color: T.danger }}>✗</span> : <span style={{ color: T.textMid }}>N/A</span>}
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+                            ))}
+                            {r.obs && <div style={{ fontSize: '.78rem', color: T.textMid, alignSelf: 'center' }}>📝 {r.obs}</div>}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>

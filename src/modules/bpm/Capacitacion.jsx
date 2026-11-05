@@ -31,7 +31,7 @@ const INP = {
   width: '100%', marginTop: 2, background: '#fff', color: T.textDark,
 };
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD en hora local (GT UTC-6)
 
 const TEMAS = [
   'BPM', 'Higiene personal', 'Manejo alimentos', 'EPP',
@@ -125,6 +125,27 @@ export default function Capacitacion() {
   const removeParticipante = (n) =>
     setForm(f => ({ ...f, participantes: f.participantes.filter(x => x !== n) }));
 
+  // Registro de 1 toque: capacitación de HOY con TODO el personal. El tema y el instructor
+  // los elegís vos (es el contenido real); los asistentes = empleados actuales.
+  const [quickTema, setQuickTema] = useState('BPM');
+  const [quickInstructor, setQuickInstructor] = useState('');
+  const [quickCap, setQuickCap] = useState(false);
+  const handleQuickCap = async () => {
+    const tema = quickTema;
+    const inst = quickInstructor || data?.[0]?.instructor || '';
+    if (!tema)  { toast('Elegí el tema', 'error'); return; }
+    if (!inst)  { toast('Escribí el instructor', 'error'); return; }
+    const participantes = (empleados || []).map(e => e.nombre).filter(Boolean);
+    if (participantes.length === 0) { toast('No hay empleados en la lista', 'error'); return; }
+    setQuickCap(true);
+    try {
+      await add({ fecha: today(), tema, instructor: inst, duracion: '1', resultado: 'Aprobado', participantes, obs: '' });
+      toast(`Capacitación registrada — ${tema} · ${participantes.length} personas`);
+      setQuickInstructor('');
+    } catch (e) { toast('Error: ' + e.message, 'error'); }
+    finally { setQuickCap(false); }
+  };
+
   const handleSave = async () => {
     if (!form.fecha || !form.tema || !form.instructor) {
       toast('Fecha, tema e instructor son requeridos', 'error'); return;
@@ -162,6 +183,29 @@ export default function Capacitacion() {
         <p style={{ fontSize: '.82rem', color: T.textMid, margin: '4px 0 0' }}>
           Control de formación y capacitación del personal
         </p>
+      </div>
+
+      {/* Registro de 1 toque — capacitación de hoy con todo el personal */}
+      <div style={{ ...card, background: '#E8F5E9', border: '1px solid #A5D6A7' }}>
+        <div style={{ fontWeight: 800, fontSize: '.95rem', color: T.primary, marginBottom: 2 }}>✓ Registrar capacitación de hoy</div>
+        <div style={{ fontSize: '.78rem', color: T.textMid, marginBottom: 12 }}>
+          Elegí el tema y el instructor; registra la fecha de hoy con <b>todo el personal</b> ({(empleados || []).length} personas) como asistentes.
+        </div>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <label style={{ ...LBL, flex: '1 1 160px' }}>Tema
+            <select value={quickTema} onChange={e => setQuickTema(e.target.value)} style={{ ...INP, cursor: 'pointer' }}>
+              {TEMAS.filter(t => t !== 'Otro').map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </label>
+          <label style={{ ...LBL, flex: '1 1 160px' }}>Instructor
+            <input value={quickInstructor} onChange={e => setQuickInstructor(e.target.value)}
+              placeholder={data?.[0]?.instructor ? `${data[0].instructor}` : 'Nombre del instructor'} style={INP} />
+          </label>
+          <button onClick={handleQuickCap} disabled={quickCap}
+            style={{ padding: '11px 22px', background: quickCap ? '#BDBDBD' : T.primary, color: '#fff', border: 'none', borderRadius: 8, fontWeight: 800, fontSize: '.9rem', cursor: quickCap ? 'not-allowed' : 'pointer', fontFamily: 'inherit', minHeight: 44, whiteSpace: 'nowrap' }}>
+            {quickCap ? 'Guardando…' : '✓ Registrar hoy'}
+          </button>
+        </div>
       </div>
 
       {/* ── Form ── */}

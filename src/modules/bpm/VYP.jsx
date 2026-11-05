@@ -336,6 +336,19 @@ export default function VYP() {
     } catch (e) { toast('Error: ' + e.message, 'error'); }
   };
 
+  // Registro de 1 toque: inventario de HOY sin artículos encontrados (todo en 0).
+  const [quickInv, setQuickInv] = useState(false);
+  const handleQuickInv = async () => {
+    const r = invResp || invData?.[0]?.resp || '';
+    if (!r) { toast('Elegí un responsable primero', 'error'); return; }
+    setQuickInv(true);
+    try {
+      await addInv({ fecha: today(), resp: r, areas: initInvAreas(), totalArticulos: 0 });
+      toast('Inventario de hoy registrado — sin artículos');
+    } catch (e) { toast('Error: ' + e.message, 'error'); }
+    finally { setQuickInv(false); }
+  };
+
   // Tab
   const [tab, setTab] = useState('inspeccion');
 
@@ -582,6 +595,25 @@ export default function VYP() {
       {/* ── TAB: INVENTARIO ───────────────────────────────────── */}
       {tab === 'inventario' && (
         <>
+          {/* Registro de 1 toque */}
+          <div style={{ background: '#E8F5E9', border: '1px solid #A5D6A7', borderRadius: 8, padding: 18, marginBottom: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+              <div style={{ flex: '1 1 200px', minWidth: 0 }}>
+                <div style={{ fontWeight: 800, fontSize: '.95rem', color: T.primary }}>✓ Registrar inventario de hoy</div>
+                <div style={{ fontSize: '.78rem', color: T.textMid, marginTop: 2 }}>1 toque: inventario del día sin artículos de vidrio/plástico encontrados (todo en 0).</div>
+              </div>
+              <select value={invResp} onChange={e => setInvResp(e.target.value)}
+                style={{ ...inputStyle, width: 'auto', minWidth: 170, flex: '0 1 auto', cursor: 'pointer' }}>
+                <option value="">— Responsable{invData?.[0]?.resp ? ` (${invData[0].resp})` : ''} —</option>
+                {empleados.map(e => <option key={e.id || e.nombre} value={e.nombre}>{e.nombre}</option>)}
+              </select>
+              <button onClick={handleQuickInv} disabled={quickInv}
+                style={{ padding: '12px 24px', background: quickInv ? '#BDBDBD' : T.primary, color: '#fff', border: 'none', borderRadius: 8, fontWeight: 800, fontSize: '.92rem', cursor: quickInv ? 'not-allowed' : 'pointer', fontFamily: 'inherit', minHeight: 48, whiteSpace: 'nowrap' }}>
+                {quickInv ? 'Guardando…' : '✓ Registrar hoy'}
+              </button>
+            </div>
+          </div>
+
           {/* Form card */}
           <div style={{ background: '#fff', borderRadius: 8, boxShadow: '0 1px 3px rgba(0,0,0,.10)', padding: 22, marginBottom: 20 }}>
             <div style={{ fontWeight: 700, fontSize: '.88rem', color: T.secondary,
