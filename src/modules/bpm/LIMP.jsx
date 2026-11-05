@@ -90,6 +90,16 @@ const BL_CHECKS = [
 
 const BL_AREAS = ['Bodega Principal', 'Cámara Fría', 'Área de Proceso', 'Pasillos'];
 
+// Conteo de checks tolerante al formato: registros nuevos usan claves con nombre
+// (pisos, paredes…); los viejos usan claves numéricas 0..N. Cuenta "sí" en cualquiera
+// de los dos para no mostrar 0/6 cuando el registro sí está completo.
+function blCount(r) {
+  const checks = r.checks || {};
+  const hasNamed = BL_CHECKS.some(p => checks[p.key] !== undefined);
+  const vals = hasNamed ? BL_CHECKS.map(p => checks[p.key]) : Object.values(checks);
+  return { ok: vals.filter(v => v === 'si').length, total: vals.length || BL_CHECKS.length, hasNamed };
+}
+
 const PARQ_CHECKS = [
   { key: 'barrido',  label: 'Barrido general del parqueo' },
   { key: 'basura',   label: 'Retiro de basura y residuos' },
@@ -694,7 +704,7 @@ export default function LIMP() {
             ) : isMobile ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {(blData || []).slice(0, 100).map(r => {
-                  const okN = BL_CHECKS.filter(p => (r.checks || {})[p.key] === 'si').length;
+                  const { ok: okN, total: okTotal, hasNamed: blNamed } = blCount(r);
                   const resBg = r.resultado === 'Realizado' ? T.bgGreen : r.resultado === 'Pendiente' ? '#FFEBEE' : '#FFF3E0';
                   const resC  = r.resultado === 'Realizado' ? T.secondary : r.resultado === 'Pendiente' ? T.danger : T.warn;
                   return (
@@ -709,11 +719,11 @@ export default function LIMP() {
                       <div style={{ fontSize: 14, fontWeight: 600, color: T.textDark, marginBottom: 4 }}>👤 {r.responsable || '—'}</div>
                       <div style={{ display: 'flex', gap: 16, fontSize: 13, marginBottom: 6 }}>
                         <span><b>Área:</b> {r.area || '—'}</span>
-                        <span><b>Checks OK:</b> <span style={{ color: okN === BL_CHECKS.length ? T.secondary : T.warn, fontWeight: 700 }}>{okN}/{BL_CHECKS.length}</span></span>
+                        <span><b>Checks OK:</b> <span style={{ color: okN === okTotal ? T.secondary : T.warn, fontWeight: 700 }}>{okN}/{okTotal}</span></span>
                       </div>
                       <div style={{ fontSize: 12, color: T.secondary, fontWeight: 700, marginBottom: 8 }}>🧴 {r.solucion || SOLUCION_LIMPIEZA}</div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginBottom: r.obs ? 6 : 0, paddingTop: 8, borderTop: `1px solid ${T.border}` }}>
-                        {BL_CHECKS.map(p => {
+                        {blNamed ? BL_CHECKS.map(p => {
                           const v = (r.checks || {})[p.key];
                           return (
                             <div key={p.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12.5 }}>
@@ -721,7 +731,9 @@ export default function LIMP() {
                               <span style={{ fontWeight: 700, color: v === 'si' ? T.accent : v === 'no' ? T.danger : T.textMid }}>{v === 'si' ? '✓' : v === 'no' ? '✗' : 'N/A'}</span>
                             </div>
                           );
-                        })}
+                        }) : (
+                          <div style={{ fontSize: 12.5, color: T.secondary, fontWeight: 700 }}>✓ Limpieza completa — {okN}/{okTotal} puntos en cumple</div>
+                        )}
                       </div>
                       {r.obs && <div style={{ fontSize: 12, color: T.textMid }}>📝 {r.obs}</div>}
                     </div>
@@ -740,7 +752,7 @@ export default function LIMP() {
                   </thead>
                   <tbody>
                     {(blData || []).slice(0, 100).map((r, i) => {
-                      const okN = BL_CHECKS.filter(p => (r.checks || {})[p.key] === 'si').length;
+                      const { ok: okN, total: okTotal, hasNamed } = blCount(r);
                       const isExp = blExpanded === r.id;
                       return (
                         <Fragment key={r.id}>
@@ -752,7 +764,7 @@ export default function LIMP() {
                               <div>{r.area || '—'}</div>
                               <div style={{ fontSize: '.68rem', color: T.secondary, fontWeight: 700, marginTop: 2, whiteSpace: 'nowrap' }}>🧴 {r.solucion || SOLUCION_LIMPIEZA}</div>
                             </td>
-                            <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0', fontWeight: 700, color: okN === BL_CHECKS.length ? T.secondary : T.warn }}>{okN}/{BL_CHECKS.length}</td>
+                            <td style={{ padding: '8px 12px', fontSize: '.83rem', borderBottom: '1px solid #F0F0F0', fontWeight: 700, color: okN === okTotal ? T.secondary : T.warn }}>{okN}/{okTotal}</td>
                             <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }}>
                               <span style={{
                                 padding: '2px 8px', borderRadius: 100, fontSize: '.7rem', fontWeight: 600,
@@ -777,6 +789,7 @@ export default function LIMP() {
                                   <div style={{ fontWeight: 700, fontSize: '.7rem', color: T.secondary, textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 8 }}>
                                     Detalle de limpieza — {r.area || '—'}
                                   </div>
+                                  {hasNamed ? (
                                   <div style={{ overflowX: 'auto' }}>
                                     <table style={{ borderCollapse: 'collapse', fontSize: '.8rem' }}>
                                       <tbody>
@@ -794,6 +807,9 @@ export default function LIMP() {
                                       </tbody>
                                     </table>
                                   </div>
+                                  ) : (
+                                    <div style={{ fontSize: '.82rem', color: T.secondary, fontWeight: 700 }}>✓ Limpieza completa — {okN}/{okTotal} puntos en cumple</div>
+                                  )}
                                   {r.obs && <div style={{ marginTop: 10, fontSize: '.78rem', color: T.textMid }}>📝 {r.obs}</div>}
                                 </div>
                               </td>
