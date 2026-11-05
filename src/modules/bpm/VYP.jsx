@@ -24,7 +24,7 @@ const INV_AREAS = ['Cooler 1 (grande)', 'Cooler 2 (pequeño)', 'Pre-Carga/Seco']
 const TIPOS     = ['Vidrio', 'Plástico', 'Ambos'];
 const ACCIONES  = ['Retirado', 'Reportado', 'Pendiente'];
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD en hora local (GT UTC-6)
 
 const blankArea = () => ({
   inspeccionada: false, hallazgo: false,
@@ -271,7 +271,7 @@ export default function VYP() {
   // Registro de 1 toque: inspección de HOY con todas las áreas revisadas y sin hallazgos (LIMPIO).
   const [quickVyp, setQuickVyp] = useState(false);
   const handleQuickVyp = async () => {
-    const r = resp || historial?.[0]?.resp || empleados?.[0]?.nombre || '';
+    const r = resp || historial?.[0]?.resp || '';
     if (!r) { toast('Elegí un responsable primero', 'error'); return; }
     const areasLimpias = Object.fromEntries(AREAS.map(a => [a, { ...blankArea(), inspeccionada: true, hallazgo: false }]));
     setQuickVyp(true);

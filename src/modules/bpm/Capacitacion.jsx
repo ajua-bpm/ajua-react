@@ -85,8 +85,11 @@ export default function Capacitacion() {
   const [editId,       setEditId]       = useState(null); // null = nueva, string = editando
   const [expCap,       setExpCap]       = useState(null);
 
-  // Nº de participantes tolerante al formato: array de nombres (nuevo) o número asistentes (viejo)
-  const nParticipantes = (r) => (r.participantes || []).length || Number(r.asistentes) || 0;
+  // Nº de participantes tolerante al formato: array de nombres (nuevo), array asistentes, o número asistentes (viejo)
+  const nParticipantes = (r) =>
+    Array.isArray(r.participantes) ? r.participantes.length
+    : Array.isArray(r.asistentes)  ? r.asistentes.length
+    : Number(r.asistentes) || 0;
 
   const startEdit = (r) => {
     setEditId(r.id);

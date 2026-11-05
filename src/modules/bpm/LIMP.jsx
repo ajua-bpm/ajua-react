@@ -15,7 +15,7 @@ const T = {
   white: '#FFFFFF', bgLight: '#F5F5F5', bgCard: '#FFFFFF', accent: '#43A047',
 };
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD en hora local (GT UTC-6)
 const nowHM  = () => { const d = new Date(); return d.toTimeString().slice(0, 5); };
 
 const inputStyle = {
@@ -245,7 +245,7 @@ export default function LIMP() {
   // Agua+cloro 10%, tomando el último responsable usado. Para marcar la limpieza diaria al momento.
   const [quickLimp, setQuickLimp] = useState(false);
   const handleQuickLimp = async () => {
-    const r = resp || limpData?.[0]?.responsable || empleados?.[0]?.nombre || '';
+    const r = resp || limpData?.[0]?.responsable || '';
     if (!r) { toast('Elegí un responsable primero', 'error'); return; }
     const areaSi = (a) => ({ checks: a.checks.map(() => 'si'), obs: '', fotoUrl: '' });
     setQuickLimp(true);
@@ -301,18 +301,18 @@ export default function LIMP() {
   // tomando el último responsable/área usados. Pensado para marcar la limpieza al momento, sin llenar el formulario.
   const [quickBl, setQuickBl] = useState(false);
   const handleQuickBl = async () => {
-    const resp = blResp || blData?.[0]?.responsable || empleados?.[0]?.nombre || '';
+    const respBl = blResp || blData?.[0]?.responsable || '';
     const area = blArea || blData?.[0]?.area || BL_AREAS[0];
-    if (!resp) { toast('Elegí un responsable primero', 'error'); return; }
+    if (!respBl) { toast('Elegí un responsable primero', 'error'); return; }
     setQuickBl(true);
     try {
       await addBl({
-        fecha: today(), hora: nowHM(), responsable: resp, area,
+        fecha: today(), hora: nowHM(), responsable: respBl, area,
         checks: Object.fromEntries(BL_CHECKS.map(p => [p.key, 'si'])),
         pct: 100, resultado: 'Realizado', obs: '',
         solucion: SOLUCION_LIMPIEZA, creadoEn: new Date().toISOString(),
       });
-      toast(`Limpieza de hoy registrada — ${resp}`);
+      toast(`Limpieza de hoy registrada — ${respBl}`);
     } catch (e) {
       toast('Error al guardar: ' + e.message, 'error');
     } finally { setQuickBl(false); }
@@ -334,7 +334,7 @@ export default function LIMP() {
   const toggleParqExpand = (id) => setExpParq(prev => prev === id ? null : id);
   const [quickParq, setQuickParq] = useState(false);
   const handleQuickParq = async () => {
-    const r = parqResp || parqData?.[0]?.responsable || empleados?.[0]?.nombre || '';
+    const r = parqResp || parqData?.[0]?.responsable || '';
     if (!r) { toast('Elegí un responsable primero', 'error'); return; }
     setQuickParq(true);
     try {
@@ -548,7 +548,7 @@ export default function LIMP() {
                             <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }}><Badge ok={r.resultado === 'cumple'} /></td>
                             <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0', textAlign: 'center', color: T.secondary, fontWeight: 700, fontSize: '.8rem' }}>{isExp ? '▲' : '▼'}</td>
                             <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }} onClick={e => e.stopPropagation()}>
-                              <button onClick={() => { if (window.confirm('¿Eliminar este registro?')) removeLimp(r.id); }}
+                              <button onClick={() => { if (window.confirm('¿Eliminar este registro?')) removeLimp(r.id).then(() => toast('Eliminado')).catch(e => toast('Error: ' + e.message, 'error')); }}
                                 style={{ padding: '3px 10px', borderRadius: 5, border: `1.5px solid ${T.danger}`, background: '#fff', color: T.danger, cursor: 'pointer', fontSize: '.75rem', fontWeight: 700, fontFamily: 'inherit' }}>✕</button>
                             </td>
                           </tr>
@@ -732,7 +732,7 @@ export default function LIMP() {
                             </div>
                           );
                         }) : (
-                          <div style={{ fontSize: 12.5, color: T.secondary, fontWeight: 700 }}>✓ Limpieza completa — {okN}/{okTotal} puntos en cumple</div>
+                          <div style={{ fontSize: 12.5, color: okN === okTotal && okTotal > 0 ? T.secondary : T.warn, fontWeight: 700 }}>{okN === okTotal && okTotal > 0 ? '✓ Limpieza completa — ' : ''}{okN}/{okTotal} puntos en cumple</div>
                         )}
                       </div>
                       {r.obs && <div style={{ fontSize: 12, color: T.textMid }}>📝 {r.obs}</div>}
@@ -774,7 +774,7 @@ export default function LIMP() {
                             </td>
                             <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0', textAlign: 'center', color: T.secondary, fontWeight: 700, fontSize: '.8rem' }}>{isExp ? '▲' : '▼'}</td>
                             <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }} onClick={e => e.stopPropagation()}>
-                              <button onClick={() => { if (window.confirm('¿Eliminar este registro?')) removeBl(r.id); }}
+                              <button onClick={() => { if (window.confirm('¿Eliminar este registro?')) removeBl(r.id).then(() => toast('Eliminado')).catch(e => toast('Error: ' + e.message, 'error')); }}
                                 style={{ padding: '3px 10px', borderRadius: 5, border: `1.5px solid ${T.danger}`, background: '#fff', color: T.danger, cursor: 'pointer', fontSize: '.75rem', fontWeight: 700, fontFamily: 'inherit' }}>✕</button>
                             </td>
                           </tr>
@@ -808,7 +808,7 @@ export default function LIMP() {
                                     </table>
                                   </div>
                                   ) : (
-                                    <div style={{ fontSize: '.82rem', color: T.secondary, fontWeight: 700 }}>✓ Limpieza completa — {okN}/{okTotal} puntos en cumple</div>
+                                    <div style={{ fontSize: '.82rem', color: okN === okTotal && okTotal > 0 ? T.secondary : T.warn, fontWeight: 700 }}>{okN === okTotal && okTotal > 0 ? '✓ Limpieza completa — ' : ''}{okN}/{okTotal} puntos en cumple</div>
                                   )}
                                   {r.obs && <div style={{ marginTop: 10, fontSize: '.78rem', color: T.textMid }}>📝 {r.obs}</div>}
                                 </div>
@@ -951,7 +951,7 @@ export default function LIMP() {
                             <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }}><Badge ok={r.resultado === 'cumple'} /></td>
                             <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0', textAlign: 'center', color: T.secondary, fontWeight: 700, fontSize: '.8rem' }}>{isExp ? '▲' : '▼'}</td>
                             <td style={{ padding: '8px 12px', borderBottom: '1px solid #F0F0F0' }} onClick={e => e.stopPropagation()}>
-                              <button onClick={() => { if (window.confirm('¿Eliminar este registro?')) removeParq(r.id); }}
+                              <button onClick={() => { if (window.confirm('¿Eliminar este registro?')) removeParq(r.id).then(() => toast('Eliminado')).catch(e => toast('Error: ' + e.message, 'error')); }}
                                 style={{ padding: '3px 10px', borderRadius: 5, border: `1.5px solid ${T.danger}`, background: '#fff', color: T.danger, cursor: 'pointer', fontSize: '.75rem', fontWeight: 700, fontFamily: 'inherit' }}>✕</button>
                             </td>
                           </tr>

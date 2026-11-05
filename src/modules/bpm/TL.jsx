@@ -31,7 +31,7 @@ const GRUPOS = [
 
 const ALL_IDS = GRUPOS.flatMap(g => g.items.map(i => i.id));
 const initChecks = () => Object.fromEntries(ALL_IDS.map(id => [id, 'na']));
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD en hora local (GT UTC-6)
 const nowHM = () => { const d = new Date(); return d.toTimeString().slice(0, 5); };
 
 function calcScore(checks) {
@@ -164,7 +164,7 @@ export default function TL() {
   const [expTl, setExpTl] = useState(null);
   const [quickTl, setQuickTl] = useState(false);
   const handleQuickTl = async () => {
-    const cond = conductor || data?.[0]?.conductor || conductores?.[0]?.nombre || '';
+    const cond = conductor || data?.[0]?.conductor || '';
     if (!cond) { toast('Elegí un piloto primero', 'error'); return; }
     const placaFinal = placa === 'Otro' ? (placaOtra || 'Otro') : placa;
     const allSi = Object.fromEntries(ALL_IDS.map(id => [id, 'si']));
@@ -383,7 +383,7 @@ export default function TL() {
                       <td style={TD}><ResultadoBadge resultado={r.resultado} /></td>
                       <td style={{ ...TD, textAlign: 'center', color: T.secondary, fontWeight: 700 }}>{isExp ? '▲' : '▼'}</td>
                       <td style={TD} onClick={e => e.stopPropagation()}>
-                        <button onClick={() => { if (window.confirm('¿Eliminar este registro?')) remove(r.id); }}
+                        <button onClick={() => { if (window.confirm('¿Eliminar este registro?')) remove(r.id).then(() => toast('Eliminado')).catch(e => toast('Error: ' + e.message, 'error')); }}
                           style={{ padding: '3px 10px', borderRadius: 5, border: `1.5px solid ${T.danger}`, background: '#fff', color: T.danger, cursor: 'pointer', fontSize: '.75rem', fontWeight: 700, fontFamily: 'inherit' }}>✕</button>
                       </td>
                     </tr>
