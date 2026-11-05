@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, Fragment } from 'react';
 import { useCollection, useWrite } from '../../hooks/useFirestore';
 import { useEmpleados, useMainData } from '../../hooks/useMainData';
 import { useToast } from '../../components/Toast';
@@ -83,6 +83,10 @@ export default function Capacitacion() {
   const [form,         setForm]         = useState(INIT());
   const [manualNombre, setManualNombre] = useState('');
   const [editId,       setEditId]       = useState(null); // null = nueva, string = editando
+  const [expCap,       setExpCap]       = useState(null);
+
+  // Nº de participantes tolerante al formato: array de nombres (nuevo) o número asistentes (viejo)
+  const nParticipantes = (r) => (r.participantes || []).length || Number(r.asistentes) || 0;
 
   const startEdit = (r) => {
     setEditId(r.id);
@@ -301,14 +305,19 @@ export default function Capacitacion() {
             <tbody>
               {data.slice(0, 60).map((r, idx) => {
                 const rc = resultColor(r.resultado);
+                const nPart = nParticipantes(r);
+                const nombres = Array.isArray(r.participantes) ? r.participantes : [];
+                const isExp = expCap === r.id;
                 return (
-                  <tr key={r.id} style={{ background: idx % 2 === 1 ? T.rowAlt : '#fff', borderBottom: `1px solid ${T.border}` }}>
-                    <td style={{ padding: '9px 14px', fontSize: '.83rem', fontWeight: 600, color: T.textDark, whiteSpace: 'nowrap' }}>{r.fecha}</td>
+                  <Fragment key={r.id}>
+                  <tr style={{ background: isExp ? '#F1F8E9' : idx % 2 === 1 ? T.rowAlt : '#fff', borderBottom: `1px solid ${T.border}`, cursor: 'pointer' }}
+                    onClick={() => setExpCap(isExp ? null : r.id)}>
+                    <td style={{ padding: '9px 14px', fontSize: '.83rem', fontWeight: 600, color: T.textDark, whiteSpace: 'nowrap' }}>{isExp ? '▲' : '▼'} {r.fecha}</td>
                     <td style={{ padding: '9px 14px', fontSize: '.83rem', color: T.textDark }}>{r.tema || '—'}</td>
                     <td style={{ padding: '9px 14px', fontSize: '.83rem', color: T.textMid }}>{r.instructor || '—'}</td>
                     <td style={{ padding: '9px 14px', fontSize: '.83rem', color: T.textMid }}>{r.duracion ? `${r.duracion}h` : '—'}</td>
-                    <td style={{ padding: '9px 14px', fontSize: '.83rem', color: T.textMid }}>
-                      {(r.participantes || []).length} persona{(r.participantes || []).length !== 1 ? 's' : ''}
+                    <td style={{ padding: '9px 14px', fontSize: '.83rem', color: T.textMid, fontWeight: 600 }}>
+                      {nPart} persona{nPart !== 1 ? 's' : ''}
                     </td>
                     <td style={{ padding: '9px 14px' }}>
                       <span style={{ padding: '3px 10px', borderRadius: 100, fontSize: '.72rem', fontWeight: 700, background: rc.bg, color: rc.color }}>
@@ -319,7 +328,7 @@ export default function Capacitacion() {
                       title={r.obs || ''}>
                       {r.obs || '—'}
                     </td>
-                    <td style={{ padding: '9px 10px', whiteSpace: 'nowrap' }}>
+                    <td style={{ padding: '9px 10px', whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
                       {!String(r.id).startsWith('main_') && (
                         <div style={{ display:'flex', gap:4 }}>
                           <button onClick={() => startEdit(r)}
@@ -334,6 +343,32 @@ export default function Capacitacion() {
                       )}
                     </td>
                   </tr>
+                  {isExp && (
+                    <tr>
+                      <td colSpan={8} style={{ padding: 0, borderBottom: `2px solid #A5D6A7` }}>
+                        <div style={{ padding: '14px 18px', background: '#F9FEF9', borderLeft: '4px solid #2E7D32' }}>
+                          <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', fontSize: '.8rem', color: T.textMid, marginBottom: 10 }}>
+                            <span><b style={{ color: T.textDark }}>Tema:</b> {r.tema || '—'}</span>
+                            <span><b style={{ color: T.textDark }}>Instructor:</b> {r.instructor || '—'}</span>
+                            <span><b style={{ color: T.textDark }}>Duración:</b> {r.duracion ? `${r.duracion} h` : '—'}</span>
+                            <span><b style={{ color: T.textDark }}>Participantes:</b> {nPart}</span>
+                          </div>
+                          <div style={{ fontWeight: 700, fontSize: '.7rem', color: T.secondary, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>Asistentes</div>
+                          {nombres.length > 0 ? (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                              {nombres.map((nom, ni) => (
+                                <span key={ni} style={{ padding: '3px 10px', background: '#E8F5E9', color: T.secondary, borderRadius: 100, fontSize: '.76rem', fontWeight: 600 }}>✓ {nom}</span>
+                              ))}
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: '.82rem', color: T.secondary, fontWeight: 700 }}>✓ {nPart} asistente{nPart !== 1 ? 's' : ''} registrado{nPart !== 1 ? 's' : ''} (sin nombres en el registro)</div>
+                          )}
+                          {r.obs && <div style={{ marginTop: 10, fontSize: '.78rem', color: T.textMid }}>📝 {r.obs}</div>}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 );
               })}
               {data.length === 0 && (
