@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 import { useCollection, useWrite } from '../../hooks/useFirestore';
 import { useEmpleados, useConductores } from '../../hooks/useMainData';
 import { useToast } from '../../components/Toast';
@@ -109,7 +109,7 @@ export default function TL() {
   const { empleados, loading: empLoading } = useEmpleados();
   const { conductores, loading: condLoading } = useConductores();
   const { data, loading } = useCollection('tl', { orderField: 'fecha', orderDir: 'desc', limit: 50 });
-  const { add, saving } = useWrite('tl');
+  const { add, saving, remove } = useWrite('tl');
 
   const [fecha,       setFecha]       = useState(today());
   const [hora,        setHora]        = useState(nowHM());
@@ -161,6 +161,26 @@ export default function TL() {
     }
   };
 
+  const [expTl, setExpTl] = useState(null);
+  const [quickTl, setQuickTl] = useState(false);
+  const handleQuickTl = async () => {
+    const cond = conductor || data?.[0]?.conductor || conductores?.[0]?.nombre || '';
+    if (!cond) { toast('Elegí un piloto primero', 'error'); return; }
+    const placaFinal = placa === 'Otro' ? (placaOtra || 'Otro') : placa;
+    const allSi = Object.fromEntries(ALL_IDS.map(id => [id, 'si']));
+    setQuickTl(true);
+    try {
+      await add({
+        fecha: today(), hora: nowHM(), placa: placaFinal, conductor: cond, tipo: 'Rutina diaria',
+        checks: allSi, pct: 100, resultado: 'aprobado', obs: '', fotoUrl: '',
+        creadoEn: new Date().toISOString(),
+      });
+      toast(`Limpieza de transporte registrada — ${cond}`);
+    } catch (e) {
+      toast('Error al guardar: ' + e.message, 'error');
+    } finally { setQuickTl(false); }
+  };
+
   return (
     <div style={{ color: T.textDark, maxWidth: 900, margin: '0 auto' }}>
 
@@ -170,6 +190,25 @@ export default function TL() {
           Verificación de limpieza y desinfección del furgón — 2 a 3 veces por semana
         </p>
       </div>
+
+      {/* Registro de 1 toque */}
+      <Card style={{ background: '#E8F5E9', border: '1px solid #A5D6A7' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+          <div style={{ flex: '1 1 200px', minWidth: 0 }}>
+            <div style={{ fontWeight: 800, fontSize: '.95rem', color: T.primary }}>✓ Registrar limpieza de hoy</div>
+            <div style={{ fontSize: '.78rem', color: T.textMid, marginTop: 2 }}>1 toque: los 5 puntos (incluida desinfección agua-cloro) en cumple, con fecha y hora de ahora.</div>
+          </div>
+          <select value={conductor} onChange={e => setConductor(e.target.value)}
+            style={{ ...iStyle, width: 'auto', minWidth: 170, flex: '0 1 auto', cursor: 'pointer' }}>
+            <option value="">— Piloto{data?.[0]?.conductor ? ` (${data[0].conductor})` : ''} —</option>
+            {conductores.map(c => <option key={c.id || c.nombre} value={c.nombre}>{c.nombre}</option>)}
+          </select>
+          <button onClick={handleQuickTl} disabled={quickTl}
+            style={{ padding: '12px 24px', background: quickTl ? '#BDBDBD' : T.primary, color: '#fff', border: 'none', borderRadius: 8, fontWeight: 800, fontSize: '.92rem', cursor: quickTl ? 'not-allowed' : 'pointer', fontFamily: 'inherit', minHeight: 48, whiteSpace: 'nowrap' }}>
+            {quickTl ? 'Guardando…' : '✓ Registrar hoy'}
+          </button>
+        </div>
+      </Card>
 
       <Card>
         <SecTitle>Nuevo Registro de Limpieza</SecTitle>
@@ -320,28 +359,66 @@ export default function TL() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: T.primary }}>
-                  {['Fecha', 'Hora', 'Placa', 'Conductor', 'Tipo', '%', 'Resultado', 'Obs'].map(h => (
-                    <th key={h} style={{ padding: '10px 14px', textAlign: 'left', color: '#fff', fontSize: '.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', whiteSpace: 'nowrap' }}>{h}</th>
+                  {['Fecha', 'Hora', 'Placa', 'Conductor', 'Tipo', '%', 'Resultado', '', ''].map((h, hi) => (
+                    <th key={hi} style={{ padding: '10px 14px', textAlign: 'left', color: '#fff', fontSize: '.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {(data || []).map((r, i) => (
-                  <tr key={r.id} style={{ background: i % 2 === 0 ? '#fff' : '#F9FBF9' }}>
-                    <td style={TD}>{r.fecha || '—'}</td>
-                    <td style={TD}>{r.hora || '—'}</td>
-                    <td style={TD}>
-                      <span style={{ background: '#F5F5F5', border: `1px solid ${T.border}`, borderRadius: 4, padding: '2px 8px', fontSize: '.78rem', fontWeight: 600 }}>{r.placa || '—'}</span>
-                    </td>
-                    <td style={TD}>{r.conductor || '—'}</td>
-                    <td style={{ ...TD, fontSize: '.78rem' }}>{r.tipo || '—'}</td>
-                    <td style={{ ...TD, fontWeight: 700, color: (r.pct || 0) >= 80 ? T.secondary : (r.pct || 0) >= 60 ? T.warn : T.danger }}>
-                      {r.pct != null ? `${r.pct}%` : '—'}
-                    </td>
-                    <td style={TD}><ResultadoBadge resultado={r.resultado} /></td>
-                    <td style={{ ...TD, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', color: T.textMid, fontSize: '.78rem' }}>{r.obs || '—'}</td>
-                  </tr>
-                ))}
+                {(data || []).map((r, i) => {
+                  const isExp = expTl === r.id;
+                  return (
+                  <Fragment key={r.id}>
+                    <tr style={{ background: isExp ? '#F1F8E9' : i % 2 === 0 ? '#fff' : '#F9FBF9', cursor: 'pointer' }} onClick={() => setExpTl(isExp ? null : r.id)}>
+                      <td style={TD}>{r.fecha || '—'}</td>
+                      <td style={TD}>{r.hora || '—'}</td>
+                      <td style={TD}>
+                        <span style={{ background: '#F5F5F5', border: `1px solid ${T.border}`, borderRadius: 4, padding: '2px 8px', fontSize: '.78rem', fontWeight: 600 }}>{r.placa || '—'}</span>
+                      </td>
+                      <td style={TD}>{r.conductor || '—'}</td>
+                      <td style={{ ...TD, fontSize: '.78rem' }}>{r.tipo || '—'}</td>
+                      <td style={{ ...TD, fontWeight: 700, color: (r.pct || 0) >= 80 ? T.secondary : (r.pct || 0) >= 60 ? T.warn : T.danger }}>
+                        {r.pct != null ? `${r.pct}%` : '—'}
+                      </td>
+                      <td style={TD}><ResultadoBadge resultado={r.resultado} /></td>
+                      <td style={{ ...TD, textAlign: 'center', color: T.secondary, fontWeight: 700 }}>{isExp ? '▲' : '▼'}</td>
+                      <td style={TD} onClick={e => e.stopPropagation()}>
+                        <button onClick={() => { if (window.confirm('¿Eliminar este registro?')) remove(r.id); }}
+                          style={{ padding: '3px 10px', borderRadius: 5, border: `1.5px solid ${T.danger}`, background: '#fff', color: T.danger, cursor: 'pointer', fontSize: '.75rem', fontWeight: 700, fontFamily: 'inherit' }}>✕</button>
+                      </td>
+                    </tr>
+                    {isExp && (
+                      <tr>
+                        <td colSpan={9} style={{ padding: 0, borderBottom: '2px solid #A5D6A7' }}>
+                          <div style={{ padding: '14px 18px', background: '#F9FEF9', borderLeft: '4px solid #2E7D32', display: 'flex', gap: 28, flexWrap: 'wrap' }}>
+                            {GRUPOS.map(g => (
+                              <div key={g.label}>
+                                <div style={{ fontWeight: 700, fontSize: '.7rem', color: T.secondary, textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 6 }}>{g.label}</div>
+                                <table style={{ borderCollapse: 'collapse', fontSize: '.8rem' }}>
+                                  <tbody>
+                                    {g.items.map(it => {
+                                      const v = (r.checks || {})[it.id];
+                                      return (
+                                        <tr key={it.id}>
+                                          <td style={{ padding: '3px 20px 3px 0', color: T.textDark, whiteSpace: 'nowrap' }}>{it.text}</td>
+                                          <td style={{ padding: '3px 0', textAlign: 'right', fontWeight: 700 }}>
+                                            {v === 'si' ? <span style={{ color: T.secondary }}>✓</span> : v === 'no' ? <span style={{ color: T.danger }}>✗</span> : <span style={{ color: T.textMid }}>N/A</span>}
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+                            ))}
+                            {r.obs && <div style={{ fontSize: '.78rem', color: T.textMid, alignSelf: 'center' }}>📝 {r.obs}</div>}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
